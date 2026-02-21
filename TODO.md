@@ -9,6 +9,7 @@ No step should require the entire pipeline to be complete.
 - [x] Define core models for Frigate events and OpenAI structured output.
 - [x] Add logging setup and basic error handling conventions.
 - [x] Split logging config by component (`core`, `mqtt`, `config`, `policy`, `ai`).
+- [x] Add per-component log files with daily rotation and retention.
 
 # Phase 2 – MQTT + Event Intake
 

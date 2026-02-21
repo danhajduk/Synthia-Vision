@@ -50,6 +50,8 @@ Key current settings:
 - `logging.components.config`
 - `logging.components.policy`
 - `logging.components.ai`
+- `logging.files.core|mqtt|config|policy|ai`
+- `logging.retention_days`
 
 Env overrides supported:
 - `SYNTHIA_CONFIG`
@@ -68,6 +70,7 @@ Env overrides supported:
 - `SYNTHIA_LOG_CONFIG`
 - `SYNTHIA_LOG_POLICY`
 - `SYNTHIA_LOG_AI`
+- `SYNTHIA_LOG_RETENTION_DAYS`
 - `SYNTHIA_MONTHLY_BUDGET_LIMIT`
 - `SYNTHIA_CONFIDENCE_THRESHOLD`
 
@@ -83,6 +86,9 @@ Logging is now configurable globally and per component through `config/config.ya
   - `logging.components.policy`
   - `logging.components.ai`
 - Optional file logging: `logging.file`
+- Optional per-component files: `logging.files.*`
+- Daily rotation at midnight with filename pattern: `[name]-YYYY-MM-DD.log`
+- Log retention window: `logging.retention_days`
 - JSON toggle placeholder: `logging.json`
 
 ## Run Locally
