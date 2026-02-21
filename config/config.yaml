@@ -11,6 +11,7 @@ service:
 mqtt:
   host: "10.0.0.100"
   port: 1883
+  heartbeat_interval_seconds: 30
   username: "synthia_vision"
   password: "${MQTT_PASSWORD}"             # allow env-substitution
   tls: false
@@ -142,7 +143,8 @@ dedupe:
 
 topics:
   # Centralized topic layout so you can change prefixes without hunting code
-  status: "{mqtt_prefix}/status"
+  status: "synthia/synthiavision/status"
+  heartbeat_ts: "synthia/synthiavision/heartbeat_ts"
   last_error: "{mqtt_prefix}/last_error"
 
   camera:

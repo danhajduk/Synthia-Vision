@@ -28,7 +28,7 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 2.2 Heartbeat
-- [ ] Publish heartbeat timestamp every 30–60s
+- [x] Publish heartbeat timestamp every 30–60s
   - home/synthiavision/heartbeat_ts
 
 ✅ TEST:

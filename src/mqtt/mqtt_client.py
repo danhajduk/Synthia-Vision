@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -23,7 +24,9 @@ class MQTTClient:
         self._connected_event = threading.Event()
         self._disconnect_requested = False
         self._status_topic = _resolve_status_topic(config)
+        self._heartbeat_topic = _resolve_heartbeat_topic(config)
         self._status_retain = config.mqtt.retain
+        self._heartbeat_task: asyncio.Task[None] | None = None
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -48,7 +51,7 @@ class MQTTClient:
         # Published by broker on unexpected disconnect.
         self._client.will_set(
             self._status_topic,
-            payload="offline",
+            payload="unavailable",
             qos=config.mqtt.qos,
             retain=self._status_retain,
         )
@@ -76,11 +79,13 @@ class MQTTClient:
     async def startup_ready(self) -> None:
         """Publish ready state once all startup hooks succeed."""
         await self.publish_status("enabled")
+        self._start_heartbeat()
         LOGGER.info("MQTT ready status published")
 
     async def shutdown(self) -> None:
         """Graceful shutdown with final retained status publication."""
         self._disconnect_requested = True
+        await self._stop_heartbeat()
         try:
             await self.publish_status("stopped")
         except ExternalServiceError:
@@ -92,6 +97,13 @@ class MQTTClient:
 
     async def publish_status(self, payload: str) -> None:
         await self.publish(self._status_topic, payload, retain=self._status_retain)
+
+    async def publish_heartbeat(self) -> None:
+        await self.publish(
+            self._heartbeat_topic,
+            str(int(time.time())),
+            retain=self._status_retain,
+        )
 
     async def publish(
         self,
@@ -146,7 +158,51 @@ class MQTTClient:
             return
         LOGGER.warning("MQTT disconnected unexpectedly: %s; reconnecting", reason_code)
 
+    def _start_heartbeat(self) -> None:
+        if self._heartbeat_task is not None and not self._heartbeat_task.done():
+            return
+        self._heartbeat_task = asyncio.create_task(
+            self._heartbeat_loop(),
+            name="mqtt-heartbeat",
+        )
+
+    async def _stop_heartbeat(self) -> None:
+        if self._heartbeat_task is None:
+            return
+        self._heartbeat_task.cancel()
+        try:
+            await self._heartbeat_task
+        except asyncio.CancelledError:
+            pass
+        self._heartbeat_task = None
+
+    async def _heartbeat_loop(self) -> None:
+        interval_seconds = max(5, self._config.mqtt.heartbeat_interval_seconds)
+        LOGGER.info(
+            "Starting MQTT heartbeat loop (%ss) on topic %s",
+            interval_seconds,
+            self._heartbeat_topic,
+        )
+        try:
+            while True:
+                try:
+                    await self.publish_heartbeat()
+                    await self.publish_status("enabled")
+                except ExternalServiceError as exc:
+                    LOGGER.warning("Failed to publish heartbeat/status: %s", exc)
+                await asyncio.sleep(interval_seconds)
+        except asyncio.CancelledError:
+            LOGGER.info("MQTT heartbeat loop stopped")
+            raise
+
 
 def _resolve_status_topic(config: ServiceConfig) -> str:
     status_template = str(config.topics.get("status", "{mqtt_prefix}/status"))
     return status_template.replace("{mqtt_prefix}", config.service.mqtt_prefix)
+
+
+def _resolve_heartbeat_topic(config: ServiceConfig) -> str:
+    heartbeat_template = str(
+        config.topics.get("heartbeat_ts", "{mqtt_prefix}/heartbeat_ts")
+    )
+    return heartbeat_template.replace("{mqtt_prefix}", config.service.mqtt_prefix)

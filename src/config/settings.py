@@ -37,6 +37,7 @@ class MQTTConfig:
     host: str
     port: int = 1883
     keepalive_seconds: int = 60
+    heartbeat_interval_seconds: int = 30
     username: str | None = None
     password: str | None = None
     tls: bool = False
@@ -235,6 +236,7 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
             host=_required_str(mqtt_data.get("host"), "mqtt.host"),
             port=int(mqtt_data.get("port", 1883)),
             keepalive_seconds=int(mqtt_data.get("keepalive_seconds", 60)),
+            heartbeat_interval_seconds=int(mqtt_data.get("heartbeat_interval_seconds", 30)),
             username=_optional_str(mqtt_data.get("username")),
             password=_optional_str(mqtt_data.get("password")),
             tls=_as_bool(mqtt_data.get("tls", False)),
@@ -418,6 +420,8 @@ def _apply_env_overrides(config: ServiceConfig) -> None:
         config.mqtt.port = int(os.environ["MQTT_PORT"])
     if "MQTT_KEEPALIVE_SECONDS" in os.environ:
         config.mqtt.keepalive_seconds = int(os.environ["MQTT_KEEPALIVE_SECONDS"])
+    if "MQTT_HEARTBEAT_SECONDS" in os.environ:
+        config.mqtt.heartbeat_interval_seconds = int(os.environ["MQTT_HEARTBEAT_SECONDS"])
     config.frigate.base_url = os.getenv("FRIGATE_BASE_URL", config.frigate.base_url)
     config.openai.model = os.getenv("OPENAI_MODEL", config.openai.model)
     config.app.log_level = os.getenv("SYNTHIA_LOG_LEVEL", config.app.log_level)
