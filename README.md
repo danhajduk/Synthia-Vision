@@ -2,69 +2,89 @@
 
 Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQTT + Home Assistant.
 
-Current status: Foundation is implemented (service entrypoint, config system, core models, logging/error conventions). MQTT/event processing is the next phase.
+## Current Status
 
-## Implemented So Far
+- Foundation is complete.
+- Phase 2 (MQTT + Event Intake) is complete.
+- Next: Phase 3 policy engine logic.
+
+## Implemented
 
 ### Foundation
-- Async service runtime with graceful shutdown on `SIGINT`/`SIGTERM` (`src/main.py`)
-- Centralized logging setup (`src/logging_utils.py`)
-- Shared application error types (`src/errors.py`)
-- Core validated models for:
-  - Frigate event payloads
-  - OpenAI structured classification output (`src/models.py`)
-- YAML-based config loader with:
-  - New schema support from `config/config.yaml`
-  - `${ENV_VAR}` placeholder resolution
-  - Type validation and guardrails (`src/config/settings.py`)
+- Async service lifecycle and graceful shutdown (`src/main.py`)
+- Centralized logging (`src/logging_utils.py`)
+- Shared application errors (`src/errors.py`)
+- Core Frigate/OpenAI models (`src/models.py`)
+- Typed YAML config loader with env placeholders and validation (`src/config/settings.py`)
 
-## Project Layout
+### MQTT + Event Intake
+- MQTT connect/reconnect wrapper (`src/mqtt/mqtt_client.py`)
+- MQTT Last Will status on unexpected disconnect: `unavailable`
+- Retained status flow:
+  - `starting` at startup
+  - `enabled` when ready
+  - `stopped` on graceful shutdown
+- Heartbeat timestamp publishing on interval
+- Subscribe to Frigate events topic and log `event_id`, `camera`, `type` (no routing yet)
 
-- `src/main.py`: service lifecycle entrypoint
-- `src/config/settings.py`: config dataclasses + loader/validation
-- `src/models.py`: Frigate/OpenAI payload models
-- `src/logging_utils.py`: logging conventions
-- `src/errors.py`: app-specific exceptions
-- `config/config.yaml`: main runtime configuration
-- `TODO.md`: implementation tracker
+## Active MQTT Topics (Now)
+
+- Status: `synthia/synthiavision/status`
+- Heartbeat: `synthia/synthiavision/heartbeat_ts`
+- Subscribed input: `frigate/events` (from config)
 
 ## Configuration
 
-Primary config file:
+Primary file:
 - `config/config.yaml`
 
-Secrets can be provided either in YAML placeholders or via environment variables:
+Key current settings:
+- `mqtt.heartbeat_interval_seconds`
+- `policy.defaults.process_on` (now supports list, e.g. `["end", "update"]`)
+- `policy.defaults.min_process_interval_s` (future processing throttle)
+- `topics.status`
+- `topics.heartbeat_ts`
+
+Env overrides supported:
+- `SYNTHIA_CONFIG`
 - `OPENAI_API_KEY`
-- `MQTT_PASSWORD`
-- `MQTT_USERNAME`
 - `MQTT_HOST`
+- `MQTT_PORT`
+- `MQTT_USERNAME`
+- `MQTT_PASSWORD`
+- `MQTT_KEEPALIVE_SECONDS`
+- `MQTT_HEARTBEAT_SECONDS`
 - `FRIGATE_BASE_URL`
 - `OPENAI_MODEL`
 - `SYNTHIA_LOG_LEVEL`
 - `SYNTHIA_MONTHLY_BUDGET_LIMIT`
 - `SYNTHIA_CONFIDENCE_THRESHOLD`
 
-You can also override config file path with:
-- `SYNTHIA_CONFIG`
-
-## Local Run (Current)
+## Run Locally
 
 1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-2. Set required secrets (minimum):
+2. Set minimum secret:
 ```bash
 export OPENAI_API_KEY="your-key"
 ```
-3. Start service:
+3. Start:
 ```bash
 python -m src.main
 ```
 
-## Roadmap
+## Run With Docker Compose
 
-Next major section is MQTT integration:
-- connect/reconnect
-- subscribe to `frigate/events`
-- publish retained state/status topics
+Uses your existing external MQTT broker (no bundled Mosquitto service).
+
+```bash
+docker compose up -d --build
+docker compose logs -f synthia-vision
+```
+
+Stop:
+```bash
+docker compose down
+```
