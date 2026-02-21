@@ -36,6 +36,7 @@ class ServicePathsConfig:
 class MQTTConfig:
     host: str
     port: int = 1883
+    keepalive_seconds: int = 60
     username: str | None = None
     password: str | None = None
     tls: bool = False
@@ -233,6 +234,7 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
         mqtt=MQTTConfig(
             host=_required_str(mqtt_data.get("host"), "mqtt.host"),
             port=int(mqtt_data.get("port", 1883)),
+            keepalive_seconds=int(mqtt_data.get("keepalive_seconds", 60)),
             username=_optional_str(mqtt_data.get("username")),
             password=_optional_str(mqtt_data.get("password")),
             tls=_as_bool(mqtt_data.get("tls", False)),

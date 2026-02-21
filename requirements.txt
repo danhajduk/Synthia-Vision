@@ -4,7 +4,7 @@ pyyaml>=6.0
 python-dotenv>=1.0
 
 # MQTT
-paho-mqtt>=1.6
+paho-mqtt>=2.1.0
 
 # HTTP (Frigate snapshot + health endpoint if needed)
 httpx>=0.27

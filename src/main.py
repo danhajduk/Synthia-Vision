@@ -17,6 +17,7 @@ if __package__ is None or __package__ == "":
 from src.config import load_settings
 from src.errors import SynthiaVisionError
 from src.logging_utils import configure_logging
+from src.mqtt import MQTTClient
 
 LOGGER = logging.getLogger("synthia_vision")
 
@@ -99,7 +100,12 @@ async def _main_async() -> int:
     configure_logging(config.app.log_level)
     LOGGER.info("Loaded configuration from config file and environment")
 
-    app = SynthiaVisionApp()
+    mqtt_client = MQTTClient(config)
+    dependencies = AppDependencies(
+        startup_hooks=[mqtt_client.startup_connect, mqtt_client.startup_ready],
+        shutdown_hooks=[mqtt_client.shutdown],
+    )
+    app = SynthiaVisionApp(dependencies=dependencies)
     _register_signal_handlers(app)
 
     try:

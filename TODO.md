@@ -12,11 +12,11 @@ No step should require the entire pipeline to be complete.
 # Phase 2 – MQTT + Event Intake
 
 ## 2.1 MQTT Client Wrapper
-- [ ] Implement mqtt_client.py wrapper
+- [x] Implement mqtt_client.py wrapper
   - connect / reconnect handling
   - graceful shutdown
   - last will message
-- [ ] Publish retained status topic on startup:
+- [x] Publish retained status topic on startup:
   - home/synthiavision/status = "starting"
   - then "enabled" when ready
 
