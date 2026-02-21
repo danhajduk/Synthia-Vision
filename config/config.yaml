@@ -1,0 +1,169 @@
+service:
+  name: "Synthia Vision"
+  slug: "synthia_vision"
+  mqtt_prefix: "home/synthiavision"
+
+  paths:
+    state_file: "/app/state/state.json"
+    config_file: "/app/config/config.yaml"
+    snapshots_dir: "/app/state/snapshots"   # optional for debug
+
+mqtt:
+  host: "10.0.0.100"
+  port: 1883
+  username: "synthia_vision"
+  password: "${MQTT_PASSWORD}"             # allow env-substitution
+  tls: false
+
+  subscribe:
+    frigate_events_topic: "frigate/events"
+
+  publish:
+    retain: true
+    qos: 1
+
+  discovery:
+    enabled: true
+    prefix: "homeassistant"                # HA MQTT Discovery prefix
+    device:
+      manufacturer: "DanLabs"
+      model: "Synthia Vision Node"
+      sw_version: "0.1.0"
+    # if you want to avoid dupes across reinstalls:
+    node_id: "homeassistant_pc_01"         # used to build unique_id prefixes
+
+frigate:
+  api_base_url: "http://10.0.0.100:5000"   # or http://frigate:5000 if shared docker net
+  snapshot:
+    source: "event"                        # event | latest (keep event)
+    endpoint_template: "/api/events/{event_id}/snapshot.jpg"
+    timeout_s: 5
+    max_bytes: 3000000                     # ~3MB cap
+    retries: 3
+    retry_backoff_s: [0.3, 0.8, 1.5]
+
+ai:
+  provider: "openai"
+  openai:
+    api_key: "${OPENAI_API_KEY}"
+    model: "gpt-4o-mini"                   # pick your preferred vision-capable model
+    timeout_s: 20
+    max_output_tokens: 200
+
+  # Controls strict JSON output
+  structured_output:
+    mode: "json_schema"                    # json_schema | json_object
+    schema_name: "synthia_vision_event"
+    # Keep the schema in config so you can tweak actions without code changes:
+    schema:
+      type: object
+      additionalProperties: false
+      required: ["action", "confidence", "description"]
+      properties:
+        action:
+          type: string
+          enum:
+            - unknown
+            - deliver_package
+            - pickup_package
+            - visitor
+            - family_member
+            - solicitor
+            - animal
+            - false_alarm
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+  prompts:
+    system: >
+      You are Synthia Vision. Classify the scene from a door camera snapshot.
+      Return ONLY valid JSON matching the provided schema.
+      Keep the description short and factual.
+    # Optional per-camera prompt overrides later:
+    per_camera: {}
+
+policy:
+  # Global defaults applied to all cameras unless overridden below
+  defaults:
+    enabled: true
+    process_on: "end"                      # end | update | new (MVP: end)
+    labels: ["person"]
+    min_score: 0.0                         # use if frigate provides score you trust
+    min_duration_s: 0.0                    # Phase 2 if duration available/reliable
+    require_zones: []                      # e.g. ["porch"] later
+    confidence_threshold: 0.75
+
+  # Multi-camera-ready; start with just doorbell enabled
+  cameras:
+    doorbell:
+      enabled: true
+      labels: ["person"]
+      confidence_threshold: 0.75
+      cooldown_s: 30
+      actions:
+        # Optional: allow/deny actions per camera
+        allowed: ["deliver_package", "pickup_package", "visitor", "family_member", "solicitor", "unknown"]
+    front_yard:
+      enabled: false
+      labels: ["person", "car"]
+      confidence_threshold: 0.65
+      cooldown_s: 60
+
+modes:
+  # These are HA-controlled toggles that modify behavior
+  doorbell_only_mode:
+    enabled: true
+    allowed_cameras: ["doorbell"]
+
+  high_precision_mode:
+    enabled: false
+    overrides:
+      confidence_threshold: 0.85
+      # could also tighten labels/zones later
+
+budget:
+  enabled: true
+  currency: "USD"
+  monthly_limit: 10.00
+  behavior_when_exceeded: "block_openai"   # block_openai | disable_service
+  publish_status: true
+
+dedupe:
+  recent_event_ids_max: 400
+  per_camera_cooldown_default_s: 30
+  # Optional: ignore if frigate spams event updates
+  ignore_event_types: ["update"]           # if process_on=end, this is mostly moot
+
+topics:
+  # Centralized topic layout so you can change prefixes without hunting code
+  status: "{mqtt_prefix}/status"
+  last_error: "{mqtt_prefix}/last_error"
+
+  camera:
+    action: "{mqtt_prefix}/camera/{camera}/action"
+    confidence: "{mqtt_prefix}/camera/{camera}/confidence"
+    description: "{mqtt_prefix}/camera/{camera}/description"
+    last_event_id: "{mqtt_prefix}/camera/{camera}/last_event_id"
+    last_event_ts: "{mqtt_prefix}/camera/{camera}/last_event_ts"
+
+  cost:
+    last: "{mqtt_prefix}/cost/last"
+    daily_total: "{mqtt_prefix}/cost/daily_total"
+    month2day_total: "{mqtt_prefix}/cost/month2day_total"
+    avg_per_event: "{mqtt_prefix}/cost/avg_per_event"
+    monthly_by_camera: "{mqtt_prefix}/cost/monthly_by_camera/{camera}"
+
+  events:
+    count_total: "{mqtt_prefix}/events/count_total"
+    count_today: "{mqtt_prefix}/events/count_today"
+
+logging:
+  level: "INFO"                            # DEBUG | INFO | WARNING | ERROR
+  file: "/app/logs/synthia_vision.log"
+  json: false

@@ -1,10 +1,10 @@
 # Synthia Vision TODO
 
 ## 1. Foundation
-- [ ] Add `src/main.py` entrypoint and app lifecycle wiring.
-- [ ] Add configuration loader (`config.yaml` + env override for secrets).
-- [ ] Define core models for Frigate events and OpenAI structured output.
-- [ ] Add logging setup and basic error handling conventions.
+- [x] Add `src/main.py` entrypoint and app lifecycle wiring.
+- [x] Add configuration loader (`config.yaml` + env override for secrets).
+- [x] Define core models for Frigate events and OpenAI structured output.
+- [x] Add logging setup and basic error handling conventions.
 
 ## 2. MQTT Integration
 - [ ] Implement MQTT client connect/reconnect logic.
