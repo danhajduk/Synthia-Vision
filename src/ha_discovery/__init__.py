@@ -1,0 +1,1 @@
+# Placeholder for Home Assistant discovery module
