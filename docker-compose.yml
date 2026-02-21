@@ -1,0 +1,19 @@
+services:
+  synthia-vision:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: synthia-vision
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: ${MQTT_HOST:-10.0.0.100}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-dev-placeholder-key}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      FRIGATE_BASE_URL: ${FRIGATE_BASE_URL:-http://host.docker.internal:5000}
+      SYNTHIA_CONFIG: /app/config/config.yaml
+    volumes:
+      - ./config:/app/config
+      - ./state:/app/state
+      - ./logs:/app/logs

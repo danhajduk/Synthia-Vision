@@ -414,6 +414,10 @@ def _apply_env_overrides(config: ServiceConfig) -> None:
     config.mqtt.password = os.getenv("MQTT_PASSWORD", config.mqtt.password)
     config.mqtt.username = os.getenv("MQTT_USERNAME", config.mqtt.username)
     config.mqtt.host = os.getenv("MQTT_HOST", config.mqtt.host)
+    if "MQTT_PORT" in os.environ:
+        config.mqtt.port = int(os.environ["MQTT_PORT"])
+    if "MQTT_KEEPALIVE_SECONDS" in os.environ:
+        config.mqtt.keepalive_seconds = int(os.environ["MQTT_KEEPALIVE_SECONDS"])
     config.frigate.base_url = os.getenv("FRIGATE_BASE_URL", config.frigate.base_url)
     config.openai.model = os.getenv("OPENAI_MODEL", config.openai.model)
     config.app.log_level = os.getenv("SYNTHIA_LOG_LEVEL", config.app.log_level)
