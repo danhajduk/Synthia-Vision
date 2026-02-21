@@ -97,7 +97,18 @@ async def _main_async() -> int:
         LOGGER.error("Configuration error: %s", exc)
         return 1
 
-    configure_logging(config.app.log_level)
+    configure_logging(
+        default_level=config.logging.level,
+        file_path=config.logging.file,
+        json_logs=config.logging.json,
+        component_levels={
+            "core": config.logging.components.core,
+            "mqtt": config.logging.components.mqtt,
+            "config": config.logging.components.config,
+            "policy": config.logging.components.policy,
+            "ai": config.logging.components.ai,
+        },
+    )
     LOGGER.info("Loaded configuration from config file and environment")
 
     mqtt_client = MQTTClient(config)

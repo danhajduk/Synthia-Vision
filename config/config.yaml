@@ -167,6 +167,12 @@ topics:
     count_today: "{mqtt_prefix}/events/count_today"
 
 logging:
-  level: "INFO"                            # DEBUG | INFO | WARNING | ERROR
+  level: "INFO"                            # default level
   file: "/app/logs/synthia_vision.log"
   json: false
+  components:
+    core: "INFO"
+    mqtt: "INFO"
+    config: "INFO"
+    policy: "INFO"
+    ai: "INFO"

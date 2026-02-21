@@ -8,6 +8,7 @@ No step should require the entire pipeline to be complete.
 - [x] Add configuration loader (`config.yaml` + env override for secrets).
 - [x] Define core models for Frigate events and OpenAI structured output.
 - [x] Add logging setup and basic error handling conventions.
+- [x] Split logging config by component (`core`, `mqtt`, `config`, `policy`, `ai`).
 
 # Phase 2 – MQTT + Event Intake
 

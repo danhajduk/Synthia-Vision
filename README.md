@@ -44,6 +44,12 @@ Key current settings:
 - `policy.defaults.min_process_interval_s` (future processing throttle)
 - `topics.status`
 - `topics.heartbeat_ts`
+- `logging.level`
+- `logging.components.core`
+- `logging.components.mqtt`
+- `logging.components.config`
+- `logging.components.policy`
+- `logging.components.ai`
 
 Env overrides supported:
 - `SYNTHIA_CONFIG`
@@ -57,8 +63,27 @@ Env overrides supported:
 - `FRIGATE_BASE_URL`
 - `OPENAI_MODEL`
 - `SYNTHIA_LOG_LEVEL`
+- `SYNTHIA_LOG_CORE`
+- `SYNTHIA_LOG_MQTT`
+- `SYNTHIA_LOG_CONFIG`
+- `SYNTHIA_LOG_POLICY`
+- `SYNTHIA_LOG_AI`
 - `SYNTHIA_MONTHLY_BUDGET_LIMIT`
 - `SYNTHIA_CONFIDENCE_THRESHOLD`
+
+## Logging
+
+Logging is now configurable globally and per component through `config/config.yaml`.
+
+- Global default: `logging.level`
+- Component overrides:
+  - `logging.components.core`
+  - `logging.components.mqtt`
+  - `logging.components.config`
+  - `logging.components.policy`
+  - `logging.components.ai`
+- Optional file logging: `logging.file`
+- JSON toggle placeholder: `logging.json`
 
 ## Run Locally
 

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import os
 import re
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from src.errors import ConfigError
+
+LOGGER = logging.getLogger("synthia_vision.config")
 
 ENV_PLACEHOLDER_PATTERN = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
 
@@ -16,6 +19,23 @@ ENV_PLACEHOLDER_PATTERN = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
 @dataclass(slots=True)
 class AppConfig:
     log_level: str = "INFO"
+
+
+@dataclass(slots=True)
+class LoggingComponentLevels:
+    core: str = "INFO"
+    mqtt: str = "INFO"
+    config: str = "INFO"
+    policy: str = "INFO"
+    ai: str = "INFO"
+
+
+@dataclass(slots=True)
+class LoggingConfig:
+    level: str = "INFO"
+    file: str | None = None
+    json: bool = False
+    components: LoggingComponentLevels = field(default_factory=LoggingComponentLevels)
 
 
 @dataclass(slots=True)
@@ -155,6 +175,7 @@ class DedupeConfig:
 @dataclass(slots=True)
 class ServiceConfig:
     app: AppConfig
+    logging: LoggingConfig
     service: ServiceIdentityConfig
     paths: ServicePathsConfig
     mqtt: MQTTConfig
@@ -218,9 +239,26 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
     dedupe_data = _as_mapping(resolved_data.get("dedupe", {}), "dedupe")
     topics_data = _as_mapping(resolved_data.get("topics", {}), "topics")
     logging_data = _as_mapping(resolved_data.get("logging", {}), "logging")
+    logging_components_data = _as_mapping(
+        logging_data.get("components", {}),
+        "logging.components",
+    )
+    default_level = str(logging_data.get("level", "INFO"))
 
     config = ServiceConfig(
-        app=AppConfig(log_level=str(logging_data.get("level", "INFO"))),
+        app=AppConfig(log_level=default_level),
+        logging=LoggingConfig(
+            level=default_level,
+            file=_optional_str(logging_data.get("file")),
+            json=_as_bool(logging_data.get("json", False)),
+            components=LoggingComponentLevels(
+                core=str(logging_components_data.get("core", default_level)),
+                mqtt=str(logging_components_data.get("mqtt", default_level)),
+                config=str(logging_components_data.get("config", default_level)),
+                policy=str(logging_components_data.get("policy", default_level)),
+                ai=str(logging_components_data.get("ai", default_level)),
+            ),
+        ),
         service=ServiceIdentityConfig(
             name=str(service_data.get("name", "Synthia Vision")),
             slug=str(service_data.get("slug", "synthia_vision")),
@@ -362,6 +400,12 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
 
     _apply_env_overrides(config)
     _validate_config(config)
+    LOGGER.debug(
+        "Loaded configuration file=%s mqtt_host=%s mqtt_topic=%s",
+        path,
+        config.mqtt.host,
+        config.mqtt.events_topic,
+    )
     return config
 
 
@@ -435,6 +479,17 @@ def _apply_env_overrides(config: ServiceConfig) -> None:
     config.frigate.base_url = os.getenv("FRIGATE_BASE_URL", config.frigate.base_url)
     config.openai.model = os.getenv("OPENAI_MODEL", config.openai.model)
     config.app.log_level = os.getenv("SYNTHIA_LOG_LEVEL", config.app.log_level)
+    config.logging.level = config.app.log_level
+    if "SYNTHIA_LOG_CORE" in os.environ:
+        config.logging.components.core = os.environ["SYNTHIA_LOG_CORE"]
+    if "SYNTHIA_LOG_MQTT" in os.environ:
+        config.logging.components.mqtt = os.environ["SYNTHIA_LOG_MQTT"]
+    if "SYNTHIA_LOG_CONFIG" in os.environ:
+        config.logging.components.config = os.environ["SYNTHIA_LOG_CONFIG"]
+    if "SYNTHIA_LOG_POLICY" in os.environ:
+        config.logging.components.policy = os.environ["SYNTHIA_LOG_POLICY"]
+    if "SYNTHIA_LOG_AI" in os.environ:
+        config.logging.components.ai = os.environ["SYNTHIA_LOG_AI"]
 
     if "SYNTHIA_MONTHLY_BUDGET_LIMIT" in os.environ:
         config.budget.monthly_budget_limit = float(
