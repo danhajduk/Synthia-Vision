@@ -39,6 +39,15 @@ class LoggingConfig:
 
 
 @dataclass(slots=True)
+class LoggingComponentFiles:
+    core: str | None = None
+    mqtt: str | None = None
+    config: str | None = None
+    policy: str | None = None
+    ai: str | None = None
+
+
+@dataclass(slots=True)
 class ServiceIdentityConfig:
     name: str = "Synthia Vision"
     slug: str = "synthia_vision"
@@ -176,6 +185,7 @@ class DedupeConfig:
 class ServiceConfig:
     app: AppConfig
     logging: LoggingConfig
+    logging_files: LoggingComponentFiles
     service: ServiceIdentityConfig
     paths: ServicePathsConfig
     mqtt: MQTTConfig
@@ -243,6 +253,10 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
         logging_data.get("components", {}),
         "logging.components",
     )
+    logging_files_data = _as_mapping(
+        logging_data.get("files", {}),
+        "logging.files",
+    )
     default_level = str(logging_data.get("level", "INFO"))
 
     config = ServiceConfig(
@@ -258,6 +272,13 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 policy=str(logging_components_data.get("policy", default_level)),
                 ai=str(logging_components_data.get("ai", default_level)),
             ),
+        ),
+        logging_files=LoggingComponentFiles(
+            core=_optional_str(logging_files_data.get("core")),
+            mqtt=_optional_str(logging_files_data.get("mqtt")),
+            config=_optional_str(logging_files_data.get("config")),
+            policy=_optional_str(logging_files_data.get("policy")),
+            ai=_optional_str(logging_files_data.get("ai")),
         ),
         service=ServiceIdentityConfig(
             name=str(service_data.get("name", "Synthia Vision")),

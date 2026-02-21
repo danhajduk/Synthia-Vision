@@ -108,6 +108,13 @@ async def _main_async() -> int:
             "policy": config.logging.components.policy,
             "ai": config.logging.components.ai,
         },
+        component_files={
+            "core": config.logging_files.core,
+            "mqtt": config.logging_files.mqtt,
+            "config": config.logging_files.config,
+            "policy": config.logging_files.policy,
+            "ai": config.logging_files.ai,
+        },
     )
     LOGGER.info("Loaded configuration from config file and environment")
 

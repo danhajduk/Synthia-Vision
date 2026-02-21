@@ -176,3 +176,9 @@ logging:
     config: "INFO"
     policy: "INFO"
     ai: "INFO"
+  files:
+    core: "/app/logs/synthia_vision.core.log"
+    mqtt: "/app/logs/synthia_vision.mqtt.log"
+    config: "/app/logs/synthia_vision.config.log"
+    policy: "/app/logs/synthia_vision.policy.log"
+    ai: "/app/logs/synthia_vision.ai.log"
