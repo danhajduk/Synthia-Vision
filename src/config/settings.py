@@ -35,6 +35,7 @@ class LoggingConfig:
     level: str = "INFO"
     file: str | None = None
     json: bool = False
+    retention_days: int = 14
     components: LoggingComponentLevels = field(default_factory=LoggingComponentLevels)
 
 
@@ -265,6 +266,7 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
             level=default_level,
             file=_optional_str(logging_data.get("file")),
             json=_as_bool(logging_data.get("json", False)),
+            retention_days=int(logging_data.get("retention_days", 14)),
             components=LoggingComponentLevels(
                 core=str(logging_components_data.get("core", default_level)),
                 mqtt=str(logging_components_data.get("mqtt", default_level)),
@@ -511,6 +513,8 @@ def _apply_env_overrides(config: ServiceConfig) -> None:
         config.logging.components.policy = os.environ["SYNTHIA_LOG_POLICY"]
     if "SYNTHIA_LOG_AI" in os.environ:
         config.logging.components.ai = os.environ["SYNTHIA_LOG_AI"]
+    if "SYNTHIA_LOG_RETENTION_DAYS" in os.environ:
+        config.logging.retention_days = int(os.environ["SYNTHIA_LOG_RETENTION_DAYS"])
 
     if "SYNTHIA_MONTHLY_BUDGET_LIMIT" in os.environ:
         config.budget.monthly_budget_limit = float(
@@ -523,6 +527,8 @@ def _apply_env_overrides(config: ServiceConfig) -> None:
 
 
 def _validate_config(config: ServiceConfig) -> None:
+    if config.logging.retention_days < 1:
+        raise ConfigError("logging.retention_days must be >= 1")
     if config.policy.defaults.min_process_interval_seconds < 0:
         raise ConfigError("policy.defaults.min_process_interval_s must be >= 0")
     _validate_threshold(config.policy.defaults.confidence_threshold)

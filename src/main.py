@@ -101,6 +101,7 @@ async def _main_async() -> int:
         default_level=config.logging.level,
         file_path=config.logging.file,
         json_logs=config.logging.json,
+        retention_days=config.logging.retention_days,
         component_levels={
             "core": config.logging.components.core,
             "mqtt": config.logging.components.mqtt,

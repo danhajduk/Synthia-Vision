@@ -170,6 +170,7 @@ logging:
   level: "INFO"                            # default level
   file: "/app/logs/synthia_vision.log"
   json: false
+  retention_days: 14                       # keep rotated logs for N days
   components:
     core: "INFO"
     mqtt: "INFO"
