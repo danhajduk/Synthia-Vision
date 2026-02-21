@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 import time
@@ -25,6 +26,7 @@ class MQTTClient:
         self._disconnect_requested = False
         self._status_topic = _resolve_status_topic(config)
         self._heartbeat_topic = _resolve_heartbeat_topic(config)
+        self._events_topic = config.mqtt.events_topic
         self._status_retain = config.mqtt.retain
         self._heartbeat_task: asyncio.Task[None] | None = None
 
@@ -38,6 +40,7 @@ class MQTTClient:
         self._client.enable_logger(LOGGER)
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
+        self._client.on_message = self._on_message
         self._client.reconnect_delay_set(min_delay=1, max_delay=30)
 
         if config.mqtt.username:
@@ -143,6 +146,7 @@ class MQTTClient:
             self._config.mqtt.host,
             self._config.mqtt.port,
         )
+        self._subscribe_events_topic()
 
     def _on_disconnect(
         self,
@@ -157,6 +161,61 @@ class MQTTClient:
             LOGGER.info("MQTT disconnected cleanly")
             return
         LOGGER.warning("MQTT disconnected unexpectedly: %s; reconnecting", reason_code)
+
+    def _subscribe_events_topic(self) -> None:
+        result, _message_id = self._client.subscribe(
+            self._events_topic,
+            qos=self._config.mqtt.qos,
+        )
+        if result != mqtt.MQTT_ERR_SUCCESS:
+            LOGGER.error(
+                "Failed to subscribe to topic %s (rc=%s)",
+                self._events_topic,
+                result,
+            )
+            return
+        LOGGER.info("Subscribed to Frigate events topic: %s", self._events_topic)
+
+    def _on_message(
+        self,
+        _client: mqtt.Client,
+        _userdata: Any,
+        message: mqtt.MQTTMessage,
+    ) -> None:
+        if message.topic != self._events_topic:
+            return
+        payload = self._decode_json_payload(message.payload)
+        if payload is None:
+            return
+
+        event_block = payload.get("after") or payload.get("event") or {}
+        if not isinstance(event_block, dict):
+            event_block = {}
+
+        event_id = event_block.get("id", "unknown")
+        camera = event_block.get("camera", "unknown")
+        event_type = payload.get("type", "unknown")
+        LOGGER.info(
+            "Frigate event received: event_id=%s camera=%s type=%s",
+            event_id,
+            camera,
+            event_type,
+        )
+
+    def _decode_json_payload(self, payload_bytes: bytes) -> dict[str, Any] | None:
+        try:
+            decoded = json.loads(payload_bytes.decode("utf-8"))
+        except UnicodeDecodeError:
+            LOGGER.warning("Ignoring Frigate event message: invalid UTF-8 payload")
+            return None
+        except json.JSONDecodeError:
+            LOGGER.warning("Ignoring Frigate event message: invalid JSON payload")
+            return None
+
+        if not isinstance(decoded, dict):
+            LOGGER.warning("Ignoring Frigate event message: payload is not a JSON object")
+            return None
+        return decoded
 
     def _start_heartbeat(self) -> None:
         if self._heartbeat_task is not None and not self._heartbeat_task.done():

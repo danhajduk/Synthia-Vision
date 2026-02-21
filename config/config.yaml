@@ -93,7 +93,8 @@ policy:
   # Global defaults applied to all cameras unless overridden below
   defaults:
     enabled: true
-    process_on: "end"                      # end | update | new (MVP: end)
+    process_on: ["end", "update"]          # process at end and update events
+    min_process_interval_s: 30             # no more than once per camera/event window
     labels: ["person"]
     min_score: 0.0                         # use if frigate provides score you trust
     min_duration_s: 0.0                    # Phase 2 if duration available/reliable
@@ -138,8 +139,8 @@ budget:
 dedupe:
   recent_event_ids_max: 400
   per_camera_cooldown_default_s: 30
-  # Optional: ignore if frigate spams event updates
-  ignore_event_types: ["update"]           # if process_on=end, this is mostly moot
+  # Keep empty when processing both end+update via policy defaults
+  ignore_event_types: []
 
 topics:
   # Centralized topic layout so you can change prefixes without hunting code

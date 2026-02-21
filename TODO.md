@@ -37,9 +37,9 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 2.3 Subscribe to Frigate Events
-- [ ] Subscribe to `frigate/events`
-- [ ] Log raw event_id + camera + type
-- [ ] Ignore all processing for now
+- [x] Subscribe to `frigate/events`
+- [x] Log raw event_id + camera + type
+- [x] Ignore all processing for now
 
 ✅ TEST:
 - Publish a canned Frigate event to MQTT

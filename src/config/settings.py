@@ -99,7 +99,8 @@ class AIConfig:
 @dataclass(slots=True)
 class PolicyDefaultsConfig:
     enabled: bool = True
-    process_on: str = "end"
+    process_on: list[str] = field(default_factory=lambda: ["end"])
+    min_process_interval_seconds: float = 30.0
     labels: list[str] = field(default_factory=lambda: ["person"])
     min_score: float = 0.0
     min_duration_seconds: float = 0.0
@@ -297,8 +298,17 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
         policy=PolicyConfig(
             defaults=PolicyDefaultsConfig(
                 enabled=_as_bool(policy_defaults_data.get("enabled", True)),
-                process_on=str(policy_defaults_data.get("process_on", "end")),
-                labels=_as_string_list(policy_defaults_data.get("labels", ["person"]), "policy.defaults.labels"),
+                process_on=_as_string_or_list(
+                    policy_defaults_data.get("process_on", ["end"]),
+                    "policy.defaults.process_on",
+                ),
+                min_process_interval_seconds=float(
+                    policy_defaults_data.get("min_process_interval_s", 30.0)
+                ),
+                labels=_as_string_list(
+                    policy_defaults_data.get("labels", ["person"]),
+                    "policy.defaults.labels",
+                ),
                 min_score=float(policy_defaults_data.get("min_score", 0.0)),
                 min_duration_seconds=float(
                     policy_defaults_data.get("min_duration_s", 0.0)
@@ -437,6 +447,8 @@ def _apply_env_overrides(config: ServiceConfig) -> None:
 
 
 def _validate_config(config: ServiceConfig) -> None:
+    if config.policy.defaults.min_process_interval_seconds < 0:
+        raise ConfigError("policy.defaults.min_process_interval_s must be >= 0")
     _validate_threshold(config.policy.defaults.confidence_threshold)
     for camera_name, camera_policy in config.policy.cameras.items():
         try:
@@ -483,6 +495,12 @@ def _as_string_list(value: Any, field_name: str) -> list[str]:
     if not all(isinstance(item, str) for item in value):
         raise ConfigError(f"Expected string list at: {field_name}")
     return value
+
+
+def _as_string_or_list(value: Any, field_name: str) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    return _as_string_list(value, field_name)
 
 
 def _as_float_list(value: Any, field_name: str) -> list[float]:
