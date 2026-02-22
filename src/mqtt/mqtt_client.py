@@ -15,6 +15,7 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 from src.config import ServiceConfig
+from src.config.settings import PolicyCameraConfig
 from src.db import CameraStore
 from src.event_router import EventRouter
 from src.ha_discovery import HADiscoveryPublisher
@@ -127,6 +128,7 @@ class MQTTClient:
         )
         self._process_end_events_by_camera: dict[str, bool] = {}
         self._process_update_events_by_camera: dict[str, bool] = {}
+        self._camera_phash_threshold_by_camera: dict[str, int] = {}
         self._updates_processed_count: dict[str, int] = {}
         self._updates_last_seen_ts: dict[str, float] = {}
 
@@ -616,6 +618,7 @@ class MQTTClient:
     def _evaluate_policy(self, event: FrigateEvent) -> None:
         self._upsert_discovered_camera(event)
         camera_runtime = self._resolve_camera_runtime_settings(event.camera)
+        self._apply_camera_policy_overrides(event.camera, camera_runtime.enabled)
 
         if not self._service_enabled:
             LOGGER.info(
@@ -793,6 +796,47 @@ class MQTTClient:
                 ),
                 updates_per_event=self._event_controls.updates_per_event,
             )
+
+    def _apply_camera_policy_overrides(self, camera: str, enabled: bool) -> None:
+        default_name = camera.replace("_", " ").title()
+        default_confidence_threshold = self._config.policy.defaults.confidence_threshold
+        default_cooldown_s = self._config.dedupe.per_camera_cooldown_default_seconds
+        default_vision_detail = self._config.ai.vision_detail
+        try:
+            settings = self._camera_store.get_policy_settings(
+                camera,
+                default_display_name=default_name,
+                default_confidence_threshold=default_confidence_threshold,
+                default_cooldown_s=default_cooldown_s,
+                default_vision_detail=default_vision_detail,
+            )
+        except Exception as exc:
+            LOGGER.warning("Camera policy settings lookup failed camera=%s error=%s", camera, exc)
+            return
+
+        camera_policy = self._config.policy.cameras.get(camera)
+        if camera_policy is None:
+            camera_policy = PolicyCameraConfig(
+                name=settings.display_name,
+                enabled=enabled,
+                labels=list(self._config.policy.defaults.labels),
+                confidence_threshold=settings.confidence_threshold,
+                cooldown_seconds=settings.cooldown_s,
+                allowed_actions=[],
+                prompt_preset=settings.prompt_preset,
+                vision_detail=settings.vision_detail,
+                max_side_px=None,
+            )
+            self._config.policy.cameras[camera] = camera_policy
+        else:
+            camera_policy.name = settings.display_name
+            camera_policy.enabled = enabled
+            camera_policy.confidence_threshold = settings.confidence_threshold
+            camera_policy.cooldown_seconds = settings.cooldown_s
+            camera_policy.prompt_preset = settings.prompt_preset
+            camera_policy.vision_detail = settings.vision_detail
+        if settings.phash_threshold is not None:
+            self._camera_phash_threshold_by_camera[camera] = settings.phash_threshold
 
     def _remember_policy_event(self, event: FrigateEvent) -> None:
         events_data = self._policy_runtime_state.setdefault("events", {})

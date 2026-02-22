@@ -319,6 +319,12 @@ SQLite bootstrap:
 - Connection pragmas include WAL mode, busy timeout, and foreign key enforcement.
 - Seed defaults are written into `kv` if missing (idempotent).
 
+Camera runtime source of truth:
+- Discovered cameras are persisted in SQLite `cameras`.
+- Runtime camera enable/event controls and per-camera overrides are resolved from SQLite.
+- Legacy YAML `policy.cameras` values are not used as runtime source of truth.
+- Optional one-time import tool: `python tools/migrate_policy_cameras_to_sqlite.py` (`--dry-run`, `--overwrite` supported).
+
 Metric formulas:
 - `metrics.cost_avg_per_event = metrics.cost_month2day_total / metrics.count_total`
 - `metrics.tokens_avg_per_request` is maintained as a running average over processed requests

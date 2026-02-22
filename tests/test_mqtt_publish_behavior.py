@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 
 from src.models import FrigateEvent
 
@@ -81,6 +82,58 @@ class MQTTPublishBehaviorTests(unittest.TestCase):
         client = MQTTClient.__new__(MQTTClient)
         client._camera_store = _CameraStoreStub()
         self.assertFalse(client._is_camera_enabled_runtime("garage"))
+
+    def test_apply_camera_policy_overrides_uses_store_settings(self) -> None:
+        if MQTTClient is None:
+            self.skipTest("paho-mqtt not installed")
+
+        class _CameraStoreStub:
+            def get_policy_settings(
+                self,
+                _camera: str,
+                *,
+                default_display_name: str,
+                default_confidence_threshold: float,
+                default_cooldown_s: int,
+                default_vision_detail: str,
+            ):
+                _ = (
+                    default_display_name,
+                    default_confidence_threshold,
+                    default_cooldown_s,
+                    default_vision_detail,
+                )
+                return SimpleNamespace(
+                    display_name="Front Door",
+                    prompt_preset="outdoor",
+                    confidence_threshold=0.92,
+                    cooldown_s=45,
+                    vision_detail="high",
+                    phash_threshold=8,
+                )
+
+        client = MQTTClient.__new__(MQTTClient)
+        client._camera_store = _CameraStoreStub()
+        client._camera_phash_threshold_by_camera = {}
+        client._config = SimpleNamespace(
+            policy=SimpleNamespace(
+                defaults=SimpleNamespace(labels=["person"], confidence_threshold=0.65),
+                cameras={},
+            ),
+            dedupe=SimpleNamespace(per_camera_cooldown_default_seconds=30),
+            ai=SimpleNamespace(vision_detail="low"),
+        )
+
+        client._apply_camera_policy_overrides("doorbell", enabled=False)
+
+        camera_policy = client._config.policy.cameras["doorbell"]
+        self.assertEqual(camera_policy.name, "Front Door")
+        self.assertFalse(camera_policy.enabled)
+        self.assertEqual(camera_policy.prompt_preset, "outdoor")
+        self.assertEqual(camera_policy.confidence_threshold, 0.92)
+        self.assertEqual(camera_policy.cooldown_seconds, 45)
+        self.assertEqual(camera_policy.vision_detail, "high")
+        self.assertEqual(client._camera_phash_threshold_by_camera["doorbell"], 8)
 
 
 if __name__ == "__main__":

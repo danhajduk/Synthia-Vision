@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+_UNSET = object()
+
 
 @dataclass(slots=True)
 class CameraRuntimeSettings:
@@ -14,6 +16,16 @@ class CameraRuntimeSettings:
     process_end_events: bool
     process_update_events: bool
     updates_per_event: int
+
+
+@dataclass(slots=True)
+class CameraPolicySettings:
+    display_name: str
+    prompt_preset: str | None
+    confidence_threshold: float
+    cooldown_s: int
+    vision_detail: str
+    phash_threshold: int | None
 
 
 @dataclass(slots=True)
@@ -107,6 +119,57 @@ class CameraStore:
             updates_per_event=updates_per_event,
         )
 
+    def get_policy_settings(
+        self,
+        camera_key: str,
+        *,
+        default_display_name: str,
+        default_confidence_threshold: float,
+        default_cooldown_s: int,
+        default_vision_detail: str,
+    ) -> CameraPolicySettings:
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            row = conn.execute(
+                """
+                SELECT display_name, prompt_preset, confidence_threshold, cooldown_s, vision_detail, phash_threshold
+                FROM cameras
+                WHERE camera_key = ?
+                """,
+                (camera_key,),
+            ).fetchone()
+        if row is None:
+            return CameraPolicySettings(
+                display_name=default_display_name,
+                prompt_preset=None,
+                confidence_threshold=default_confidence_threshold,
+                cooldown_s=default_cooldown_s,
+                vision_detail=default_vision_detail,
+                phash_threshold=None,
+            )
+        display_name = str(row[0]) if row[0] else default_display_name
+        prompt_preset = str(row[1]) if row[1] else None
+        confidence_threshold = (
+            default_confidence_threshold
+            if row[2] is None
+            else max(0.0, min(1.0, float(row[2])))
+        )
+        cooldown_s = default_cooldown_s if row[3] is None else max(0, int(row[3]))
+        vision_detail = (
+            default_vision_detail
+            if row[4] not in {"low", "high", "auto"}
+            else str(row[4])
+        )
+        phash_threshold = None if row[5] is None else max(0, int(row[5]))
+        return CameraPolicySettings(
+            display_name=display_name,
+            prompt_preset=prompt_preset,
+            confidence_threshold=confidence_threshold,
+            cooldown_s=cooldown_s,
+            vision_detail=vision_detail,
+            phash_threshold=phash_threshold,
+        )
+
     def set_camera_enabled(self, camera_key: str, enabled: bool) -> None:
         self._ensure_camera_row(camera_key)
         with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
@@ -133,6 +196,57 @@ class CameraStore:
         if process_update_events is not None:
             updates.append("process_update_events = ?")
             params.append(1 if process_update_events else 0)
+        if not updates:
+            return
+        updates.append("last_seen_ts = ?")
+        params.append(datetime.now(timezone.utc).isoformat())
+        params.append(camera_key)
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            conn.execute(
+                f"UPDATE cameras SET {', '.join(updates)} WHERE camera_key = ?",
+                tuple(params),
+            )
+            conn.commit()
+
+    def set_camera_policy_fields(
+        self,
+        camera_key: str,
+        *,
+        display_name: str | object = _UNSET,
+        prompt_preset: str | None | object = _UNSET,
+        confidence_threshold: float | object = _UNSET,
+        cooldown_s: int | object = _UNSET,
+        vision_detail: str | object = _UNSET,
+        phash_threshold: int | object = _UNSET,
+        enabled: bool | object = _UNSET,
+    ) -> None:
+        self._ensure_camera_row(camera_key)
+        updates: list[str] = []
+        params: list[object] = []
+        if display_name is not _UNSET:
+            updates.append("display_name = ?")
+            params.append(str(display_name))
+        if prompt_preset is not _UNSET:
+            updates.append("prompt_preset = ?")
+            params.append(None if prompt_preset is None else str(prompt_preset))
+        if confidence_threshold is not _UNSET:
+            updates.append("confidence_threshold = ?")
+            params.append(max(0.0, min(1.0, float(confidence_threshold))))
+        if cooldown_s is not _UNSET:
+            updates.append("cooldown_s = ?")
+            params.append(max(0, int(cooldown_s)))
+        if vision_detail is not _UNSET:
+            normalized_detail = str(vision_detail).lower()
+            if normalized_detail in {"low", "high", "auto"}:
+                updates.append("vision_detail = ?")
+                params.append(normalized_detail)
+        if phash_threshold is not _UNSET:
+            updates.append("phash_threshold = ?")
+            params.append(max(0, int(phash_threshold)))
+        if enabled is not _UNSET:
+            updates.append("enabled = ?")
+            params.append(1 if enabled else 0)
         if not updates:
             return
         updates.append("last_seen_ts = ?")

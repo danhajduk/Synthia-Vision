@@ -77,6 +77,36 @@ class CameraStoreTests(unittest.TestCase):
             self.assertIsNotNone(row)
             self.assertEqual(row[0], "18")
 
+    def test_policy_fields_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            store = CameraStore(db_path)
+            store.set_camera_policy_fields(
+                "livingroom",
+                display_name="Living Room",
+                prompt_preset="indoor",
+                confidence_threshold=0.84,
+                cooldown_s=42,
+                vision_detail="high",
+                phash_threshold=7,
+                enabled=True,
+            )
+            settings = store.get_policy_settings(
+                "livingroom",
+                default_display_name="Livingroom",
+                default_confidence_threshold=0.65,
+                default_cooldown_s=30,
+                default_vision_detail="low",
+            )
+            self.assertEqual(settings.display_name, "Living Room")
+            self.assertEqual(settings.prompt_preset, "indoor")
+            self.assertEqual(settings.confidence_threshold, 0.84)
+            self.assertEqual(settings.cooldown_s, 42)
+            self.assertEqual(settings.vision_detail, "high")
+            self.assertEqual(settings.phash_threshold, 7)
+            self.assertTrue(store.get_camera_enabled("livingroom"))
+
     def test_list_camera_keys_returns_sorted_values(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             db_path = Path(td) / "synthia_vision.db"

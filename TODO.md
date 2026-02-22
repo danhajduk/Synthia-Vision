@@ -114,12 +114,12 @@ Acceptance:
 - [x] Upsert discovered cameras from every Frigate event.
 - [x] Mandatory default for new cameras: `enabled=0`.
 - [x] Track `discovered_first_ts` and `last_seen_ts`.
-- [ ] Add transition rule for legacy YAML camera config:
+- [x] Add transition rule for legacy YAML camera config:
 - [x] Subtask: during migration window, legacy YAML camera values are ignored for runtime decisions.
-- [ ] Subtask: optional one-time migration tool/import may copy YAML camera values into SQLite.
+- [x] Subtask: optional one-time migration tool/import may copy YAML camera values into SQLite.
 - [ ] Add per-camera settings usage:
-- [ ] Subtask: `display_name`, `prompt_preset`, `confidence_threshold`, `cooldown_s`
-- [ ] Subtask: `process_end_events`, `process_update_events`, `updates_per_event`
+- [x] Subtask: `display_name`, `prompt_preset`, `confidence_threshold`, `cooldown_s`
+- [x] Subtask: `process_end_events`, `process_update_events`, `updates_per_event`
 - [ ] Subtask: `vision_detail`, `phash_threshold`
 - [x] Add unique constraint on cameras.camera_key.
 - [x] Do not auto-enable cameras under any circumstance.
