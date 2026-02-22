@@ -130,11 +130,15 @@ async def _main_async() -> int:
     async def _bootstrap_admin_user() -> None:
         await asyncio.to_thread(auth_bootstrap.create_admin_from_env_if_needed)
 
+    async def _sync_setup_flag() -> None:
+        await asyncio.to_thread(auth_bootstrap.sync_setup_completed_flag)
+
     mqtt_client = MQTTClient(config)
     dependencies = AppDependencies(
         startup_hooks=[
             _init_db,
             _bootstrap_admin_user,
+            _sync_setup_flag,
             mqtt_client.startup_connect,
             mqtt_client.startup_ready,
         ],

@@ -169,8 +169,8 @@ Acceptance:
 - [x] Secure password hashing (bcrypt/argon2).
 - [ ] First-run behavior:
 - [x] If users table empty and `ADMIN_PASSWORD` is set, create admin on startup (one-time).
-- [ ] Else allow `/ui/setup/first-run` only from localhost OR only with `FIRST_RUN_TOKEN`.
-- [ ] After first admin exists, disable first-run path.
+- [x] Else allow `/ui/setup/first-run` only from localhost OR only with `FIRST_RUN_TOKEN`.
+- [x] After first admin exists, disable first-run path.
 - [ ] Restrict guest vs admin routes and APIs.
 - [ ] Session cookies must be HTTPOnly and SameSite=Lax (or Strict).
 

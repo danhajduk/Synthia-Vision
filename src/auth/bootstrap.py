@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.auth.first_run import is_first_run_request_allowed
 from src.auth.user_store import UserStore
 
 LOGGER = logging.getLogger("synthia_vision.auth")
@@ -29,3 +30,24 @@ class FirstRunBootstrap:
         else:
             LOGGER.info("Skipped admin bootstrap because users already exist")
         return created
+
+    def sync_setup_completed_flag(self) -> bool:
+        store = UserStore(self.db_path)
+        has_admin = store.has_admin()
+        store.set_setup_completed(has_admin)
+        LOGGER.info("Synchronized setup.completed=%s based on admin presence", int(has_admin))
+        return has_admin
+
+    def is_first_run_setup_allowed(
+        self,
+        *,
+        remote_host: str | None,
+        provided_token: str | None,
+    ) -> bool:
+        store = UserStore(self.db_path)
+        if store.has_admin():
+            return False
+        return is_first_run_request_allowed(
+            remote_host=remote_host,
+            provided_token=provided_token,
+        )

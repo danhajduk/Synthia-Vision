@@ -26,6 +26,20 @@ class UserStore:
             row = conn.execute("SELECT 1 FROM users WHERE role='admin' LIMIT 1").fetchone()
         return row is not None
 
+    def set_setup_completed(self, completed: bool) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        value = "1" if completed else "0"
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            conn.execute(
+                """
+                INSERT INTO kv(k, v, updated_ts) VALUES('setup.completed', ?, ?)
+                ON CONFLICT(k) DO UPDATE SET v=excluded.v, updated_ts=excluded.updated_ts
+                """,
+                (value, now),
+            )
+            conn.commit()
+
     def create_user(self, *, username: str, password: str, role: str) -> None:
         if role not in {"admin", "guest"}:
             raise ValueError("role must be admin or guest")

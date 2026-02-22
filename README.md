@@ -329,10 +329,11 @@ SQLite bootstrap:
 - Phase 8 bootstrap (in progress):
   - if `ADMIN_PASSWORD` is set and `users` is empty, startup creates one `admin` user (default username `admin`, override `ADMIN_USERNAME`)
   - bootstrap is one-time; when users already exist no new admin is created
+  - startup synchronizes `kv.setup.completed` based on whether an admin exists
   - password hashing uses Argon2 when available (`argon2-cffi`) with scrypt compatibility fallback
   - signed session token primitives are available (`src/auth/session.py`) with role-aware payload (`guest`/`admin`)
   - session cookie defaults are defined for UI/API integration (`HttpOnly`, `SameSite=Lax`)
-  - first-run access policy helper is available (`src/auth/first_run.py`): localhost is allowed, remote requires matching `FIRST_RUN_TOKEN`
+  - first-run access policy helper is available (`src/auth/first_run.py`): setup allowed only when no admin exists; localhost is allowed, remote requires matching `FIRST_RUN_TOKEN`
 
 Camera runtime source of truth:
 - Discovered cameras are persisted in SQLite `cameras`.

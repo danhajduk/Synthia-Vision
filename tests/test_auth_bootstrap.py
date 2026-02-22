@@ -52,6 +52,46 @@ class AuthBootstrapTests(unittest.TestCase):
             self.assertIsNotNone(kv)
             self.assertEqual(kv[0], "1")
 
+    def test_first_run_setup_allowed_only_without_admin(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            bootstrap = FirstRunBootstrap(db_path=db_path)
+
+            self.assertTrue(
+                bootstrap.is_first_run_setup_allowed(
+                    remote_host="127.0.0.1",
+                    provided_token=None,
+                )
+            )
+
+            store = UserStore(db_path)
+            store.create_user(username="admin", password="supersecurepass", role="admin")
+            self.assertFalse(
+                bootstrap.is_first_run_setup_allowed(
+                    remote_host="127.0.0.1",
+                    provided_token=None,
+                )
+            )
+
+    def test_sync_setup_completed_flag_tracks_admin_presence(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            bootstrap = FirstRunBootstrap(db_path=db_path)
+            store = UserStore(db_path)
+
+            self.assertFalse(bootstrap.sync_setup_completed_flag())
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                kv = conn.execute("SELECT v FROM kv WHERE k='setup.completed'").fetchone()
+            self.assertEqual(kv[0], "0")
+
+            store.create_user(username="admin", password="supersecurepass", role="admin")
+            self.assertTrue(bootstrap.sync_setup_completed_flag())
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                kv2 = conn.execute("SELECT v FROM kv WHERE k='setup.completed'").fetchone()
+            self.assertEqual(kv2[0], "1")
+
 
 if __name__ == "__main__":
     unittest.main()
