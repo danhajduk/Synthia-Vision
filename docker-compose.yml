@@ -14,6 +14,10 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       FRIGATE_BASE_URL: ${FRIGATE_BASE_URL:-http://host.docker.internal:5000}
       SYNTHIA_CONFIG: /app/config/config.yaml
+      SYNTHIA_API_HOST: ${SYNTHIA_API_HOST}
+      SYNTHIA_API_PORT: ${SYNTHIA_API_PORT}
+    ports:
+      - "${SYNTHIA_API_PORT}:${SYNTHIA_API_PORT}"
     volumes:
       - ./config:/app/config
       - ./state:/app/state

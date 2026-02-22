@@ -192,6 +192,8 @@ class MQTTClient:
         self._publish_discovery_configs()
         self._publish_core_defaults_unknown()
         self._publish_camera_defaults_all()
+        self._sync_queue_stats_to_db()
+        self._sync_queue_depth_to_db(self._queue_depth())
         self._publish_global_metrics()
         self._start_queue_worker()
         await self.publish_status(self._effective_runtime_status())
@@ -715,11 +717,15 @@ class MQTTClient:
         LOGGER.info("Started event queue worker max_size=%s", EVENT_QUEUE_MAX_SIZE)
         while not self._stop_requested:
             event: FrigateEvent | None = None
+            queue_depth_after_pop: int | None = None
             with self._event_queue_lock:
                 if self._event_queue:
                     event = self._event_queue.popleft()
+                    queue_depth_after_pop = len(self._event_queue)
                 else:
                     self._queue_event.clear()
+            if queue_depth_after_pop is not None:
+                self._sync_queue_depth_to_db(queue_depth_after_pop)
             if event is None:
                 try:
                     await asyncio.wait_for(self._queue_event.wait(), timeout=0.5)

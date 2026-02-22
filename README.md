@@ -122,6 +122,7 @@ Auth/session endpoints:
 - `POST /api/auth/login` (sets HTTPOnly session cookie)
 - `POST /api/auth/logout` (clears session cookie)
 - `GET /api/auth/me`
+- `POST /api/setup/first-run` (creates first admin only when no admin exists; localhost allowed, remote requires `FIRST_RUN_TOKEN`)
 
 Authorization:
 - Guest endpoints are readable without login (`/api/status`, `/api/metrics/summary`, `/api/cameras/summary`).
@@ -131,6 +132,26 @@ Authorization:
 Runtime:
 - Server defaults to `0.0.0.0:8080`.
 - Override with `SYNTHIA_API_HOST` and `SYNTHIA_API_PORT`.
+
+## UI Routes (FastAPI + Jinja)
+
+Guest/UI:
+- `GET /` redirects to `GET /ui`
+- `GET /ui` guest dashboard (HA iframe-safe, no sidebar, no admin controls)
+- `GET /ui/login`
+- `POST /ui/login`
+- `POST /ui/logout`
+
+Admin UI pages (require admin session):
+- `GET /ui/admin`
+- `GET /ui/setup`
+- `GET /ui/events`
+- `GET /ui/events/{id}`
+- `GET /ui/errors`
+
+Implementation paths:
+- templates: `src/ui/templates`
+- static assets: `src/ui/static`
 
 ## Active MQTT Topics (Now)
 
@@ -355,14 +376,14 @@ SQLite bootstrap:
   - `events`: one row per handled event (accepted or rejected) with latest result fields
   - `metrics`: processing-path rows for OpenAI usage or skip reasons
   - `errors`: runtime component errors with short detail + optional event/camera linkage
-- Phase 8 bootstrap (in progress):
+- Phase 8 bootstrap:
   - if `ADMIN_PASSWORD` is set and `users` is empty, startup creates one `admin` user (default username `admin`, override `ADMIN_USERNAME`)
   - bootstrap is one-time; when users already exist no new admin is created
   - startup synchronizes `kv.setup.completed` based on whether an admin exists
   - password hashing uses Argon2 when available (`argon2-cffi`) with scrypt compatibility fallback
   - signed session token primitives are available (`src/auth/session.py`) with role-aware payload (`guest`/`admin`)
   - session cookie defaults are defined for UI/API integration (`HttpOnly`, `SameSite=Lax`)
-  - first-run access policy helper is available (`src/auth/first_run.py`): setup allowed only when no admin exists; localhost is allowed, remote requires matching `FIRST_RUN_TOKEN`
+  - first-run API setup is available at `POST /api/setup/first-run` and enforces `src/auth/first_run.py` policy: setup allowed only when no admin exists; localhost is allowed, remote requires matching `FIRST_RUN_TOKEN`
 
 Camera runtime source of truth:
 - Discovered cameras are persisted in SQLite `cameras`.

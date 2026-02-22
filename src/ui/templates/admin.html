@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin — {{ title }}</title>
+  <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
+</head>
+<body>
+  <div class="container">
+    <main class="main">
+      <div class="topbar">
+        <div class="brand">
+          <div class="title">Admin</div>
+          <div class="subtitle">Signed in as {{ username }}</div>
+        </div>
+        <div class="row">
+          <a class="btn" href="/ui/setup">Setup</a>
+          <a class="btn" href="/ui/events">Events</a>
+          <a class="btn" href="/ui/errors">Errors</a>
+          <form method="post" action="/ui/logout"><button class="btn primary" type="submit">Logout</button></form>
+        </div>
+      </div>
+      <div class="content">
+        <div class="card"><h3>Admin Console</h3><div class="sub">Phase 10 scaffold is ready. Continue with full admin pages in next tasks.</div></div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
+</head>
+<body>
+  <div class="container">
+    <main class="main">
+      <div class="topbar">
+        <div class="brand">
+          <div class="title">{{ title }}</div>
+          <div class="subtitle">{{ subtitle or '—' }}</div>
+        </div>
+        <div class="row">
+          <a class="btn primary" href="/ui/login">Login</a>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="grid kpis">
+          <div class="card">
+            <div class="row">
+              <h3>Health</h3>
+              <span class="pill"><span class="dot {% if kpis.health_label == 'Degraded' %}warn{% elif kpis.health_label in ['Disabled', 'Budget Blocked'] %}bad{% endif %}"></span> {{ kpis.health_badge or 'Unknown' }}</span>
+            </div>
+            <div class="big">{{ kpis.health_label or 'Unknown' }}</div>
+            <div class="sub">Heartbeat: <span class="mono">{{ kpis.heartbeat_ts or '—' }}</span></div>
+          </div>
+
+          <div class="card">
+            <div class="row">
+              <h3>Queue</h3>
+              <span class="pill"><span class="dot warn"></span> {{ kpis.queue_depth }} / {{ kpis.queue_max }}</span>
+            </div>
+            <div class="big">{{ kpis.queue_depth }}</div>
+            <div class="sub">Drops today: <span class="mono">{{ kpis.drops_today }}</span></div>
+          </div>
+
+          <div class="card">
+            <div class="row">
+              <h3>Cost Today</h3>
+              <span class="pill"><span class="dot"></span> OK</span>
+            </div>
+            <div class="big">{{ kpis.cost_today or '—' }}</div>
+            <div class="sub">Month-to-date: <span class="mono">{{ kpis.cost_mtd or '—' }}</span></div>
+          </div>
+
+          <div class="card">
+            <div class="row">
+              <h3>AI Calls</h3>
+              <span class="pill"><span class="dot"></span> Today</span>
+            </div>
+            <div class="big">{{ kpis.ai_calls_today }}</div>
+            <div class="sub">Avg/event: <span class="mono">{{ kpis.avg_cost_per_event or '—' }}</span></div>
+          </div>
+        </div>
+
+        <div class="section-title">
+          <h2>Cameras</h2>
+          <div class="hint">Guest view: summaries only (no controls)</div>
+        </div>
+
+        <div class="cameras">
+          {% for camera in cameras %}
+          <div class="card cam-card">
+            <div class="cam-head">
+              <p class="cam-name">{{ camera.display_name or camera.camera_key }}</p>
+              <div class="cam-meta">
+                <span>Enabled: <b>{% if camera.enabled %}Yes{% else %}No{% endif %}</b></span>
+                {% if camera.status == 'disabled' %}
+                  <span class="pill"><span class="dot bad"></span> Disabled</span>
+                {% elif camera.status == 'degraded' %}
+                  <span class="pill"><span class="dot warn"></span> Degraded</span>
+                {% else %}
+                  <span class="pill"><span class="dot"></span> OK</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="thumb"></div>
+            <div class="cam-body">
+              <div class="cam-kv">
+                <div class="key">Last</div><div class="value">{{ camera.last_action_confidence or '—' }}</div>
+                <div class="key">MTD</div><div class="value">{{ camera.mtd_cost or '—' }}</div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+          {% if not cameras %}
+          <div class="card">
+            <div class="sub">No cameras discovered yet.</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="footer">
+        <div>{{ title }} • HA embed view</div>
+        <div>{{ generated_at }}</div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

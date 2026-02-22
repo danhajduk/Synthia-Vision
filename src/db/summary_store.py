@@ -85,6 +85,22 @@ class SummaryStore:
                 """,
                 (month_prefix,),
             ).fetchall()
+            queue_depth = _single_int(
+                conn,
+                "SELECT COALESCE(v, '0') FROM kv WHERE k = 'runtime.queue_depth'",
+            )
+            dropped_events_total = _single_int(
+                conn,
+                "SELECT COALESCE(v, '0') FROM kv WHERE k = 'counters.dropped_events_total'",
+            )
+            dropped_update_total = _single_int(
+                conn,
+                "SELECT COALESCE(v, '0') FROM kv WHERE k = 'counters.dropped_update_total'",
+            )
+            dropped_queue_full_total = _single_int(
+                conn,
+                "SELECT COALESCE(v, '0') FROM kv WHERE k = 'counters.dropped_queue_full_total'",
+            )
         cost_monthly_by_camera = {
             str(camera): float(total) for camera, total in monthly_by_camera_rows
         }
@@ -101,6 +117,10 @@ class SummaryStore:
             "count_today": count_today,
             "count_today_date": today,
             "count_total": count_total,
+            "queue_depth": max(0, int(queue_depth)),
+            "dropped_events_total": max(0, int(dropped_events_total)),
+            "dropped_update_total": max(0, int(dropped_update_total)),
+            "dropped_queue_full_total": max(0, int(dropped_queue_full_total)),
             "tokens_avg_per_day": float(tokens_avg_per_day),
             "tokens_avg_per_request": float(tokens_avg_per_request),
         }
@@ -160,6 +180,10 @@ class SummaryStore:
             "count_total": int(metrics.get("count_total", 0)),
             "count_today": int(metrics.get("count_today", 0)),
             "count_today_date": str(metrics.get("count_today_date", "")),
+            "queue_depth": int(metrics.get("queue_depth", 0)),
+            "dropped_events_total": int(metrics.get("dropped_events_total", 0)),
+            "dropped_update_total": int(metrics.get("dropped_update_total", 0)),
+            "dropped_queue_full_total": int(metrics.get("dropped_queue_full_total", 0)),
             "cost_last": float(metrics.get("cost_last", 0.0)),
             "cost_daily_total": float(metrics.get("cost_daily_total", 0.0)),
             "cost_month2day_total": float(metrics.get("cost_month2day_total", 0.0)),
@@ -188,6 +212,68 @@ class SummaryStore:
             "count": int(cameras.get("count", len(sanitized_items))),
             "items": sanitized_items,
         }
+
+    def get_guest_camera_cards(self, *, service_status: str = "unknown") -> list[dict[str, Any]]:
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            rows = conn.execute(
+                """
+                SELECT
+                  c.camera_key,
+                  c.display_name,
+                  c.enabled,
+                  c.last_seen_ts,
+                  e.action AS last_action,
+                  e.confidence AS last_confidence,
+                  COALESCE(cm.monthly_cost, 0.0) AS mtd_cost
+                FROM cameras c
+                LEFT JOIN (
+                  SELECT e1.camera, e1.action, e1.confidence, e1.id
+                  FROM events e1
+                  JOIN (
+                    SELECT camera, MAX(id) AS max_id
+                    FROM events
+                    GROUP BY camera
+                  ) latest ON latest.camera = e1.camera AND latest.max_id = e1.id
+                ) e ON e.camera = c.camera_key
+                LEFT JOIN (
+                  SELECT e.camera, COALESCE(SUM(m.cost_usd), 0.0) AS monthly_cost
+                  FROM metrics m
+                  JOIN events e ON e.event_id = m.event_id
+                  WHERE substr(e.ts, 1, 7) = ?
+                  GROUP BY e.camera
+                ) cm ON cm.camera = c.camera_key
+                ORDER BY c.camera_key ASC
+                """,
+                (datetime.now(timezone.utc).strftime("%Y-%m"),),
+            ).fetchall()
+
+        cards: list[dict[str, Any]] = []
+        for row in rows:
+            enabled = bool(int(row["enabled"]))
+            status = "disabled"
+            if enabled:
+                status = "degraded" if service_status == "degraded" else "ok"
+            confidence_raw = row["last_confidence"]
+            confidence_pct: int | None
+            if confidence_raw is None:
+                confidence_pct = None
+            else:
+                confidence_pct = max(0, min(100, int(round(float(confidence_raw) * 100.0))))
+            cards.append(
+                {
+                    "camera_key": str(row["camera_key"]),
+                    "display_name": str(row["display_name"]),
+                    "enabled": enabled,
+                    "status": status,
+                    "last_seen_ts": str(row["last_seen_ts"]),
+                    "last_action": str(row["last_action"]) if row["last_action"] else None,
+                    "last_confidence": confidence_pct,
+                    "mtd_cost": float(row["mtd_cost"]),
+                }
+            )
+        return cards
 
     def _get_kv(self, key: str) -> str | None:
         with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:

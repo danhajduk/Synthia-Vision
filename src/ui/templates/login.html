@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login — {{ title }}</title>
+  <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
+</head>
+<body>
+  <div class="container">
+    <main class="main">
+      <div class="topbar">
+        <div class="brand">
+          <div class="title">Login</div>
+          <div class="subtitle">Admin access only</div>
+        </div>
+        <a class="btn" href="/ui">Back</a>
+      </div>
+      <div class="content">
+        <form class="card form-card" method="post" action="/ui/login">
+          <h3>Credentials</h3>
+          <div class="sub">Use your admin account to access setup and logs.</div>
+          {% if error %}
+          <div class="error">{{ error }}</div>
+          {% endif %}
+          <label class="field-label" for="username">Username</label>
+          <input class="field" id="username" name="username" type="text" required />
+          <label class="field-label" for="password">Password</label>
+          <input class="field" id="password" name="password" type="password" required />
+          <button class="btn primary" type="submit">Login</button>
+        </form>
+      </div>
+      <div class="footer"><div>{{ title }}</div><div>Login</div></div>
+    </main>
+  </div>
+</body>
+</html>

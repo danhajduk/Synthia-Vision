@@ -8,10 +8,10 @@ Execution rule:
 - Use ./Documents/sql.md and ./Documents/schema.sql for the sql related items and schemas.
 
 ## Conventions
-- [ ] Newly discovered cameras default to `enabled=false`.
-- [ ] MQTT internal topics must derive from `service.mqtt_prefix`; only external topics may be hardcoded (`frigate/events`, `homeassistant/status`).
-- [ ] Avoid MQTT clutter: per-event explainability stays in SQLite + UI/HTTP APIs.
-- [ ] Config layering convention: `config.d/00-defaults.yaml` (repo), `config.d/99-local.yaml` (user overrides, gitignored).
+- [x] Newly discovered cameras default to `enabled=false`.
+- [x] MQTT internal topics must derive from `service.mqtt_prefix`; only external topics may be hardcoded (`frigate/events`, `homeassistant/status`).
+- [x] Avoid MQTT clutter: per-event explainability stays in SQLite + UI/HTTP APIs.
+- [x] Config layering convention: `config.d/00-defaults.yaml` (repo), `config.d/99-local.yaml` (user overrides, gitignored).
 
 ---
 
@@ -95,12 +95,12 @@ Acceptance:
 - [x] Drop policy:
 - [x] Subtask: if full and incoming is `update`, drop incoming update.
 - [x] Subtask: else if full, drop oldest (`popleft`) then enqueue incoming.
-- [ ] Track drop counters in SQLite and summary API.
+- [x] Track drop counters in SQLite and summary API.
 - [x] Implement degraded status transitions:
 - [x] Degrade when queue > 40 for > 30s.
 - [x] Recover when queue < 10.
 - [x] Publish only existing status topic.
-- [ ] Track queue_depth metric for summary API.
+- [x] Track queue_depth metric for summary API.
 
 Acceptance:
 - [x] Queue never exceeds 50.
@@ -117,10 +117,10 @@ Acceptance:
 - [x] Add transition rule for legacy YAML camera config:
 - [x] Subtask: during migration window, legacy YAML camera values are ignored for runtime decisions.
 - [x] Subtask: optional one-time migration tool/import may copy YAML camera values into SQLite.
-- [ ] Add per-camera settings usage:
+- [x] Add per-camera settings usage:
 - [x] Subtask: `display_name`, `prompt_preset`, `confidence_threshold`, `cooldown_s`
 - [x] Subtask: `process_end_events`, `process_update_events`, `updates_per_event`
-- [ ] Subtask: `vision_detail`, `phash_threshold`
+- [x] Subtask: `vision_detail`, `phash_threshold`
 - [x] Add unique constraint on cameras.camera_key.
 - [x] Do not auto-enable cameras under any circumstance.
 
@@ -139,44 +139,44 @@ Acceptance:
 
 Acceptance:
 - [x] Explainability data exists in SQLite for recent events.
-- [ ] MQTT clutter does not increase.
+- [x] MQTT clutter does not increase.
 
 ---
 
 ## Phase 7 – Smart Update (Perceptual Hash Gating)
 - [x] Implement pHash/dHash helper (`src/pipeline/phash.py` or equivalent).
-- [ ] Add camera hash fields:
+- [x] Add camera hash fields:
 - [x] `cameras.last_phash TEXT NULL`
 - [x] `cameras.last_phash_ts TEXT NULL`
-- [ ] For `update` events:
+- [x] For `update` events:
 - [x] Fetch full-frame snapshot.
 - [x] Compute hash and compare against last camera hash.
 - [x] If distance <= threshold, skip OpenAI and mark status accordingly.
-- [ ] Persist hash metrics:
+- [x] Persist hash metrics:
 - [x] `phash`
 - [x] `phash_distance`
 - [x] `skipped_openai_reason` (`phash_unchanged`, etc.)
 - [x] Cropping must remain permanently disabled; smart update must operate on full-frame snapshots.
 
 Acceptance:
-- [ ] Near-identical updates skip OpenAI.
-- [ ] End events still run normal classification.
+- [x] Near-identical updates skip OpenAI.
+- [x] End events still run normal classification.
 
 ---
 
 ## Phase 8 – Auth + Bootstrap (Secure First Run)
-- [ ] Add session-based auth with roles: `guest`, `admin`.
+- [x] Add session-based auth with roles: `guest`, `admin`.
 - [x] Secure password hashing (bcrypt/argon2).
-- [ ] First-run behavior:
+- [x] First-run behavior:
 - [x] If users table empty and `ADMIN_PASSWORD` is set, create admin on startup (one-time).
-- [x] Else allow `/ui/setup/first-run` only from localhost OR only with `FIRST_RUN_TOKEN`.
+- [x] Else allow `/api/setup/first-run` only from localhost OR only with `FIRST_RUN_TOKEN`.
 - [x] After first admin exists, disable first-run path.
-- [ ] Restrict guest vs admin routes and APIs.
-- [ ] Session cookies must be HTTPOnly and SameSite=Lax (or Strict).
+- [x] Restrict guest vs admin routes and APIs.
+- [x] Session cookies must be HTTPOnly and SameSite=Lax (or Strict).
 
 Acceptance:
-- [ ] Guest cannot access admin pages/APIs.
-- [ ] First admin creation flow is hardened and documented.
+- [x] Guest cannot access admin APIs (UI admin pages tracked in Phase 10).
+- [x] First admin creation flow is hardened and documented.
 
 ---
 
@@ -201,22 +201,22 @@ Acceptance:
 ---
 
 ## Phase 10 – UI Pages (FastAPI + Jinja)
-- [ ] Add routes/pages:
-- [ ] `/` -> `/ui`
-- [ ] `/ui` guest overview (iframe-safe)
-- [ ] `/ui/login`, `/ui/logout`
-- [ ] `/ui/admin`, `/ui/setup`, `/ui/events`, `/ui/events/{id}`, `/ui/errors`
-- [ ] Add template/layout files under `src/ui/templates`.
-- [ ] Add static assets under `src/ui/static`.
+- [x] Add routes/pages:
+- [x] `/` -> `/ui`
+- [x] `/ui` guest overview (iframe-safe)
+- [x] `/ui/login`, `/ui/logout`
+- [x] `/ui/admin`, `/ui/setup`, `/ui/events`, `/ui/events/{id}`, `/ui/errors`
+- [x] Add template/layout files under `src/ui/templates`.
+- [x] Add static assets under `src/ui/static`.
 - [ ] HA iframe note:
-- [ ] `/ui` must remain embeddable in Home Assistant.
-- [ ] Do not add restrictive `X-Frame-Options`/CSP blocking iframe embeds.
+- [x] `/ui` must remain embeddable in Home Assistant.
+- [x] Do not add restrictive `X-Frame-Options`/CSP blocking iframe embeds.
 - [ ] If CSP is added later, include correct `frame-ancestors`.
-- [ ] Guest overview must not leak reject_reason, skipped_openai_reason, or raw description fields.
+- [x] Guest overview must not leak reject_reason, skipped_openai_reason, or raw description fields.
 
 Acceptance:
-- [ ] UI is self-hosted, no external frontend toolchain.
-- [ ] Guest overview has no controls or sensitive details.
+- [x] UI is self-hosted, no external frontend toolchain.
+- [x] Guest overview has no controls or sensitive details.
 
 ---
 
