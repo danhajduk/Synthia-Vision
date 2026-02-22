@@ -94,6 +94,10 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
   - hard token guard (`>8000`) with one low-budget retry before `token_budget_exceeded`
   - extracts prompt/completion/total tokens
   - estimates request cost for supported models and updates runtime cost metrics
+- Smart update gating (update events only):
+  - computes full-frame dHash (`src/pipeline/phash.py`) and compares to camera `last_phash`
+  - skips OpenAI when hash distance is below per-camera threshold and publishes `result_status=unchanged`
+  - persists `last_phash`/`last_phash_ts` and journals `metrics.phash`, `metrics.phash_distance`, `metrics.skipped_openai_reason`
 - MQTT publish path now classifies accepted events and publishes:
   - `result_status=ok` with action/subject_type/confidence/description
   - `result_status=schema_failed` for invalid model payloads

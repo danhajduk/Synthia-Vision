@@ -273,5 +273,30 @@ class CameraStore:
             )
             conn.commit()
 
+    def get_last_phash(self, camera_key: str) -> str | None:
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            row = conn.execute(
+                "SELECT last_phash FROM cameras WHERE camera_key = ?",
+                (camera_key,),
+            ).fetchone()
+        if row is None:
+            return None
+        value = row[0]
+        if value is None:
+            return None
+        return str(value)
+
+    def set_last_phash(self, camera_key: str, phash_hex: str) -> None:
+        self._ensure_camera_row(camera_key)
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            conn.execute(
+                "UPDATE cameras SET last_phash = ?, last_phash_ts = ?, last_seen_ts = ? WHERE camera_key = ?",
+                (str(phash_hex), now, now, camera_key),
+            )
+            conn.commit()
+
     def _ensure_camera_row(self, camera_key: str) -> None:
         self.upsert_discovered_camera(camera_key)

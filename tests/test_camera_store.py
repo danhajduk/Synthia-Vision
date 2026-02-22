@@ -116,6 +116,15 @@ class CameraStoreTests(unittest.TestCase):
             store.upsert_discovered_camera("doorbell")
             self.assertEqual(store.list_camera_keys(), ["doorbell", "livingroom"])
 
+    def test_set_and_get_last_phash(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            store = CameraStore(db_path)
+            self.assertIsNone(store.get_last_phash("doorbell"))
+            store.set_last_phash("doorbell", "abcdef0123456789")
+            self.assertEqual(store.get_last_phash("doorbell"), "abcdef0123456789")
+
 
 if __name__ == "__main__":
     unittest.main()

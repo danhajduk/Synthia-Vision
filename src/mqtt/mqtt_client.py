@@ -28,6 +28,7 @@ from src.openai import (
     apply_outdoor_action_heuristic,
     enforce_classification_result,
 )
+from src.pipeline import compute_dhash_hex, hamming_distance_hex
 from src.runtime_controls import (
     EventControlSettings,
     apply_event_controls,
@@ -47,6 +48,7 @@ from src.snapshot_manager import SnapshotManager
 from src.state_manager import StateManager
 
 LOGGER = logging.getLogger("synthia_vision.mqtt")
+DEFAULT_PHASH_THRESHOLD = 6
 
 
 class MQTTClient:
@@ -1081,6 +1083,47 @@ class MQTTClient:
             event.camera,
             len(snapshot),
         )
+        phash_hex: str | None = None
+        phash_distance: int | None = None
+        if event.event_type.strip().lower() == "update":
+            phash_threshold = self._camera_phash_threshold_by_camera.get(
+                event.camera,
+                DEFAULT_PHASH_THRESHOLD,
+            )
+            try:
+                phash_hex = compute_dhash_hex(snapshot)
+                previous_phash = self._camera_store.get_last_phash(event.camera)
+                if previous_phash:
+                    phash_distance = hamming_distance_hex(previous_phash, phash_hex)
+                    if phash_distance <= phash_threshold:
+                        self._camera_store.set_last_phash(event.camera, phash_hex)
+                        self._journal_event(
+                            event=event,
+                            accepted=True,
+                            result_status="unchanged",
+                            snapshot_bytes=len(snapshot),
+                        )
+                        self._journal_metric(
+                            event_id=event.event_id,
+                            phash=phash_hex,
+                            phash_distance=phash_distance,
+                            skipped_openai_reason="phash_unchanged",
+                        )
+                        self._publish_camera_status_only(event=event, result_status="unchanged")
+                        return
+            except Exception as exc:
+                LOGGER.warning(
+                    "pHash gate failed event_id=%s camera=%s error=%s",
+                    event.event_id,
+                    event.camera,
+                    exc,
+                )
+                self._journal_error(
+                    component="pipeline",
+                    message="phash_failed",
+                    detail=str(exc),
+                    event=event,
+                )
         if self._openai_client is None:
             self._journal_event(
                 event=event,
@@ -1299,7 +1342,14 @@ class MQTTClient:
             completion_tokens=usage.completion_tokens,
             cost_usd=usage.cost_usd,
             model=usage.model,
+            phash=phash_hex,
+            phash_distance=phash_distance,
         )
+        if phash_hex is not None:
+            try:
+                self._camera_store.set_last_phash(event.camera, phash_hex)
+            except Exception as exc:
+                LOGGER.warning("Failed to persist last_phash camera=%s error=%s", event.camera, exc)
         self._record_openai_usage_metrics(usage=usage, camera=event.camera)
 
     def _publish_camera_result(

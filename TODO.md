@@ -144,19 +144,19 @@ Acceptance:
 ---
 
 ## Phase 7 – Smart Update (Perceptual Hash Gating)
-- [ ] Implement pHash/dHash helper (`src/pipeline/phash.py` or equivalent).
+- [x] Implement pHash/dHash helper (`src/pipeline/phash.py` or equivalent).
 - [ ] Add camera hash fields:
-- [ ] `cameras.last_phash TEXT NULL`
-- [ ] `cameras.last_phash_ts TEXT NULL`
+- [x] `cameras.last_phash TEXT NULL`
+- [x] `cameras.last_phash_ts TEXT NULL`
 - [ ] For `update` events:
-- [ ] Fetch full-frame snapshot.
-- [ ] Compute hash and compare against last camera hash.
-- [ ] If distance <= threshold, skip OpenAI and mark status accordingly.
+- [x] Fetch full-frame snapshot.
+- [x] Compute hash and compare against last camera hash.
+- [x] If distance <= threshold, skip OpenAI and mark status accordingly.
 - [ ] Persist hash metrics:
-- [ ] `phash`
-- [ ] `phash_distance`
-- [ ] `skipped_openai_reason` (`phash_unchanged`, etc.)
-- [ ] Cropping must remain permanently disabled; smart update must operate on full-frame snapshots.
+- [x] `phash`
+- [x] `phash_distance`
+- [x] `skipped_openai_reason` (`phash_unchanged`, etc.)
+- [x] Cropping must remain permanently disabled; smart update must operate on full-frame snapshots.
 
 Acceptance:
 - [ ] Near-identical updates skip OpenAI.
