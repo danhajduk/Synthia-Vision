@@ -32,6 +32,9 @@ logs/
 state/*
 !state/.gitkeep
 
+# Local helper scripts (do not commit)
+scripts/
+
 # Local config secrets/overrides
 config/*.local.yaml
 config/*.secret.yaml
