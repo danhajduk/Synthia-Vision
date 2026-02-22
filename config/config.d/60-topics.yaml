@@ -1,0 +1,48 @@
+topics:
+  status: "{mqtt_prefix}/status"
+  heartbeat_ts: "{mqtt_prefix}/heartbeat_ts"
+  last_error: "{mqtt_prefix}/last_error"
+
+  camera:
+    enabled: "{mqtt_prefix}/camera/{camera}/enabled"
+    enabled_set: "{mqtt_prefix}/camera/{camera}/enabled/set"
+    process_end_events: "{mqtt_prefix}/camera/{camera}/process_end_events"
+    process_end_events_set: "{mqtt_prefix}/camera/{camera}/process_end_events/set"
+    process_update_events: "{mqtt_prefix}/camera/{camera}/process_update_events"
+    process_update_events_set: "{mqtt_prefix}/camera/{camera}/process_update_events/set"
+    action: "{mqtt_prefix}/camera/{camera}/action"
+    subject_type: "{mqtt_prefix}/camera/{camera}/subject_type"
+    confidence: "{mqtt_prefix}/camera/{camera}/confidence"
+    description: "{mqtt_prefix}/camera/{camera}/description"
+    result_status: "{mqtt_prefix}/camera/{camera}/result_status"
+    last_event_id: "{mqtt_prefix}/camera/{camera}/last_event_id"
+    last_event_ts: "{mqtt_prefix}/camera/{camera}/last_event_ts"
+
+  cost:
+    last: "{mqtt_prefix}/cost/last"
+    daily_total: "{mqtt_prefix}/cost/daily_total"
+    month2day_total: "{mqtt_prefix}/cost/month2day_total"
+    avg_per_event: "{mqtt_prefix}/cost/avg_per_event"
+    monthly_by_camera: "{mqtt_prefix}/cost/monthly_by_camera/{camera}"
+
+  tokens:
+    avg_per_request: "{mqtt_prefix}/tokens/avg_per_request"
+    avg_per_day: "{mqtt_prefix}/tokens/avg_per_day"
+
+  events:
+    count_total: "{mqtt_prefix}/events/count_total"
+    count_today: "{mqtt_prefix}/events/count_today"
+
+  control:
+    enabled: "{mqtt_prefix}/control/enabled"
+    enabled_set: "{mqtt_prefix}/control/enabled/set"
+    monthly_budget: "{mqtt_prefix}/control/monthly_budget"
+    monthly_budget_set: "{mqtt_prefix}/control/monthly_budget/set"
+    confidence_threshold: "{mqtt_prefix}/control/confidence_threshold"
+    confidence_threshold_set: "{mqtt_prefix}/control/confidence_threshold/set"
+    doorbell_only_mode: "{mqtt_prefix}/control/doorbell_only_mode"
+    doorbell_only_mode_set: "{mqtt_prefix}/control/doorbell_only_mode/set"
+    high_precision_mode: "{mqtt_prefix}/control/high_precision_mode"
+    high_precision_mode_set: "{mqtt_prefix}/control/high_precision_mode/set"
+    updates_per_event: "{mqtt_prefix}/control/updates_per_event"
+    updates_per_event_set: "{mqtt_prefix}/control/updates_per_event/set"

@@ -1,0 +1,21 @@
+modes:
+  doorbell_only_mode:
+    enabled: true
+    allowed_cameras: ["doorbell", "livingroom"]
+
+  high_precision_mode:
+    enabled: false
+    overrides:
+      confidence_threshold: 0.85
+
+budget:
+  enabled: true
+  currency: "USD"
+  monthly_limit: 10.00
+  behavior_when_exceeded: "block_openai"
+  publish_status: true
+
+dedupe:
+  recent_event_ids_max: 400
+  per_camera_cooldown_default_s: 30
+  ignore_event_types: []

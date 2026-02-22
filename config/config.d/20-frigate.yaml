@@ -1,0 +1,10 @@
+frigate:
+  api_base_url: "http://10.0.0.100:5000"
+  snapshot:
+    source: "event"
+    endpoint_template: "/api/events/{event_id}/snapshot.jpg"
+    timeout_s: 5
+    max_bytes: 3000000
+    retries: 3
+    retry_backoff_s: [0.3, 0.8, 1.5]
+    debug_save: true

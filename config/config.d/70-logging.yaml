@@ -1,0 +1,16 @@
+logging:
+  level: "INFO"
+  json: false
+  retention_days: 14
+  components:
+    core: "INFO"
+    mqtt: "INFO"
+    config: "INFO"
+    policy: "INFO"
+    ai: "INFO"
+  files:
+    core: "/app/logs/core.log"
+    mqtt: "/app/logs/mqtt.log"
+    config: "/app/logs/config.log"
+    policy: "/app/logs/policy.log"
+    ai: "/app/logs/ai.log"

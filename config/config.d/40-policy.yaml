@@ -1,0 +1,62 @@
+policy:
+  actions:
+    default_action: "unknown"
+    allowed:
+      - unknown
+      - room_occupied
+      - person_passing_by
+      - person_approaching
+      - person_at_door
+      - person_leaving
+      - deliver_package
+      - pickup_package
+      - package_left_unattended
+      - vehicle_arrival
+      - vehicle_departure
+      - vehicle_detected
+      - delivery_vehicle
+      - loitering
+      - suspicious_activity
+      - animal_detected
+      - person_entered
+      - person_exited
+      - in_bed
+      - out_of_bed
+  subject_types:
+    default: "unknown"
+    allowed:
+      - none
+      - adult
+      - child
+      - pet
+      - animal
+      - vehicle
+      - unknown
+
+  defaults:
+    enabled: true
+    process_on: ["end", "update"]
+    min_process_interval_s: 30
+    labels: ["person"]
+    min_score: 0.0
+    min_duration_s: 0.0
+    require_zones: []
+    confidence_threshold: 0.75
+
+  cameras:
+    doorbell:
+      name: "Front Door"
+      enabled: true
+      prompt_preset: "outdoor"
+      labels: ["person"]
+      confidence_threshold: 0.60
+      cooldown_s: 30
+      actions:
+        allowed: ["unknown", "person_passing_by", "person_approaching", "person_at_door", "person_leaving", "deliver_package", "pickup_package", "package_left_unattended", "loitering", "suspicious_activity", "vehicle_detected", "delivery_vehicle", "animal_detected"]
+    livingroom:
+      name: "Living Room"
+      enabled: true
+      prompt_preset: "indoor"
+      labels: ["person"]
+      confidence_threshold: 0.65
+      cooldown_s: 60
