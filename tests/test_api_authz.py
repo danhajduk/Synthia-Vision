@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -67,6 +68,8 @@ class APIAuthzTests(unittest.TestCase):
             self.assertEqual(metrics.status_code, 200)
             cameras = client.get("/api/cameras/summary")
             self.assertEqual(cameras.status_code, 200)
+            preview = client.get("/api/cameras/doorbell/preview.jpg")
+            self.assertEqual(preview.status_code, 404)
 
     def test_guest_role_cannot_access_admin_routes(self) -> None:
         if TestClient is None:
@@ -160,6 +163,78 @@ class APIAuthzTests(unittest.TestCase):
                 os.environ.pop("FIRST_RUN_TOKEN", None)
             else:
                 os.environ["FIRST_RUN_TOKEN"] = old_token
+
+    def test_preview_route_enforces_camera_and_global_flags(self) -> None:
+        if TestClient is None:
+            self.skipTest("fastapi not installed")
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            camera_store = CameraStore(db_path)
+            camera_store.upsert_discovered_camera("doorbell")
+            config = SimpleNamespace(
+                paths=SimpleNamespace(db_file=db_path),
+                service=SimpleNamespace(slug="synthia_vision"),
+            )
+            app = create_guest_api_app(config)
+            client = TestClient(app)
+
+            # Default is camera preview disabled.
+            denied_camera = client.get("/api/cameras/doorbell/preview.jpg")
+            self.assertEqual(denied_camera.status_code, 403)
+
+            camera_store.set_camera_policy_fields("doorbell", guest_preview_enabled=True)
+            allowed = client.get("/api/cameras/doorbell/preview.jpg")
+            # In tests we run without Frigate config, so allowed route returns 204.
+            self.assertEqual(allowed.status_code, 204)
+
+            camera_store.upsert_kv("ui.preview_enabled", "0")
+            denied_global = client.get("/api/cameras/doorbell/preview.jpg")
+            self.assertEqual(denied_global.status_code, 403)
+
+    def test_admin_settings_apply_changes_preview_runtime_without_persist(self) -> None:
+        if TestClient is None:
+            self.skipTest("fastapi not installed")
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            camera_store = CameraStore(db_path)
+            camera_store.upsert_discovered_camera("doorbell")
+            camera_store.set_camera_policy_fields("doorbell", guest_preview_enabled=True)
+            UserStore(db_path).create_user(username="admin", password="supersecurepass", role="admin")
+            config = SimpleNamespace(
+                paths=SimpleNamespace(db_file=db_path),
+                service=SimpleNamespace(slug="synthia_vision"),
+            )
+            app = create_guest_api_app(config)
+            client = TestClient(app)
+
+            login = client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "supersecurepass"},
+            )
+            self.assertEqual(login.status_code, 200)
+
+            initial = client.get("/api/cameras/doorbell/preview.jpg")
+            self.assertEqual(initial.status_code, 204)
+
+            apply_resp = client.post(
+                "/api/admin/settings/apply",
+                json={"ui.preview_enabled": False},
+            )
+            self.assertEqual(apply_resp.status_code, 200)
+            self.assertTrue(apply_resp.json().get("unsaved_changes"))
+
+            runtime_denied = client.get("/api/cameras/doorbell/preview.jpg")
+            self.assertEqual(runtime_denied.status_code, 403)
+
+            # Persisted value is unchanged by apply(runtime).
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                kv_value = conn.execute(
+                    "SELECT v FROM kv WHERE k='ui.preview_enabled'"
+                ).fetchone()
+            self.assertIsNotNone(kv_value)
+            self.assertEqual(str(kv_value[0]), "1")
 
 
 if __name__ == "__main__":

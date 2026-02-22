@@ -53,7 +53,16 @@ class DatabaseBootstrapTests(unittest.TestCase):
                 }
                 self.assertEqual(kv.get("db.schema_version"), "1")
                 self.assertEqual(kv.get("ai.preprocess.crop_enabled"), "0")
+                self.assertEqual(kv.get("ui.subtitle"), "OpenAI-powered camera events")
+                self.assertEqual(kv.get("ui.preview_enabled"), "1")
+                self.assertEqual(kv.get("ui.preview_enabled_interval_s"), "5")
+                self.assertEqual(kv.get("ui.preview_disabled_interval_s"), "600")
+                self.assertEqual(kv.get("ui.preview_max_active"), "1")
                 self.assertIn("budget.current_month", kv)
+                camera_columns = {
+                    row[1] for row in conn.execute("PRAGMA table_info(cameras)")
+                }
+                self.assertIn("guest_preview_enabled", camera_columns)
 
     def test_initialize_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as td:

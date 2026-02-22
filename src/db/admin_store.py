@@ -127,7 +127,7 @@ class AdminStore:
                 SELECT camera_key, display_name, enabled, discovered_first_ts, last_seen_ts,
                        prompt_preset, confidence_threshold, cooldown_s,
                        process_end_events, process_update_events, updates_per_event,
-                       vision_detail, phash_threshold, last_phash, last_phash_ts
+                       guest_preview_enabled, vision_detail, phash_threshold, last_phash, last_phash_ts
                 FROM cameras
                 ORDER BY camera_key ASC
                 """
@@ -185,6 +185,9 @@ class AdminStore:
             phash_threshold=payload.get("phash_threshold")
             if isinstance(payload.get("phash_threshold"), int)
             else _UNSET,
+            guest_preview_enabled=payload.get("guest_preview_enabled")
+            if isinstance(payload.get("guest_preview_enabled"), bool)
+            else _UNSET,
         )
         return self.get_camera(camera_key)
 
@@ -197,7 +200,7 @@ class AdminStore:
                 SELECT camera_key, display_name, enabled, discovered_first_ts, last_seen_ts,
                        prompt_preset, confidence_threshold, cooldown_s,
                        process_end_events, process_update_events, updates_per_event,
-                       vision_detail, phash_threshold, last_phash, last_phash_ts
+                       guest_preview_enabled, vision_detail, phash_threshold, last_phash, last_phash_ts
                 FROM cameras
                 WHERE camera_key = ?
                 LIMIT 1
@@ -213,6 +216,25 @@ class AdminStore:
         camera_store = CameraStore(self.db_path)
         camera_store.upsert_kv(key, serialized)
         return {"name": name, "kv_key": key, "value": serialized}
+
+    def get_kv_many(self, keys: list[str]) -> dict[str, str]:
+        if not keys:
+            return {}
+        placeholders = ",".join("?" for _ in keys)
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            rows = conn.execute(
+                f"SELECT k, v FROM kv WHERE k IN ({placeholders})",
+                tuple(keys),
+            ).fetchall()
+        return {str(k): str(v) for k, v in rows}
+
+    def upsert_kv_many(self, kv_pairs: dict[str, str]) -> None:
+        if not kv_pairs:
+            return
+        camera_store = CameraStore(self.db_path)
+        for key, value in kv_pairs.items():
+            camera_store.upsert_kv(key, value)
 
 
 def _normalize_control(name: str, value: Any) -> tuple[str, str]:

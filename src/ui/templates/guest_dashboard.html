@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ title }}</title>
   <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
+  <script>
+    window.SYNTHIA_PREVIEW_CONFIG = {
+      enabled: {{ 'true' if preview.enabled else 'false' }},
+      enabledIntervalS: {{ preview.enabled_interval_s }},
+      disabledIntervalS: {{ preview.disabled_interval_s }},
+      maxActive: {{ preview.max_active }},
+    };
+  </script>
 </head>
 <body>
   <div class="container">
@@ -65,7 +73,7 @@
 
         <div class="cameras">
           {% for camera in cameras %}
-          <div class="card cam-card">
+          <div class="card cam-card" data-camera-card data-camera-key="{{ camera.camera_key }}" data-camera-enabled="{{ '1' if camera.enabled else '0' }}" data-preview-enabled="{{ '1' if camera.guest_preview_enabled else '0' }}">
             <div class="cam-head">
               <p class="cam-name">{{ camera.display_name or camera.camera_key }}</p>
               <div class="cam-meta">
@@ -79,7 +87,18 @@
                 {% endif %}
               </div>
             </div>
-            <div class="thumb"></div>
+            <div class="thumb">
+              {% if preview.enabled and camera.guest_preview_enabled %}
+              <img
+                class="preview-img"
+                data-preview-img
+                alt="Preview {{ camera.display_name or camera.camera_key }}"
+                src="/api/cameras/{{ camera.camera_key }}/preview.jpg?ts={{ generated_at }}"
+              />
+              {% else %}
+              <div class="thumb-placeholder">Preview off</div>
+              {% endif %}
+            </div>
             <div class="cam-body">
               <div class="cam-kv">
                 <div class="key">Last</div><div class="value">{{ camera.last_action_confidence or '—' }}</div>
@@ -103,4 +122,5 @@
     </main>
   </div>
 </body>
+<script src="{{ request.url_for('ui-static', path='app.js') }}"></script>
 </html>

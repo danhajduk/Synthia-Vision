@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS cameras (
   process_end_events INTEGER,
   process_update_events INTEGER,
   updates_per_event INTEGER,
+  guest_preview_enabled INTEGER NOT NULL DEFAULT 0,
 
   vision_detail TEXT CHECK (vision_detail IN ('low','high')),
   phash_threshold INTEGER,

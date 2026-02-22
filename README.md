@@ -109,6 +109,7 @@ Guest endpoints are now exposed by the built-in API server:
 - `GET /api/status`
 - `GET /api/metrics/summary`
 - `GET /api/cameras/summary`
+- `GET /api/cameras/{camera_key}/preview.jpg`
 
 Admin endpoints currently available:
 - `GET /api/events`
@@ -117,6 +118,12 @@ Admin endpoints currently available:
 - `POST /api/cameras/{camera_key}`
 - `POST /api/control/{name}`
 - `GET /api/errors`
+- `GET /api/admin/settings`
+- `POST /api/admin/settings/apply`
+- `POST /api/admin/settings/save`
+- `GET /api/admin/cameras`
+- `POST /api/admin/cameras/{camera_key}/apply`
+- `POST /api/admin/cameras/{camera_key}/save`
 
 Auth/session endpoints:
 - `POST /api/auth/login` (sets HTTPOnly session cookie)
@@ -133,6 +140,20 @@ Runtime:
 - Server defaults to `0.0.0.0:8080`.
 - Override with `SYNTHIA_API_HOST` and `SYNTHIA_API_PORT`.
 - In this repo's `docker-compose.yml`, API host/port are sourced directly from `.env`, so set both values there.
+
+## Guest Preview (HTTP only)
+
+- Guest dashboard camera cards can render a semi-live latest snapshot.
+- Route: `GET /api/cameras/{camera_key}/preview.jpg`
+- Access is allowed only when:
+  - `kv ui.preview_enabled=1`
+  - `cameras.guest_preview_enabled=1`
+- Defaults:
+  - enabled camera refresh: every `5s` (`ui.preview_enabled_interval_s`)
+  - disabled camera refresh: every `600s` / `10m` (`ui.preview_disabled_interval_s`)
+  - max active refreshers: `1` (`ui.preview_max_active`)
+- Preview refreshes only while card is visible in viewport, with small timing jitter.
+- No MQTT topics were added for preview; snapshot preview is HTTP-only.
 
 ## UI Routes (FastAPI + Jinja)
 
@@ -234,6 +255,11 @@ Key current settings:
 - `ai.image_preprocess.enabled|max_side_px|jpeg_quality|strip_metadata`
 - `policy.cameras.<camera>.vision_detail`
 - `policy.cameras.<camera>.max_side_px`
+- `ui.subtitle`
+- `ui.preview_enabled`
+- `ui.preview_enabled_interval_s`
+- `ui.preview_disabled_interval_s`
+- `ui.preview_max_active`
 - `topics.status`
 - `topics.heartbeat_ts`
 - `topics.camera.result_status`

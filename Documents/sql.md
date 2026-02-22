@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS cameras (
   process_end_events INTEGER,
   process_update_events INTEGER,
   updates_per_event INTEGER,
+  guest_preview_enabled INTEGER NOT NULL DEFAULT 0,
 
   vision_detail TEXT CHECK (vision_detail IN ('low','high')),
   phash_threshold INTEGER,
@@ -220,6 +221,19 @@ These are the settings your **admin Setup page** should edit (persisted in `kv`)
 - `ai.preprocess.max_width` = `1280`        (optional; keep full frame, resize only)
 - `ai.preprocess.jpeg_quality` = `75`       (optional)
 
+### Phase 11 setup/preview keys
+- `policy.defaults.confidence_threshold` = `0.65`
+- `policy.modes.doorbell_only` = `0`
+- `ai.modes.high_precision` = `0`
+- `ai.defaults.vision_detail` = `low`
+- `policy.smart_update.phash_threshold_default` = `6`
+- `policy.smart_update.phash_threshold_update` = `6`
+- `ui.subtitle` = `OpenAI-powered camera events`
+- `ui.preview_enabled` = `1`
+- `ui.preview_enabled_interval_s` = `5`
+- `ui.preview_disabled_interval_s` = `600`
+- `ui.preview_max_active` = `1`
+
 ### Budget keys
 - `budget.monthly_limit_usd` = `10.00`
 - `budget.behavior` = `block_openai`        (e.g., 'block_openai' | 'disable_service')
@@ -249,4 +263,3 @@ If you already keep counters in a state file, migrate into `kv` using these keys
 2) **Cropping must never be used** (operate on full-frame; resize/compress OK).
 3) For performance: UI event listing should primarily query `events`, joining `metrics` only for detail view.
 4) If you implement schema migrations later, store the current schema version in `kv.db.schema_version`.
-

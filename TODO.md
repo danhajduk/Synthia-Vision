@@ -221,23 +221,23 @@ Acceptance:
 ---
 
 ## Phase 11 – Setup & Controls (Admin-Only)
-- [ ] Setup page global settings:
-- [ ] Subtask: monthly budget
-- [ ] Subtask: confidence threshold
-- [ ] Subtask: doorbell-only mode
-- [ ] Subtask: high precision mode
-- [ ] Subtask: default vision detail
-- [ ] Subtask: default/update pHash threshold
-- [ ] Setup page camera section from discovered cameras table.
-- [ ] Allow per-camera edits and enable toggles.
-- [ ] Clearly label runtime-only vs persisted changes.
-- [ ] Persisted by default to SQLite `kv`: monthly budget, confidence threshold, doorbell-only mode, high precision mode, default vision detail, default/update pHash threshold, and per-camera settings.
-- [ ] Runtime-only changes are temporary and reset on restart unless explicitly saved.
-- [ ] UI must clearly distinguish between global defaults and per-camera overrides.
+- [x] Setup page global settings:
+- [x] Subtask: monthly budget
+- [x] Subtask: confidence threshold
+- [x] Subtask: doorbell-only mode
+- [x] Subtask: high precision mode
+- [x] Subtask: default vision detail
+- [x] Subtask: default/update pHash threshold
+- [x] Setup page camera section from discovered cameras table.
+- [x] Allow per-camera edits and enable toggles.
+- [x] Clearly label runtime-only vs persisted changes.
+- [x] Persisted by default to SQLite `kv`: monthly budget, confidence threshold, doorbell-only mode, high precision mode, default vision detail, default/update pHash threshold, and per-camera settings.
+- [x] Runtime-only changes are temporary and reset on restart unless explicitly saved.
+- [x] UI must clearly distinguish between global defaults and per-camera overrides.
 
 Acceptance:
-- [ ] Admin can fully manage discovered cameras from UI.
-- [ ] Runtime updates apply immediately.
+- [x] Admin can fully manage discovered cameras from UI.
+- [x] Runtime updates apply immediately.
 
 ---
 

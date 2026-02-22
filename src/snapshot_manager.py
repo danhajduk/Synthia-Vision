@@ -7,7 +7,10 @@ import re
 import time
 from pathlib import Path
 
-import httpx
+try:
+    import httpx
+except ModuleNotFoundError:  # pragma: no cover - optional dependency in test env
+    httpx = None  # type: ignore[assignment]
 
 from src.config import ServiceConfig
 from src.errors import ExternalServiceError
@@ -65,7 +68,15 @@ class SnapshotManager:
 
         raise ExternalServiceError(f"Exhausted snapshot retries for event_id={event_id}")
 
+    def fetch_camera_preview(self, camera_key: str, *, timeout_seconds: float = 0.8) -> bytes:
+        """Fetch latest camera preview image from Frigate."""
+        endpoint = f"/api/{camera_key}/latest.jpg"
+        url = f"{self._base_url}{endpoint}"
+        return self._fetch_once(url, float(timeout_seconds))
+
     def _fetch_once(self, url: str, timeout: float) -> bytes:
+        if httpx is None:
+            raise ExternalServiceError("httpx is required for snapshot fetching")
         try:
             with httpx.Client(timeout=timeout) as client:
                 response = client.get(url)

@@ -89,6 +89,22 @@ Each camera card:
 Security rule:
 - If a camera is `enabled=false`, show it as disabled but still list it.
 
+Guest preview behavior:
+- Preview image route: `/api/cameras/{camera_key}/preview.jpg`
+- Preview appears only when both are true:
+  - global `kv ui.preview_enabled=1`
+  - camera `cameras.guest_preview_enabled=1`
+- Refresh cadence:
+  - enabled cameras: `ui.preview_enabled_interval_s` (default 5s)
+  - disabled cameras: `ui.preview_disabled_interval_s` (default 600s / 10m)
+- Visibility guard:
+  - refresh only while camera card is visible in viewport
+  - stop refresh when card leaves viewport
+- Concurrency guard:
+  - maximum active refreshers: `ui.preview_max_active` (default 1)
+  - if multiple are visible and max is 1, pick first visible card in DOM order
+- Add small scheduling jitter (±300ms) to avoid synchronized spikes.
+
 ---
 
 ## Styling Contract

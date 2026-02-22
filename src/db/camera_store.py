@@ -26,6 +26,7 @@ class CameraPolicySettings:
     cooldown_s: int
     vision_detail: str
     phash_threshold: int | None
+    guest_preview_enabled: bool
 
 
 @dataclass(slots=True)
@@ -132,7 +133,7 @@ class CameraStore:
             conn.execute("PRAGMA busy_timeout = 5000;")
             row = conn.execute(
                 """
-                SELECT display_name, prompt_preset, confidence_threshold, cooldown_s, vision_detail, phash_threshold
+                SELECT display_name, prompt_preset, confidence_threshold, cooldown_s, vision_detail, phash_threshold, guest_preview_enabled
                 FROM cameras
                 WHERE camera_key = ?
                 """,
@@ -146,6 +147,7 @@ class CameraStore:
                 cooldown_s=default_cooldown_s,
                 vision_detail=default_vision_detail,
                 phash_threshold=None,
+                guest_preview_enabled=False,
             )
         display_name = str(row[0]) if row[0] else default_display_name
         prompt_preset = str(row[1]) if row[1] else None
@@ -161,6 +163,9 @@ class CameraStore:
             else str(row[4])
         )
         phash_threshold = None if row[5] is None else max(0, int(row[5]))
+        guest_preview_enabled = False
+        if len(row) > 6 and row[6] is not None:
+            guest_preview_enabled = bool(int(row[6]))
         return CameraPolicySettings(
             display_name=display_name,
             prompt_preset=prompt_preset,
@@ -168,6 +173,7 @@ class CameraStore:
             cooldown_s=cooldown_s,
             vision_detail=vision_detail,
             phash_threshold=phash_threshold,
+            guest_preview_enabled=guest_preview_enabled,
         )
 
     def set_camera_enabled(self, camera_key: str, enabled: bool) -> None:
@@ -220,6 +226,7 @@ class CameraStore:
         vision_detail: str | object = _UNSET,
         phash_threshold: int | object = _UNSET,
         enabled: bool | object = _UNSET,
+        guest_preview_enabled: bool | object = _UNSET,
     ) -> None:
         self._ensure_camera_row(camera_key)
         updates: list[str] = []
@@ -247,6 +254,9 @@ class CameraStore:
         if enabled is not _UNSET:
             updates.append("enabled = ?")
             params.append(1 if enabled else 0)
+        if guest_preview_enabled is not _UNSET:
+            updates.append("guest_preview_enabled = ?")
+            params.append(1 if guest_preview_enabled else 0)
         if not updates:
             return
         updates.append("last_seen_ts = ?")

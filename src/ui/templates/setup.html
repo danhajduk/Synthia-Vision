@@ -1,2 +1,56 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Setup — {{ title }}</title><link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" /></head><body><div class="container"><main class="main"><div class="topbar"><div class="brand"><div class="title">Setup</div><div class="subtitle">Admin-only configuration</div></div><a class="btn" href="/ui/admin">Back</a></div><div class="content"><div class="card"><div class="sub">Setup page scaffold is in place.</div></div></div></main></div></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Setup — {{ title }}</title>
+  <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
+</head>
+<body>
+  <div class="container">
+    <main class="main">
+      <div class="topbar">
+        <div class="brand">
+          <div class="title">Setup</div>
+          <div class="subtitle">Global defaults + per-camera overrides</div>
+        </div>
+        <a class="btn" href="/ui/admin">Back</a>
+      </div>
+      <div class="content">
+        <div class="card">
+          <div class="row">
+            <h3>Global Settings</h3>
+            <span id="unsaved-indicator" class="pill warn">No runtime-only changes</span>
+          </div>
+          <div class="form-grid">
+            <label class="field-label">Monthly budget (USD)</label><input class="field" id="setting-budget.monthly_limit_usd" />
+            <label class="field-label">Confidence threshold</label><input class="field" id="setting-policy.defaults.confidence_threshold" />
+            <label class="field-label">Doorbell-only mode</label><label class="toggle"><input type="checkbox" id="setting-policy.modes.doorbell_only" /><span>Process only configured doorbell cameras</span></label>
+            <label class="field-label">High precision mode</label><label class="toggle"><input type="checkbox" id="setting-ai.modes.high_precision" /><span>Use higher precision AI mode defaults</span></label>
+            <label class="field-label">Default vision detail</label><input class="field" id="setting-ai.defaults.vision_detail" />
+            <label class="field-label">Default pHash threshold</label><input class="field" id="setting-policy.smart_update.phash_threshold_default" />
+            <label class="field-label">Update pHash threshold</label><input class="field" id="setting-policy.smart_update.phash_threshold_update" />
+            <label class="field-label">UI subtitle</label><input class="field" id="setting-ui.subtitle" />
+            <label class="field-label">Preview enabled</label><label class="toggle"><input type="checkbox" id="setting-ui.preview_enabled" /><span>Show guest snapshot previews</span></label>
+            <label class="field-label">Preview interval enabled (s)</label><input class="field" id="setting-ui.preview_enabled_interval_s" />
+            <label class="field-label">Preview interval disabled (s)</label><input class="field" id="setting-ui.preview_disabled_interval_s" />
+            <label class="field-label">Preview max active</label><input class="field" id="setting-ui.preview_max_active" />
+          </div>
+          <div class="row" style="margin-top:12px;">
+            <button class="btn" id="settings-apply">Apply (runtime)</button>
+            <button class="btn primary" id="settings-save">Save (persist)</button>
+          </div>
+          <div class="sub" style="margin-top:8px;">Runtime-only changes apply now and reset on restart unless saved.</div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Cameras</h3>
+          <div class="sub">Blank values use global defaults. Save persists to SQLite.</div>
+          <div id="setup-cameras" class="setup-cameras"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="{{ request.url_for('ui-static', path='app.js') }}"></script>
+</body>
+</html>

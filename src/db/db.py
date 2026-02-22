@@ -36,6 +36,17 @@ SEED_KV_KEYS: tuple[tuple[str, str], ...] = (
     ("ai.preprocess.max_width", "1280"),
     ("ai.preprocess.jpeg_quality", "75"),
     ("budget.monthly_limit_usd", "10.00"),
+    ("policy.defaults.confidence_threshold", "0.65"),
+    ("policy.modes.doorbell_only", "0"),
+    ("ai.modes.high_precision", "0"),
+    ("ai.defaults.vision_detail", "low"),
+    ("policy.smart_update.phash_threshold_default", "6"),
+    ("policy.smart_update.phash_threshold_update", "6"),
+    ("ui.subtitle", "OpenAI-powered camera events"),
+    ("ui.preview_enabled", "1"),
+    ("ui.preview_enabled_interval_s", "5"),
+    ("ui.preview_disabled_interval_s", "600"),
+    ("ui.preview_max_active", "1"),
     ("budget.behavior", "block_openai"),
     ("budget.month_cost_usd", "0.00"),
     ("counters.total_events", "0"),
@@ -64,6 +75,7 @@ class DatabaseBootstrap:
         with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
             self._apply_pragmas(conn)
             conn.executescript(schema_sql)
+            self._migrate_schema(conn)
             self._seed_kv(conn)
             conn.commit()
 
@@ -99,5 +111,18 @@ class DatabaseBootstrap:
                 "INSERT OR IGNORE INTO kv(k, v, updated_ts) VALUES(?, ?, ?)",
                 ("budget.current_month", month_key, now),
             )
+        finally:
+            cur.close()
+
+    @staticmethod
+    def _migrate_schema(conn: sqlite3.Connection) -> None:
+        cur = conn.cursor()
+        try:
+            columns = conn.execute("PRAGMA table_info(cameras)").fetchall()
+            column_names = {str(row[1]) for row in columns}
+            if "guest_preview_enabled" not in column_names:
+                cur.execute(
+                    "ALTER TABLE cameras ADD COLUMN guest_preview_enabled INTEGER NOT NULL DEFAULT 0"
+                )
         finally:
             cur.close()
