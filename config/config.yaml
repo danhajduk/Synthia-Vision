@@ -77,6 +77,10 @@ ai:
           enum:
             - unknown
             - room_occupied
+            - person_passing_by
+            - person_approaching
+            - person_at_door
+            - person_leaving
             - deliver_package
             - pickup_package
             - package_left_unattended
@@ -126,6 +130,13 @@ ai:
           Choose subject_type ONLY from allowed_subject_types.
           Confidence: 0..1.
           Description: 1 short factual sentence (<= 200 chars). No identity/relationship guesses.
+          Prefer action "person_passing_by" when a person is moving past the entrance without stopping.
+          Prefer action "person_approaching" when a person is moving toward the entrance.
+          Prefer action "person_at_door" when a person is stopped near the door/threshold.
+          Prefer action "person_leaving" when a person is moving away after being near the door.
+          Use "deliver_package" or "pickup_package" only when package handling is clearly visible.
+          Use "loitering" only when lingering/standing is clearly evident; do not infer from one frame.
+          Use "suspicious_activity" only with clear evidence (e.g., tampering or forced-entry posture).
           allowed_actions: {allowed_actions}
           allowed_subject_types: {allowed_subject_types}
           If unclear, action="unknown" and subject_type="unknown".
@@ -178,8 +189,14 @@ ai:
           Choose subject_type ONLY from allowed_subject_types.
           Confidence 0..1.
           Description <= 200 chars, factual.
-          If humans are present but not suspicious, use action="room_occupied" instead of "unknown".
+          Prefer action "person_passing_by" when a person is moving past the entrance without stopping.
+          Prefer action "person_approaching" when a person is moving toward the entrance.
+          Prefer action "person_at_door" when a person is stopped near the door/threshold.
+          Prefer action "person_leaving" when a person is moving away after being near the door.
+          Use "deliver_package" or "pickup_package" only when package handling is clearly visible.
+          Use "loitering" only when lingering/standing is clearly evident; do not infer from one frame.
           Use suspicious_activity only with clear evidence.
+          Do not identify people, infer relationships, or include names.
           Choose subject_type="adult" or "child" only when clearly distinguishable.
           If a person is visible but you cannot tell adult vs child, use subject_type="unknown".
           If no person/animal/vehicle is present, use subject_type="none".
@@ -197,6 +214,10 @@ policy:
     allowed:
       - unknown
       - room_occupied
+      - person_passing_by
+      - person_approaching
+      - person_at_door
+      - person_leaving
       - deliver_package
       - pickup_package
       - package_left_unattended
@@ -247,7 +268,7 @@ policy:
       # max_side_px: 768
       actions:
         # Optional: allow/deny actions per camera
-        allowed: ["unknown", "deliver_package", "pickup_package", "package_left_unattended", "loitering", "suspicious_activity", "vehicle_detected", "delivery_vehicle", "animal_detected"]
+        allowed: ["unknown", "person_passing_by", "person_approaching", "person_at_door", "person_leaving", "deliver_package", "pickup_package", "package_left_unattended", "loitering", "suspicious_activity", "vehicle_detected", "delivery_vehicle", "animal_detected"]
     livingroom:
       name: "Living Room"
       enabled: true

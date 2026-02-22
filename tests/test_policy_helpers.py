@@ -6,18 +6,27 @@ import unittest
 from types import SimpleNamespace
 
 from src.openai.policy_helpers import (
+    apply_outdoor_action_heuristic,
     enforce_classification_result,
     render_prompts,
     resolve_allowed_actions,
     resolve_preset,
     resolve_subject_types,
 )
+from src.models import FrigateEvent
 
 
 def _build_test_config() -> SimpleNamespace:
     cameras = {
         "front": SimpleNamespace(
-            allowed_actions=["unknown", "deliver_package"],
+            allowed_actions=[
+                "unknown",
+                "person_passing_by",
+                "person_approaching",
+                "person_at_door",
+                "person_leaving",
+                "deliver_package",
+            ],
             prompt_preset="outdoor",
         ),
         "inside": SimpleNamespace(
@@ -29,7 +38,16 @@ def _build_test_config() -> SimpleNamespace:
         cameras=cameras,
         actions=SimpleNamespace(
             default_action="unknown",
-            allowed=["unknown", "room_occupied", "deliver_package", "animal_detected"],
+            allowed=[
+                "unknown",
+                "room_occupied",
+                "person_passing_by",
+                "person_approaching",
+                "person_at_door",
+                "person_leaving",
+                "deliver_package",
+                "animal_detected",
+            ],
         ),
         subject_types=SimpleNamespace(
             default="unknown",
@@ -59,13 +77,32 @@ class PolicyHelpersTests(unittest.TestCase):
 
     def test_resolve_allowed_actions_camera_override(self) -> None:
         allowed = resolve_allowed_actions("front", self.config)
-        self.assertEqual(allowed, ["unknown", "deliver_package"])
+        self.assertEqual(
+            allowed,
+            [
+                "unknown",
+                "person_passing_by",
+                "person_approaching",
+                "person_at_door",
+                "person_leaving",
+                "deliver_package",
+            ],
+        )
 
     def test_resolve_allowed_actions_fallback_global(self) -> None:
         allowed = resolve_allowed_actions("inside", self.config)
         self.assertEqual(
             allowed,
-            ["unknown", "room_occupied", "deliver_package", "animal_detected"],
+            [
+                "unknown",
+                "room_occupied",
+                "person_passing_by",
+                "person_approaching",
+                "person_at_door",
+                "person_leaving",
+                "deliver_package",
+                "animal_detected",
+            ],
         )
 
     def test_room_occupied_rejected_when_not_in_camera_override(self) -> None:
@@ -141,6 +178,47 @@ class PolicyHelpersTests(unittest.TestCase):
             )
             self.assertEqual(subject_type, subject)
             self.assertEqual(status, "ok")
+
+    def test_new_movement_action_allowed_when_configured(self) -> None:
+        action, _subject_type, _description, status = enforce_classification_result(
+            action="person_passing_by",
+            subject_type="adult",
+            description="person passing entrance",
+            camera="front",
+            config=self.config,
+        )
+        self.assertEqual(action, "person_passing_by")
+        self.assertEqual(status, "ok")
+
+    def test_heuristic_promotes_unknown_to_person_at_door_for_door_zone(self) -> None:
+        event = FrigateEvent(
+            event_id="evt-1",
+            camera="front",
+            label="person",
+            event_type="update",
+            zones=("front_door",),
+        )
+        action = apply_outdoor_action_heuristic(
+            event=event,
+            action="unknown",
+            config=self.config,
+        )
+        self.assertEqual(action, "person_at_door")
+
+    def test_heuristic_noop_without_door_zone(self) -> None:
+        event = FrigateEvent(
+            event_id="evt-2",
+            camera="front",
+            label="person",
+            event_type="update",
+            zones=("driveway",),
+        )
+        action = apply_outdoor_action_heuristic(
+            event=event,
+            action="unknown",
+            config=self.config,
+        )
+        self.assertEqual(action, "unknown")
 
 
 if __name__ == "__main__":

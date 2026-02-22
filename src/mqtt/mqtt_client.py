@@ -19,7 +19,12 @@ from src.ha_discovery import HADiscoveryPublisher
 from src.errors import ExternalServiceError, ValidationError
 from src.models import FrigateEvent
 from src.policy_engine import should_process
-from src.openai import OpenAIClient, OpenAIUsage, enforce_classification_result
+from src.openai import (
+    OpenAIClient,
+    OpenAIUsage,
+    apply_outdoor_action_heuristic,
+    enforce_classification_result,
+)
 from src.runtime_controls import (
     EventControlSettings,
     apply_event_controls,
@@ -556,13 +561,7 @@ class MQTTClient:
                 event.event_id,
                 event.camera,
             )
-            self._publish_camera_result(
-                event=event,
-                result_status="skipped",
-                action="unknown",
-                confidence_percent="unknown",
-                description="skipped: service disabled",
-            )
+            self._publish_camera_status_only(event=event, result_status="skipped")
             return
 
         gate = apply_event_controls(
@@ -589,13 +588,7 @@ class MQTTClient:
                 event.event_type,
                 gate.reason,
             )
-            self._publish_camera_result(
-                event=event,
-                result_status="suppressed",
-                action="unknown",
-                confidence_percent="unknown",
-                description=f"suppressed: {gate.reason}",
-            )
+            self._publish_camera_status_only(event=event, result_status="suppressed")
             return
 
         if not self._is_camera_enabled_runtime(event.camera):
@@ -604,13 +597,7 @@ class MQTTClient:
                 event.event_id,
                 event.camera,
             )
-            self._publish_camera_result(
-                event=event,
-                result_status="skipped",
-                action="unknown",
-                confidence_percent="unknown",
-                description="skipped: camera disabled",
-            )
+            self._publish_camera_status_only(event=event, result_status="skipped")
             return
 
         decision = should_process(
@@ -625,13 +612,7 @@ class MQTTClient:
             self._fetch_snapshot_for_event(event)
             return
 
-        self._publish_camera_result(
-            event=event,
-            result_status="skipped",
-            action="unknown",
-            confidence_percent="unknown",
-            description=f"skipped: {route_result.reason}",
-        )
+        self._publish_camera_status_only(event=event, result_status="skipped")
 
     def _remember_policy_event(self, event: FrigateEvent) -> None:
         events_data = self._policy_runtime_state.setdefault("events", {})
@@ -906,10 +887,15 @@ class MQTTClient:
                 return
 
         confidence_percent = max(0, min(100, int(round(classification.confidence * 100.0))))
+        action = apply_outdoor_action_heuristic(
+            event=event,
+            action=classification.action,
+            config=self._config,
+        )
         self._publish_camera_result(
             event=event,
             result_status="ok",
-            action=classification.action,
+            action=action,
             subject_type=classification.subject_type,
             confidence_percent=confidence_percent,
             description=classification.description,
@@ -961,6 +947,13 @@ class MQTTClient:
             self._publish_sync(topics["confidence"], str(confidence_percent))
         if effective_description is not None:
             self._publish_sync(topics["description"], effective_description)
+
+    def _publish_camera_status_only(self, *, event: FrigateEvent, result_status: str) -> None:
+        topics = self._resolve_camera_topics(event.camera)
+        last_event_ts_iso = self._to_iso_timestamp(event.event_ts)
+        self._publish_sync(topics["last_event_id"], event.event_id)
+        self._publish_sync(topics["last_event_ts"], last_event_ts_iso)
+        self._publish_sync(topics["result_status"], result_status)
 
     def _publish_camera_defaults_all(self) -> None:
         for camera in sorted(self._config.policy.cameras.keys()):
@@ -1088,11 +1081,11 @@ class MQTTClient:
         topics = self._resolve_camera_topics(camera)
         self._publish_sync(topics["last_event_id"], "unknown")
         self._publish_sync(topics["last_event_ts"], "unknown")
-        self._publish_sync(topics["result_status"], "unknown")
-        self._publish_sync(topics["action"], "unknown")
+        self._publish_sync(topics["result_status"], "waiting")
+        self._publish_sync(topics["action"], "waiting")
         self._publish_sync(topics["subject_type"], "unknown")
         self._publish_sync(topics["confidence"], "unknown")
-        self._publish_sync(topics["description"], "unknown")
+        self._publish_sync(topics["description"], "waiting for event")
         self._publish_sync(topics["monthly_cost"], "unknown")
 
     def _publish_camera_monthly_cost(self, camera: str) -> None:

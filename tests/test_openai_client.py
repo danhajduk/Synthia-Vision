@@ -45,7 +45,14 @@ def _build_config() -> SimpleNamespace:
     policy = SimpleNamespace(
         cameras={
             "front": SimpleNamespace(
-                allowed_actions=["unknown", "deliver_package"],
+                allowed_actions=[
+                    "unknown",
+                    "person_passing_by",
+                    "person_approaching",
+                    "person_at_door",
+                    "person_leaving",
+                    "deliver_package",
+                ],
                 prompt_preset="outdoor",
                 vision_detail=None,
                 max_side_px=None,
@@ -59,7 +66,15 @@ def _build_config() -> SimpleNamespace:
         },
         actions=SimpleNamespace(
             default_action="unknown",
-            allowed=["unknown", "room_occupied", "deliver_package"],
+            allowed=[
+                "unknown",
+                "room_occupied",
+                "person_passing_by",
+                "person_approaching",
+                "person_at_door",
+                "person_leaving",
+                "deliver_package",
+            ],
         ),
         subject_types=SimpleNamespace(
             default="unknown",
@@ -151,6 +166,21 @@ class OpenAIClientTests(unittest.TestCase):
         self.assertEqual(int(round(classification.confidence * 100)), 82)
         self.assertGreater(usage.total_tokens, 0)
         self.assertGreaterEqual(usage.cost_usd, 0.0)
+
+    def test_classify_accepts_new_outdoor_movement_action(self) -> None:
+        def _create(**_kwargs):
+            return _FakeResponse(
+                '{"action":"person_passing_by","subject_type":"adult","confidence":0.88,"description":"person walking past entrance"}',
+                input_tokens=110,
+                output_tokens=24,
+            )
+
+        client = self._build_client(_create)
+        classification, _usage = client.classify(
+            snapshot_bytes=_jpeg_bytes(),
+            camera_name="front",
+        )
+        self.assertEqual(classification.action, "person_passing_by")
 
     def test_classify_allows_room_occupied_for_indoor_camera(self) -> None:
         def _create(**_kwargs):

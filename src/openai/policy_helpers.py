@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.config import ServiceConfig
+from src.models import FrigateEvent
 
 
 def resolve_allowed_actions(camera: str, config: ServiceConfig) -> list[str]:
@@ -75,8 +76,43 @@ def enforce_classification_result(
     return enforced_action, enforced_subject_type, enforced_description, result_status
 
 
+def apply_outdoor_action_heuristic(
+    *,
+    event: FrigateEvent,
+    action: str,
+    config: ServiceConfig,
+) -> str:
+    if action != config.policy.actions.default_action:
+        return action
+    allowed_actions = set(resolve_allowed_actions(event.camera, config))
+    if "person_at_door" not in allowed_actions:
+        return action
+    if event.label != "person":
+        return action
+    zone_tokens = _normalized_zone_tokens(event.zones)
+    if not zone_tokens:
+        return action
+    if _looks_like_door_zone(zone_tokens):
+        return "person_at_door"
+    return action
+
+
 def _truncate_description(value: str, max_len: int = 200) -> str:
     text = str(value).strip()
     if len(text) <= max_len:
         return text
     return text[:max_len].rstrip()
+
+
+def _normalized_zone_tokens(zones: tuple[str, ...]) -> set[str]:
+    tokens: set[str] = set()
+    for zone in zones:
+        for token in zone.lower().replace("-", " ").replace("_", " ").split():
+            if token:
+                tokens.add(token)
+    return tokens
+
+
+def _looks_like_door_zone(tokens: set[str]) -> bool:
+    door_tokens = {"door", "entry", "entrance", "threshold", "porch", "stoop"}
+    return any(token in door_tokens for token in tokens)

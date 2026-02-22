@@ -21,6 +21,8 @@ class FrigateEvent:
     end_time: float | None = None
     event_ts: float | None = None
     bbox: tuple[int, int, int, int] | None = None
+    zones: tuple[str, ...] = ()
+    motion_direction: str | None = None
 
     @classmethod
     def from_mqtt_payload(cls, payload: dict[str, Any]) -> "FrigateEvent":
@@ -49,6 +51,12 @@ class FrigateEvent:
             end_time=_as_float_or_none(event_data.get("end_time")),
             event_ts=_as_float_or_none(payload.get("time")),
             bbox=_as_bbox_or_none(event_data.get("box")),
+            zones=_as_string_tuple_or_empty(
+                event_data.get("current_zones") or event_data.get("entered_zones")
+            ),
+            motion_direction=_as_optional_string(
+                event_data.get("motion_direction") or event_data.get("direction")
+            ),
         )
 
 
@@ -116,4 +124,17 @@ def _as_bbox_or_none(value: Any) -> tuple[int, int, int, int] | None:
             x_i, y_i, w_i, h_i = int(x), int(y), int(w), int(h)
             if w_i > 0 and h_i > 0:
                 return x_i, y_i, w_i, h_i
+    return None
+
+
+def _as_string_tuple_or_empty(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    normalized = [item for item in value if isinstance(item, str) and item.strip()]
+    return tuple(normalized)
+
+
+def _as_optional_string(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
     return None
