@@ -17,3 +17,5 @@ tenacity>=8.2        # retry/backoff (snapshot + API calls)
 Pillow>=10.0         # image resize/compress/crop preprocessing
 pytest>=8.0          # test runner for integration and local workflows
 argon2-cffi>=23.1    # secure password hashing for auth bootstrap/login
+fastapi>=0.115       # guest/admin API server
+uvicorn>=0.30        # ASGI server runtime

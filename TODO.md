@@ -182,9 +182,9 @@ Acceptance:
 
 ## Phase 9 – API Surface (Guest/Admin)
 Guest APIs:
-- [ ] `GET /api/status`
-- [ ] `GET /api/metrics/summary`
-- [ ] `GET /api/cameras/summary`
+- [x] `GET /api/status`
+- [x] `GET /api/metrics/summary`
+- [x] `GET /api/cameras/summary`
 
 Admin APIs:
 - [ ] `GET /api/events`

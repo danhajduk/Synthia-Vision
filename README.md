@@ -103,6 +103,17 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
   - `result_status=schema_failed` for invalid model payloads
   - `result_status=openai_failed` for provider/runtime failures
 
+## Guest HTTP APIs
+
+Guest endpoints are now exposed by the built-in API server:
+- `GET /api/status`
+- `GET /api/metrics/summary`
+- `GET /api/cameras/summary`
+
+Runtime:
+- Server defaults to `0.0.0.0:8080`.
+- Override with `SYNTHIA_API_HOST` and `SYNTHIA_API_PORT`.
+
 ## Active MQTT Topics (Now)
 
 - Runtime prefix default: `home/synthiavision` (from `service.mqtt_prefix`)

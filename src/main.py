@@ -123,6 +123,15 @@ async def _main_async() -> int:
 
     db_bootstrap = DatabaseBootstrap(db_path=config.paths.db_file)
     auth_bootstrap = FirstRunBootstrap(db_path=config.paths.db_file)
+    api_server = None
+    try:
+        from src.api import APIServer
+
+        api_server = APIServer(config)
+    except ModuleNotFoundError:
+        LOGGER.warning(
+            "FastAPI/uvicorn dependencies are missing; guest API endpoints are disabled"
+        )
 
     async def _init_db() -> None:
         await asyncio.to_thread(db_bootstrap.initialize)
@@ -134,15 +143,20 @@ async def _main_async() -> int:
         await asyncio.to_thread(auth_bootstrap.sync_setup_completed_flag)
 
     mqtt_client = MQTTClient(config)
+    startup_hooks: list[LifecycleHook] = [
+        _init_db,
+        _bootstrap_admin_user,
+        _sync_setup_flag,
+        mqtt_client.startup_connect,
+        mqtt_client.startup_ready,
+    ]
+    shutdown_hooks: list[LifecycleHook] = [mqtt_client.shutdown]
+    if api_server is not None:
+        startup_hooks.append(api_server.start)
+        shutdown_hooks.insert(0, api_server.stop)
     dependencies = AppDependencies(
-        startup_hooks=[
-            _init_db,
-            _bootstrap_admin_user,
-            _sync_setup_flag,
-            mqtt_client.startup_connect,
-            mqtt_client.startup_ready,
-        ],
-        shutdown_hooks=[mqtt_client.shutdown],
+        startup_hooks=startup_hooks,
+        shutdown_hooks=shutdown_hooks,
     )
     app = SynthiaVisionApp(dependencies=dependencies)
     _register_signal_handlers(app)
