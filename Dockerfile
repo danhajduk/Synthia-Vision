@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY src /app/src
 COPY config /app/config
+COPY Documents/schema.sql /app/Documents/schema.sql
 
 RUN addgroup --system synthia && adduser --system --ingroup synthia synthia \
     && mkdir -p /app/state /app/logs \

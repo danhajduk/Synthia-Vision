@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.config import ServiceConfig
 from src.db import AdminStore, SummaryStore
@@ -165,12 +165,16 @@ class APIServer:
     config: ServiceConfig
     host: str = "0.0.0.0"
     port: int = 8080
+    _server: object | None = field(init=False, default=None, repr=False)
+    _server_task: asyncio.Task[None] | None = field(
+        init=False,
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         self.host = os.getenv("SYNTHIA_API_HOST", self.host)
         self.port = int(os.getenv("SYNTHIA_API_PORT", str(self.port)))
-        self._server = None
-        self._server_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         import uvicorn
