@@ -102,7 +102,7 @@ No step should require the entire pipeline to be complete.
 
 ## 4.2 Optional Debug Save
 - [x] If debug enabled:
-  - Save snapshot to /app/state/snapshots/[event_id].jpg
+  - Save snapshot to /app/state/snapshots/[camera].jpg
 
 ✅ TEST:
 - Confirm image file is written
@@ -112,12 +112,17 @@ No step should require the entire pipeline to be complete.
 # Phase 5 – Publishing Results
 
 ## 5.1 MQTT Publisher
-- [ ] Publish per-camera:
+- [x] 5.1.1 Publish per-camera runtime topics (retained, ordered):
+  - last_event_id
+  - last_event_ts
+  - result_status
   - action
   - confidence
   - description
-  - last_event_id
-  - last_event_ts
+- [x] 5.1.1a Publish HA MQTT Discovery configs:
+  - core entities + per-camera entities
+  - publish on startup
+  - republish when `homeassistant/status = online`
 
 - [ ] Publish global:
   - cost metrics
@@ -225,10 +230,14 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 8.2 Per-Camera Entities
-- [ ] Action
-- [ ] Confidence
-- [ ] Description
-- [ ] Monthly Cost
+- [x] Enabled toggle
+- [x] Action
+- [x] Confidence
+- [x] Description
+- [x] Result status
+- [x] Last event id
+- [x] Last event timestamp
+- [x] Monthly Cost
 
 ✅ TEST:
 - Enable second camera in config
@@ -237,7 +246,7 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 8.3 Command Topics (HA → Service)
-- [ ] Enabled switch
+- [x] Enabled switch
 - [ ] Doorbell-only mode
 - [ ] High precision mode
 - [ ] Monthly budget limit

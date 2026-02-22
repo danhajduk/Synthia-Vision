@@ -1,0 +1,192 @@
+# Synthia Vision -- Core MQTT Device Design
+
+Generated: 2026-02-22 01:52:07 UTC
+
+------------------------------------------------------------------------
+
+# Overview
+
+This document defines the **Core MQTT Discovery design** for the Synthia
+Vision device in Home Assistant.
+
+-   Discovery Prefix: `homeassistant`
+-   Runtime Prefix: `synthia/synthiavision`
+-   Confidence values displayed as **0--100% everywhere**
+-   All runtime state topics are **retained**
+-   QoS: 1 recommended
+
+------------------------------------------------------------------------
+
+# Device Metadata
+
+All Core entities share this device block:
+
+-   name: `Synthia Vision`
+-   identifiers: `["synthia_vision", "<node_id>"]`
+-   manufacturer: `Dan Hajduk`
+-   model: `Synthia Vision Node`
+-   sw_version: `0.1.0`
+
+------------------------------------------------------------------------
+
+# Runtime Topic Structure
+
+Base prefix:
+
+    synthia/synthiavision
+
+## Status & Heartbeat
+
+-   `synthia/synthiavision/status`
+-   `synthia/synthiavision/heartbeat_ts`
+
+## Cost
+
+-   `.../cost/last`
+-   `.../cost/daily_total`
+-   `.../cost/month2day_total`
+-   `.../cost/avg_per_event`
+
+## Tokens
+
+-   `.../tokens/avg_per_request`
+-   `.../tokens/avg_per_day`
+
+## Events
+
+-   `.../events/count_total`
+-   `.../events/count_today`
+
+## Controls
+
+State topics (retained):
+
+-   `.../control/enabled`
+-   `.../control/monthly_budget`
+-   `.../control/confidence_threshold`
+
+Command topics:
+
+-   `.../control/enabled/set`
+-   `.../control/monthly_budget/set`
+-   `.../control/confidence_threshold/set`
+
+------------------------------------------------------------------------
+
+# Core Entities (Home Assistant)
+
+## 1. Status
+
+-   Entity: `sensor.synthia_vision_status`
+-   Topic: `.../status`
+-   Icon: `mdi:brain`
+-   States: `enabled | disabled | budget_blocked | error | rate_limited`
+
+------------------------------------------------------------------------
+
+## 2. Heartbeat
+
+-   Entity: `sensor.synthia_vision_heartbeat`
+-   Topic: `.../heartbeat_ts`
+-   Device class: `timestamp`
+-   Icon: `mdi:heart-pulse`
+
+------------------------------------------------------------------------
+
+# Cost Sensors (USD)
+
+  -------------------------------------------------------------------------------------------
+  Entity                Topic                        Icon                     Unit
+  --------------------- ---------------------------- ------------------------ ---------------
+  Last Cost             `.../cost/last`              mdi:currency-usd         USD
+
+  Daily Cost            `.../cost/daily_total`       mdi:calendar-today       USD
+
+  Month Cost            `.../cost/month2day_total`   mdi:calendar-month       USD
+
+  Avg Cost/Event        `.../cost/avg_per_event`     mdi:calculator-variant   USD
+  -------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+# Token Sensors
+
+  -----------------------------------------------------------------------------------------
+  Entity                Topic                          Icon                 Unit
+  --------------------- ------------------------------ -------------------- ---------------
+  Avg Tokens/Request    `.../tokens/avg_per_request`   mdi:counter          tokens
+
+  Avg Tokens/Day        `.../tokens/avg_per_day`       mdi:calendar-clock   tokens/day
+  -----------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+# Event Counters
+
+  Entity         Topic                      Icon          Unit
+  -------------- -------------------------- ------------- --------
+  Events Total   `.../events/count_total`   mdi:counter   events
+  Events Today   `.../events/count_today`   mdi:counter   events
+
+------------------------------------------------------------------------
+
+# Controls
+
+## Enabled (Switch)
+
+-   Entity: `switch.synthia_vision_enabled`
+-   State Topic: `.../control/enabled`
+-   Command Topic: `.../control/enabled/set`
+-   Payload: `ON` / `OFF`
+-   Icon: `mdi:power`
+
+------------------------------------------------------------------------
+
+## Monthly Budget (Number)
+
+-   Entity: `number.synthia_vision_monthly_budget`
+-   State Topic: `.../control/monthly_budget`
+-   Command Topic: `.../control/monthly_budget/set`
+-   Range: 0--200
+-   Step: 0.5
+-   Unit: USD
+-   Mode: box
+-   Icon: `mdi:cash-check`
+
+------------------------------------------------------------------------
+
+## Confidence Threshold (Number)
+
+-   Entity: `number.synthia_vision_confidence_threshold`
+-   State Topic: `.../control/confidence_threshold`
+-   Command Topic: `.../control/confidence_threshold/set`
+-   Range: 0--100
+-   Step: 1
+-   Unit: %
+-   Mode: slider
+-   Icon: `mdi:percent`
+
+------------------------------------------------------------------------
+
+# Confidence Display Rule
+
+Internally confidence may be stored as 0.0--1.0.
+
+For Home Assistant:
+
+-   Convert to 0--100
+-   Publish as integer percentage
+-   Example: 0.87 → 87
+
+------------------------------------------------------------------------
+
+# Best Practices
+
+-   All state topics must be retained.
+-   Re-publish discovery configs when `homeassistant/status = online`.
+-   Publish control state on startup so HA syncs correctly.
+-   Never publish to `homeassistant/status` (reserved for HA).
+
+------------------------------------------------------------------------
+
+End of Core MQTT Design

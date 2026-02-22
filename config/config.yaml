@@ -27,7 +27,7 @@ mqtt:
     enabled: true
     prefix: "homeassistant"                # HA MQTT Discovery prefix
     device:
-      manufacturer: "DanLabs"
+      manufacturer: "Dan Hajduk"
       model: "Synthia Vision Node"
       sw_version: "0.1.0"
     # if you want to avoid dupes across reinstalls:
@@ -105,6 +105,7 @@ policy:
   # Multi-camera-ready; start with just doorbell enabled
   cameras:
     doorbell:
+      name: "Front Door"
       enabled: true
       labels: ["person"]
       confidence_threshold: 0.75
@@ -113,6 +114,7 @@ policy:
         # Optional: allow/deny actions per camera
         allowed: ["deliver_package", "pickup_package", "visitor", "family_member", "solicitor", "unknown"]
     livingroom:
+      name: "Living Room"
       enabled: true
       labels: ["person"] 
       confidence_threshold: 0.65
@@ -150,9 +152,12 @@ topics:
   last_error: "{mqtt_prefix}/last_error"
 
   camera:
+    enabled: "{mqtt_prefix}/camera/{camera}/enabled"
+    enabled_set: "{mqtt_prefix}/camera/{camera}/enabled/set"
     action: "{mqtt_prefix}/camera/{camera}/action"
     confidence: "{mqtt_prefix}/camera/{camera}/confidence"
     description: "{mqtt_prefix}/camera/{camera}/description"
+    result_status: "{mqtt_prefix}/camera/{camera}/result_status"
     last_event_id: "{mqtt_prefix}/camera/{camera}/last_event_id"
     last_event_ts: "{mqtt_prefix}/camera/{camera}/last_event_ts"
 
@@ -167,6 +172,14 @@ topics:
     count_total: "{mqtt_prefix}/events/count_total"
     count_today: "{mqtt_prefix}/events/count_today"
 
+  control:
+    enabled: "{mqtt_prefix}/control/enabled"
+    enabled_set: "{mqtt_prefix}/control/enabled/set"
+    monthly_budget: "{mqtt_prefix}/control/monthly_budget"
+    monthly_budget_set: "{mqtt_prefix}/control/monthly_budget/set"
+    confidence_threshold: "{mqtt_prefix}/control/confidence_threshold"
+    confidence_threshold_set: "{mqtt_prefix}/control/confidence_threshold/set"
+
 logging:
   level: "INFO"                            # default level
   file: "/app/logs/synthia_vision.log"
@@ -174,7 +187,7 @@ logging:
   retention_days: 14                       # keep rotated logs for N days
   components:
     core: "INFO"
-    mqtt: "INFO"
+    mqtt: "DEBUG"
     config: "INFO"
     policy: "INFO"
     ai: "INFO"

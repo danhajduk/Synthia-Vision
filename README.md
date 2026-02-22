@@ -51,12 +51,27 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Max-bytes guard for response safety
 - Optional debug snapshot save to `service.paths.snapshots_dir` when `frigate.snapshot.debug_save=true`
 - Snapshot fetch is invoked for events routed to `processing`
+- Phase 5.1.1 publisher wiring:
+  - publishes per-camera runtime topics after snapshot step
+  - publishes `result_status=ok` with placeholder action/confidence/description until OpenAI stage
+  - publishes `result_status=snapshot_failed` when snapshot retrieval fails
+  - publishes HA discovery configs (core + per-camera) on startup and on `homeassistant/status=online`
 
 ## Active MQTT Topics (Now)
 
 - Status: `synthia/synthiavision/status`
 - Heartbeat: `synthia/synthiavision/heartbeat_ts`
 - Subscribed input: `frigate/events` (from config)
+- Per-camera output:
+  - `.../camera/{camera}/enabled` (`ON`/`OFF`)
+  - `.../camera/{camera}/enabled/set` (`ON`/`OFF` command)
+  - `.../camera/{camera}/last_event_id`
+  - `.../camera/{camera}/last_event_ts` (ISO timestamp)
+  - `.../camera/{camera}/result_status`
+  - `.../camera/{camera}/action`
+  - `.../camera/{camera}/confidence` (0-100 integer)
+  - `.../camera/{camera}/description`
+  - `.../cost/monthly_by_camera/{camera}`
 
 ## Configuration
 
@@ -69,6 +84,7 @@ Key current settings:
 - `policy.defaults.min_process_interval_s` (future processing throttle)
 - `topics.status`
 - `topics.heartbeat_ts`
+- `topics.camera.result_status`
 - `logging.level`
 - `logging.components.core`
 - `logging.components.mqtt`

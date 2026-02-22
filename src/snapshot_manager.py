@@ -27,7 +27,7 @@ class SnapshotManager:
         self._debug_save_enabled = bool(getattr(self._snapshot_config, "debug_save", False))
         self._snapshots_dir = config.paths.snapshots_dir
 
-    def fetch_event_snapshot(self, event_id: str) -> bytes:
+    def fetch_event_snapshot(self, event_id: str, camera: str | None = None) -> bytes:
         """Fetch snapshot bytes for an event with retry/backoff policy."""
         endpoint = self._snapshot_config.endpoint_template.format(event_id=event_id)
         url = f"{self._base_url}{endpoint}"
@@ -40,7 +40,7 @@ class SnapshotManager:
             try:
                 snapshot = self._fetch_once(url, timeout)
                 if self._debug_save_enabled:
-                    self._save_debug_snapshot(event_id, snapshot)
+                    self._save_debug_snapshot(event_id=event_id, camera=camera, snapshot=snapshot)
                 LOGGER.info(
                     "Snapshot fetched event_id=%s bytes=%s attempt=%s",
                     event_id,
@@ -87,9 +87,18 @@ class SnapshotManager:
             )
         return snapshot
 
-    def _save_debug_snapshot(self, event_id: str, snapshot: bytes) -> None:
-        safe_event_id = _SAFE_FILENAME.sub("_", event_id)
-        path = self._snapshots_dir / f"{safe_event_id}.jpg"
+    def _save_debug_snapshot(
+        self,
+        *,
+        event_id: str,
+        camera: str | None,
+        snapshot: bytes,
+    ) -> None:
+        if camera:
+            safe_name = _SAFE_FILENAME.sub("_", camera)
+        else:
+            safe_name = _SAFE_FILENAME.sub("_", event_id)
+        path = self._snapshots_dir / f"{safe_name}.jpg"
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(snapshot)

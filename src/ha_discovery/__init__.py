@@ -1,1 +1,5 @@
-# Placeholder for Home Assistant discovery module
+"""Home Assistant discovery exports."""
+
+from src.ha_discovery.publisher import HADiscoveryPublisher
+
+__all__ = ["HADiscoveryPublisher"]

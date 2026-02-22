@@ -141,6 +141,7 @@ class PolicyDefaultsConfig:
 
 @dataclass(slots=True)
 class PolicyCameraConfig:
+    name: str | None = None
     enabled: bool = True
     labels: list[str] = field(default_factory=lambda: ["person"])
     confidence_threshold: float = 0.75
@@ -443,6 +444,7 @@ def _build_camera_policy_map(data: dict[str, Any]) -> dict[str, PolicyCameraConf
             raw_value.get("actions", {}), f"policy.cameras.{camera_name}.actions"
         )
         cameras[camera_name] = PolicyCameraConfig(
+            name=_optional_str(raw_value.get("name")),
             enabled=_as_bool(raw_value.get("enabled", True)),
             labels=_as_string_list(
                 raw_value.get("labels", ["person"]),
