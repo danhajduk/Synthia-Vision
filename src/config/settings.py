@@ -141,8 +141,6 @@ class AIImagePreprocessConfig:
     max_side_px: int = 512
     jpeg_quality: int = 75
     strip_metadata: bool = True
-    crop_to_bbox: bool = True
-    bbox_padding: float = 0.2
 
 
 @dataclass(slots=True)
@@ -420,8 +418,6 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 max_side_px=int(image_preprocess_data.get("max_side_px", 512)),
                 jpeg_quality=int(image_preprocess_data.get("jpeg_quality", 75)),
                 strip_metadata=_as_bool(image_preprocess_data.get("strip_metadata", True)),
-                crop_to_bbox=_as_bool(image_preprocess_data.get("crop_to_bbox", True)),
-                bbox_padding=float(image_preprocess_data.get("bbox_padding", 0.2)),
             ),
         ),
         policy=PolicyConfig(
@@ -712,8 +708,6 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("ai.image_preprocess.max_side_px must be >= 128")
     if config.ai.image_preprocess.jpeg_quality < 40 or config.ai.image_preprocess.jpeg_quality > 95:
         raise ConfigError("ai.image_preprocess.jpeg_quality must be between 40 and 95")
-    if config.ai.image_preprocess.bbox_padding < 0 or config.ai.image_preprocess.bbox_padding > 1:
-        raise ConfigError("ai.image_preprocess.bbox_padding must be between 0 and 1")
     if config.policy.actions.default_action not in set(config.policy.actions.allowed):
         raise ConfigError("policy.actions.default_action must be included in policy.actions.allowed")
     if config.policy.subject_types.default not in set(config.policy.subject_types.allowed):

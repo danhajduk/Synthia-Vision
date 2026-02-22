@@ -47,14 +47,14 @@ Acceptance:
 ---
 
 ## Phase 2 – Disable Cropping (Full-Frame Only)
-- [ ] Remove/disable bbox/ROI cropping paths in preprocessing.
-- [ ] Keep resize/compress token controls.
-- [ ] Ensure `input_image` blocks remain used.
-- [ ] Force `crop_to_bbox=false` behavior (or remove option).
+- [x] Remove/disable bbox/ROI cropping paths in preprocessing.
+- [x] Keep resize/compress token controls.
+- [x] Ensure `input_image` blocks remain used.
+- [x] Force `crop_to_bbox=false` behavior (or remove option).
 
 Acceptance:
-- [ ] No crop path is active.
-- [ ] Token guard still works.
+- [x] No crop path is active.
+- [x] Token guard still works.
 
 ---
 

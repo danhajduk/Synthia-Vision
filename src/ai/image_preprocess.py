@@ -38,12 +38,9 @@ def preprocess_image_bytes(
     enabled = bool(preprocess_cfg.enabled)
     target_max_side = int(camera_cfg.max_side_px or preprocess_cfg.max_side_px)
     quality = int(preprocess_cfg.jpeg_quality)
-    crop_enabled = bool(preprocess_cfg.crop_to_bbox)
-    padding = float(preprocess_cfg.bbox_padding)
     keep_metadata = not bool(preprocess_cfg.strip_metadata)
     if force_low_budget:
         target_max_side = min(target_max_side, 512)
-        crop_enabled = True
 
     with Image.open(BytesIO(image_bytes)) as img:
         source_exif = img.info.get("exif")
@@ -52,15 +49,8 @@ def preprocess_image_bytes(
         processed = img.convert("RGB")
         used_crop = False
 
-        if enabled and crop_enabled and bbox is not None:
-            crop_box = _bbox_with_padding(
-                bbox=bbox,
-                img_size=(processed.width, processed.height),
-                padding=padding,
-            )
-            if crop_box is not None:
-                processed = processed.crop(crop_box)
-                used_crop = True
+        # Cropping is intentionally disabled to preserve full-frame context.
+        _ = bbox
 
         if enabled:
             processed.thumbnail((target_max_side, target_max_side), Image.Resampling.LANCZOS)
@@ -84,24 +74,3 @@ def preprocess_image_bytes(
         image_format="JPEG",
         quality=quality,
     )
-
-
-def _bbox_with_padding(
-    *,
-    bbox: tuple[int, int, int, int],
-    img_size: tuple[int, int],
-    padding: float,
-) -> tuple[int, int, int, int] | None:
-    x, y, w, h = bbox
-    if w <= 0 or h <= 0:
-        return None
-    img_w, img_h = img_size
-    pad_x = int(round(w * padding))
-    pad_y = int(round(h * padding))
-    left = max(0, x - pad_x)
-    top = max(0, y - pad_y)
-    right = min(img_w, x + w + pad_x)
-    bottom = min(img_h, y + h + pad_y)
-    if right <= left or bottom <= top:
-        return None
-    return left, top, right, bottom

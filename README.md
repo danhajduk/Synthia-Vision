@@ -81,7 +81,7 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
   - dynamic per-camera action enums and global subject type enums
   - retries transient provider failures (`timeout`, connection, rate limit, API error)
   - no retries for schema/validation errors
-  - preprocessing before encode (JPEG, resize/compress, optional bbox crop)
+  - preprocessing before encode (JPEG + resize/compress, full-frame only)
   - default vision detail `low` with optional per-camera override
   - hard token guard (`>8000`) with one low-budget retry before `token_budget_exceeded`
   - extracts prompt/completion/total tokens
@@ -168,7 +168,7 @@ Key current settings:
 - `ai.openai.retry_attempts`
 - `ai.openai.retry_backoff_s`
 - `ai.vision_detail`
-- `ai.image_preprocess.enabled|max_side_px|jpeg_quality|strip_metadata|crop_to_bbox|bbox_padding`
+- `ai.image_preprocess.enabled|max_side_px|jpeg_quality|strip_metadata`
 - `policy.cameras.<camera>.vision_detail`
 - `policy.cameras.<camera>.max_side_px`
 - `topics.status`
@@ -315,7 +315,7 @@ Metric formulas:
 - `status=budget_blocked`:
   - Raise `home/synthiavision/control/monthly_budget/set` or lower model usage settings (`ai.vision_detail`, `ai.image_preprocess.max_side_px`).
 - High token usage:
-  - Keep `ai.vision_detail=low`, `ai.image_preprocess.max_side_px=512`, and `crop_to_bbox=true`.
+  - Keep `ai.vision_detail=low` and `ai.image_preprocess.max_side_px=512`.
   - Check `synthia_vision.ai` logs for `total_tokens`, `detail`, image sizes, and bytes.
 - No OpenAI results:
   - Ensure `OPENAI_API_KEY` is set in env and container.

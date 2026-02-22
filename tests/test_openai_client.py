@@ -102,8 +102,6 @@ def _build_config() -> SimpleNamespace:
             max_side_px=512,
             jpeg_quality=75,
             strip_metadata=True,
-            crop_to_bbox=True,
-            bbox_padding=0.2,
         ),
     )
     openai_cfg = SimpleNamespace(

@@ -6,8 +6,6 @@ ai:
     max_side_px: 512
     jpeg_quality: 75
     strip_metadata: true
-    crop_to_bbox: true
-    bbox_padding: 0.2
   openai:
     api_key: "${OPENAI_API_KEY}"
     model: "gpt-4o-mini"

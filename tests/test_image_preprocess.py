@@ -17,8 +17,6 @@ def _build_config() -> SimpleNamespace:
                 max_side_px=512,
                 jpeg_quality=75,
                 strip_metadata=True,
-                crop_to_bbox=True,
-                bbox_padding=0.2,
             ),
         ),
         policy=SimpleNamespace(
@@ -52,7 +50,7 @@ class ImagePreprocessTests(unittest.TestCase):
         self.assertLessEqual(max(result.processed_size), 512)
         self.assertEqual(result.quality, 75)
 
-    def test_crop_to_bbox_then_resize(self) -> None:
+    def test_bbox_input_does_not_trigger_crop(self) -> None:
         cfg = _build_config()
         original = _jpeg_bytes(1920, 1080)
         result = preprocess_image_bytes(
@@ -61,7 +59,7 @@ class ImagePreprocessTests(unittest.TestCase):
             camera_name="front",
             bbox=(400, 200, 300, 300),
         )
-        self.assertTrue(result.cropped_to_bbox)
+        self.assertFalse(result.cropped_to_bbox)
         self.assertLessEqual(max(result.processed_size), 512)
 
 
