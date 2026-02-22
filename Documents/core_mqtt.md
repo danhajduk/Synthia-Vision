@@ -64,12 +64,14 @@ State topics (retained):
 -   `.../control/enabled`
 -   `.../control/monthly_budget`
 -   `.../control/confidence_threshold`
+-   `.../control/updates_per_event`
 
 Command topics:
 
 -   `.../control/enabled/set`
 -   `.../control/monthly_budget/set`
 -   `.../control/confidence_threshold/set`
+-   `.../control/updates_per_event/set`
 
 ------------------------------------------------------------------------
 
@@ -165,6 +167,28 @@ Command topics:
 -   Unit: %
 -   Mode: slider
 -   Icon: `mdi:percent`
+
+------------------------------------------------------------------------
+
+## Updates Per Event (Number)
+
+-   Entity: `number.synthia_vision_updates_per_event`
+-   State Topic: `.../control/updates_per_event`
+-   Command Topic: `.../control/updates_per_event/set`
+-   Range: 1--2
+-   Step: 1
+-   Default: `1`
+-   Mode: box
+-   Icon: `mdi:numeric`
+
+------------------------------------------------------------------------
+
+# Event-Type Routing Controls
+
+-   Per-camera controls define if `type=end` and `type=update` are processed.
+-   `updates_per_event` limits accepted updates per `event_id`.
+-   When an `end` event is seen, update counters for that `event_id` are reset.
+-   Stale update counters are cleaned up by TTL to avoid unbounded growth.
 
 ------------------------------------------------------------------------
 

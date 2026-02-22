@@ -44,6 +44,8 @@ Base prefix:
 Per-camera state topics:
 
 -   `.../camera/{camera}/enabled` (`ON|OFF`)
+-   `.../camera/{camera}/process_end_events` (`ON|OFF`)
+-   `.../camera/{camera}/process_update_events` (`ON|OFF`)
 -   `.../camera/{camera}/action`
 -   `.../camera/{camera}/confidence` (0--100 integer)
 -   `.../camera/{camera}/description`
@@ -60,6 +62,8 @@ Per-camera cost topic (published by Core cost module):
 Per-camera command topic:
 
 -   `.../camera/{camera}/enabled/set` (`ON|OFF`)
+-   `.../camera/{camera}/process_end_events/set` (`ON|OFF`)
+-   `.../camera/{camera}/process_update_events/set` (`ON|OFF`)
 
 ------------------------------------------------------------------------
 
@@ -88,6 +92,26 @@ Per-camera command topic:
 Suggested action values (expandable): - `unknown` - `deliver_package` -
 `pickup_package` - `visitor` - `family_member` - `solicitor` -
 `animal` - `false_alarm`
+
+## 2a) Process End Events (Switch)
+
+-   Entity: `switch.sv_<camera>_process_end_events`
+-   Name: `Process End Events`
+-   State Topic: `.../camera/{camera}/process_end_events`
+-   Command Topic: `.../camera/{camera}/process_end_events/set`
+-   Default: `ON`
+-   Payload: `ON` / `OFF`
+-   Icon: `mdi:flag-checkered`
+
+## 2b) Process Update Events (Switch)
+
+-   Entity: `switch.sv_<camera>_process_update_events`
+-   Name: `Process Update Events`
+-   State Topic: `.../camera/{camera}/process_update_events`
+-   Command Topic: `.../camera/{camera}/process_update_events/set`
+-   Default: `OFF`
+-   Payload: `ON` / `OFF`
+-   Icon: `mdi:update`
 
 ## 3) Confidence (Sensor, 0--100)
 

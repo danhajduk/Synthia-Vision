@@ -155,12 +155,26 @@ class HADiscoveryPublisher:
                 "unit_of_measurement": "%",
                 "mode": "box",
             }),
+            ("updates_per_event", "number", {
+                "name": "Synthia Vision Updates Per Event",
+                "object_id": "synthia_vision_updates_per_event",
+                "unique_id": f"sv_{self._node_id}_updates_per_event",
+                "icon": "mdi:numeric",
+                "state_topic": self._core_topic("control.updates_per_event", "control/updates_per_event"),
+                "command_topic": self._core_topic("control.updates_per_event_set", "control/updates_per_event/set"),
+                "min": 1,
+                "max": 2,
+                "step": 1,
+                "mode": "box",
+            }),
         ]
 
         for entity_key, component, data in core_entities:
+            payload_object_id = str(data.get("object_id", f"synthia_vision_{entity_key}"))
+            payload_unique_id = str(data.get("unique_id", f"sv_{self._node_id}_core_{entity_key}"))
             payload = {
-                "object_id": f"synthia_vision_{entity_key}",
-                "unique_id": f"sv_{self._node_id}_core_{entity_key}",
+                "object_id": payload_object_id,
+                "unique_id": payload_unique_id,
                 "device": core_device,
                 **data,
             }
@@ -198,6 +212,34 @@ class HADiscoveryPublisher:
                     "icon": "mdi:power",
                     "state_topic": self._camera_topic(camera, "enabled"),
                     "command_topic": self._camera_topic(camera, "enabled_set"),
+                    "payload_on": "ON",
+                    "payload_off": "OFF",
+                    "state_on": "ON",
+                    "state_off": "OFF",
+                },
+            ),
+            (
+                "process_end_events",
+                "switch",
+                {
+                    "name": "Process End Events",
+                    "icon": "mdi:flag-checkered",
+                    "state_topic": self._camera_topic(camera, "process_end_events"),
+                    "command_topic": self._camera_topic(camera, "process_end_events_set"),
+                    "payload_on": "ON",
+                    "payload_off": "OFF",
+                    "state_on": "ON",
+                    "state_off": "OFF",
+                },
+            ),
+            (
+                "process_update_events",
+                "switch",
+                {
+                    "name": "Process Update Events",
+                    "icon": "mdi:update",
+                    "state_topic": self._camera_topic(camera, "process_update_events"),
+                    "command_topic": self._camera_topic(camera, "process_update_events_set"),
                     "payload_on": "ON",
                     "payload_off": "OFF",
                     "state_on": "ON",

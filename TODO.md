@@ -251,6 +251,9 @@ No step should require the entire pipeline to be complete.
 - [ ] High precision mode
 - [ ] Monthly budget limit
 - [ ] Confidence threshold
+- [x] Process end events switch
+- [x] Process update events switch
+- [x] Updates per event number (1..2)
 
 ✅ TEST:
 - Toggle in HA
@@ -303,8 +306,9 @@ No step should require the entire pipeline to be complete.
 # Phase 11 – Testing Infrastructure
 
 - [ ] Setup pytest
-- [ ] Unit tests:
+- [x] Unit tests:
   - policy
+  - event-type control routing (end/update toggles + updates_per_event limit)
   - state
   - cost
   - dedupe

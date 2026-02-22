@@ -27,17 +27,6 @@ def should_process(
     config: ServiceConfig,
 ) -> Decision:
     """Return a deterministic decision with no side effects."""
-    allowed_types = [event_type.lower() for event_type in config.policy.defaults.process_on]
-    if not _is_event_type_allowed(event, config):
-        return _reject(
-            event,
-            "event_type_not_allowed",
-            {
-                "event_type": event.event_type,
-                "allowed_event_types": allowed_types,
-            },
-        )
-
     if _is_duplicate_event(event, state):
         return _reject(event, "duplicate_event_id", {"event_id": event.event_id})
 
@@ -91,11 +80,6 @@ def should_process(
         )
 
     return _accept(event, {"event_type": event.event_type, "label": event.label})
-
-
-def _is_event_type_allowed(event: FrigateEvent, config: ServiceConfig) -> bool:
-    allowed_types = {event_type.lower() for event_type in config.policy.defaults.process_on}
-    return event.event_type.lower() in allowed_types
 
 
 def _is_duplicate_event(event: FrigateEvent, state: Mapping[str, Any]) -> bool:

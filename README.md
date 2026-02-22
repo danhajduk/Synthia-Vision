@@ -31,6 +31,10 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Subscribe to Frigate events topic and log `event_id`, `camera`, `type`
 - Policy decision evaluation is executed for incoming events
 - Policy runtime state is persisted atomically to state JSON
+- Runtime event-type controls via HA command topics:
+  - process `end` events toggle
+  - process `update` events toggle
+  - updates-per-event limit (`1..2`) for each `event_id`
 
 ### Policy Engine
 - Pure function: `should_process(event, state, config) -> Decision`
@@ -62,9 +66,15 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Status: `synthia/synthiavision/status`
 - Heartbeat: `synthia/synthiavision/heartbeat_ts`
 - Subscribed input: `frigate/events` (from config)
+- Core control topics:
+  - `.../control/updates_per_event` + `.../set`
 - Per-camera output:
   - `.../camera/{camera}/enabled` (`ON`/`OFF`)
   - `.../camera/{camera}/enabled/set` (`ON`/`OFF` command)
+  - `.../camera/{camera}/process_end_events` (`ON`/`OFF`)
+  - `.../camera/{camera}/process_end_events/set` (`ON`/`OFF` command)
+  - `.../camera/{camera}/process_update_events` (`ON`/`OFF`)
+  - `.../camera/{camera}/process_update_events/set` (`ON`/`OFF` command)
   - `.../camera/{camera}/last_event_id`
   - `.../camera/{camera}/last_event_ts` (ISO timestamp)
   - `.../camera/{camera}/result_status`
@@ -85,6 +95,9 @@ Key current settings:
 - `topics.status`
 - `topics.heartbeat_ts`
 - `topics.camera.result_status`
+- `topics.camera.process_end_events`
+- `topics.camera.process_update_events`
+- `topics.control.updates_per_event`
 - `logging.level`
 - `logging.components.core`
 - `logging.components.mqtt`

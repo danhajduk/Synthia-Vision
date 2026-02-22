@@ -154,6 +154,10 @@ topics:
   camera:
     enabled: "{mqtt_prefix}/camera/{camera}/enabled"
     enabled_set: "{mqtt_prefix}/camera/{camera}/enabled/set"
+    process_end_events: "{mqtt_prefix}/camera/{camera}/process_end_events"
+    process_end_events_set: "{mqtt_prefix}/camera/{camera}/process_end_events/set"
+    process_update_events: "{mqtt_prefix}/camera/{camera}/process_update_events"
+    process_update_events_set: "{mqtt_prefix}/camera/{camera}/process_update_events/set"
     action: "{mqtt_prefix}/camera/{camera}/action"
     confidence: "{mqtt_prefix}/camera/{camera}/confidence"
     description: "{mqtt_prefix}/camera/{camera}/description"
@@ -179,6 +183,8 @@ topics:
     monthly_budget_set: "{mqtt_prefix}/control/monthly_budget/set"
     confidence_threshold: "{mqtt_prefix}/control/confidence_threshold"
     confidence_threshold_set: "{mqtt_prefix}/control/confidence_threshold/set"
+    updates_per_event: "{mqtt_prefix}/control/updates_per_event"
+    updates_per_event_set: "{mqtt_prefix}/control/updates_per_event/set"
 
 logging:
   level: "INFO"                            # default level
