@@ -5,6 +5,7 @@ Sprint theme: **Boring runtime + local explain UI** with minimal MQTT clutter.
 Execution rule:
 - Complete one phase at a time.
 - When asked to continue, commit the previous phase and update docs before starting the next.
+- Use ./Documents/sql.md and ./Documents/schema.sql for the sql related items and schemas.
 
 ## Conventions
 - [ ] Newly discovered cameras default to `enabled=false`.
@@ -28,12 +29,15 @@ Acceptance:
 ## Phase 1 – Config Refactor + MQTT Normalization
 - [ ] Add root config model fields: `schema_version`, `includes`, `service.paths.db_file`.
 - [ ] Implement include-based loader:
-- [ ] `config.yaml` as root.
-- [ ] `config.d/*.yaml` merged in order.
-- [ ] Deep-merge dicts; lists are replace semantics.
+- [ ] Subtask: `config.yaml` as root.
+- [ ] Subtask: `config.d/*.yaml` merged in order.
+- [ ] Subtask: deep-merge dicts; lists are replace semantics.
 - [ ] Add schema version validation with clear failure message.
 - [ ] Normalize MQTT topic derivation from `service.mqtt_prefix`.
 - [ ] Ensure no internal hardcoded `synthia/synthiavision/...` topics remain.
+- [ ] Add config override precedence documentation:
+- [ ] Merge order: root -> config.d (sorted) -> environment overrides.
+- [ ] Explicitly document list replacement semantics.
 
 Acceptance:
 - [ ] Existing runtime config loads via includes.
@@ -58,20 +62,24 @@ Acceptance:
 - [ ] Add SQLite DB path default: `/app/state/synthia_vision.db`.
 - [ ] Implement DB init with WAL mode and sane busy timeout.
 - [ ] Add tables:
-- [ ] `events`
-- [ ] `metrics`
-- [ ] `errors`
-- [ ] `users`
-- [ ] `kv`
-- [ ] `cameras`
+- [ ] Subtask: `events`
+- [ ] Subtask: `metrics`
+- [ ] Subtask: `errors`
+- [ ] Subtask: `users`
+- [ ] Subtask: `kv`
+- [ ] Subtask: `cameras`
 - [ ] Add indexes:
-- [ ] `events(ts)`
-- [ ] `events(camera, ts)`
-- [ ] `events(accepted, ts)`
-- [ ] `metrics(event_id)`
-- [ ] `cameras(last_seen_ts)`
-- [ ] `errors(ts)`
+- [ ] Subtask: `events(ts)`
+- [ ] Subtask: `events(camera, ts)`
+- [ ] Subtask: `events(accepted, ts)`
+- [ ] Subtask: `metrics(event_id)`
+- [ ] Subtask: `cameras(last_seen_ts)`
+- [ ] Subtask: `errors(ts)`
 - [ ] Add DB access module (`src/db/...`) with robust write helpers.
+- [ ] Enable WAL mode explicitly (`PRAGMA journal_mode=WAL;`).
+- [ ] Set busy_timeout (>= 5000ms).
+- [ ] Ensure foreign_keys=ON.
+- [ ] Add DB schema_version table or kv entry.
 
 Acceptance:
 - [ ] DB initializes on startup.
@@ -83,15 +91,16 @@ Acceptance:
 - [ ] Introduce bounded intake queue (size 50).
 - [ ] Keep MQTT callback lightweight: parse + validate/normalize + enqueue only.
 - [ ] Add dedicated worker for processing queue items.
-- [ ] Implementation note: prefer `collections.deque(maxlen=50)` for clean drop-oldest behavior.
+- [ ] Implementation note: prefer `collections.deque(maxlen=50)` but avoid implicit auto-drop behavior; enforce drop decisions explicitly in code.
 - [ ] Drop policy:
-- [ ] If full and incoming is `update`, drop incoming update.
-- [ ] Else if full, drop oldest (`popleft`) then enqueue incoming.
+- [ ] Subtask: if full and incoming is `update`, drop incoming update.
+- [ ] Subtask: else if full, drop oldest (`popleft`) then enqueue incoming.
 - [ ] Track drop counters in SQLite and summary API.
 - [ ] Implement degraded status transitions:
 - [ ] Degrade when queue > 40 for > 30s.
 - [ ] Recover when queue < 10.
 - [ ] Publish only existing status topic.
+- [ ] Track queue_depth metric for summary API.
 
 Acceptance:
 - [ ] Queue never exceeds 50.
@@ -105,10 +114,15 @@ Acceptance:
 - [ ] Upsert discovered cameras from every Frigate event.
 - [ ] Mandatory default for new cameras: `enabled=0`.
 - [ ] Track `discovered_first_ts` and `last_seen_ts`.
+- [ ] Add transition rule for legacy YAML camera config:
+- [ ] Subtask: during migration window, legacy YAML camera values are ignored for runtime decisions.
+- [ ] Subtask: optional one-time migration tool/import may copy YAML camera values into SQLite.
 - [ ] Add per-camera settings usage:
-- [ ] `display_name`, `prompt_preset`, `confidence_threshold`, `cooldown_s`
-- [ ] `process_end_events`, `process_update_events`, `updates_per_event`
-- [ ] `vision_detail`, `phash_threshold`
+- [ ] Subtask: `display_name`, `prompt_preset`, `confidence_threshold`, `cooldown_s`
+- [ ] Subtask: `process_end_events`, `process_update_events`, `updates_per_event`
+- [ ] Subtask: `vision_detail`, `phash_threshold`
+- [ ] Add unique constraint on cameras.camera_key.
+- [ ] Do not auto-enable cameras under any circumstance.
 
 Acceptance:
 - [ ] New cameras appear in SQLite automatically.
@@ -121,6 +135,7 @@ Acceptance:
 - [ ] Write `metrics` row when processing path runs.
 - [ ] Record reject reasons and skipped reasons in DB, not MQTT debug topics.
 - [ ] Record runtime errors in `errors` with component and short detail.
+- [ ] Ensure journaling is non-blocking relative to MQTT intake (writes happen in worker context only).
 
 Acceptance:
 - [ ] Explainability data exists in SQLite for recent events.
@@ -141,6 +156,7 @@ Acceptance:
 - [ ] `phash`
 - [ ] `phash_distance`
 - [ ] `skipped_openai_reason` (`phash_unchanged`, etc.)
+- [ ] Cropping must remain permanently disabled; smart update must operate on full-frame snapshots.
 
 Acceptance:
 - [ ] Near-identical updates skip OpenAI.
@@ -156,6 +172,7 @@ Acceptance:
 - [ ] Else allow `/ui/setup/first-run` only from localhost OR only with `FIRST_RUN_TOKEN`.
 - [ ] After first admin exists, disable first-run path.
 - [ ] Restrict guest vs admin routes and APIs.
+- [ ] Session cookies must be HTTPOnly and SameSite=Lax (or Strict).
 
 Acceptance:
 - [ ] Guest cannot access admin pages/APIs.
@@ -195,6 +212,7 @@ Acceptance:
 - [ ] `/ui` must remain embeddable in Home Assistant.
 - [ ] Do not add restrictive `X-Frame-Options`/CSP blocking iframe embeds.
 - [ ] If CSP is added later, include correct `frame-ancestors`.
+- [ ] Guest overview must not leak reject_reason, skipped_openai_reason, or raw description fields.
 
 Acceptance:
 - [ ] UI is self-hosted, no external frontend toolchain.
@@ -204,16 +222,18 @@ Acceptance:
 
 ## Phase 11 – Setup & Controls (Admin-Only)
 - [ ] Setup page global settings:
-- [ ] monthly budget
-- [ ] confidence threshold
-- [ ] doorbell-only mode
-- [ ] high precision mode
-- [ ] default vision detail
-- [ ] default/update pHash threshold
+- [ ] Subtask: monthly budget
+- [ ] Subtask: confidence threshold
+- [ ] Subtask: doorbell-only mode
+- [ ] Subtask: high precision mode
+- [ ] Subtask: default vision detail
+- [ ] Subtask: default/update pHash threshold
 - [ ] Setup page camera section from discovered cameras table.
 - [ ] Allow per-camera edits and enable toggles.
 - [ ] Clearly label runtime-only vs persisted changes.
-- [ ] Persist settings to SQLite `kv` (and config only if explicitly supported).
+- [ ] Persisted by default to SQLite `kv`: monthly budget, confidence threshold, doorbell-only mode, high precision mode, default vision detail, default/update pHash threshold, and per-camera settings.
+- [ ] Runtime-only changes are temporary and reset on restart unless explicitly saved.
+- [ ] UI must clearly distinguish between global defaults and per-camera overrides.
 
 Acceptance:
 - [ ] Admin can fully manage discovered cameras from UI.
