@@ -72,7 +72,7 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 3.2 Event Router
-- [ ] event_router.py
+- [x] event_router.py
   - Routes accepted events to "processing"
   - Routes rejected events to debug counter/log
 
@@ -261,14 +261,14 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 9.2 docker-compose.yml
-- [ ] Bind mounts:
+- [x] Bind mounts:
   - config/
   - state/
   - logs/
-- [ ] Environment variables:
+- [x] Environment variables:
   - OPENAI_API_KEY
   - MQTT_PASSWORD
-- [ ] Restart policy
+- [x] Restart policy
 
 ✅ TEST:
 - docker compose up -d

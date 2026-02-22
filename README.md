@@ -7,7 +7,8 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Foundation is complete.
 - Phase 2 (MQTT + Event Intake) is complete.
 - Phase 3.1 policy decision logic is implemented and wired into MQTT intake.
-- Next: Phase 3.2 event router and full pipeline stages.
+- Phase 3.2 event routing is implemented (accepted vs rejected routes + counters/logs).
+- Next: Phase 4 snapshot manager and downstream pipeline stages.
 
 ## Implemented
 
@@ -126,10 +127,16 @@ python -m src.main
 ## Run With Docker Compose
 
 Uses your existing external MQTT broker (no bundled Mosquitto service).
+Container timezone is set to Pacific via `TZ=America/Los_Angeles`.
 
 ```bash
 docker compose up -d --build
 docker compose logs -f synthia-vision
+```
+
+If you update compose environment (such as timezone), recreate the container:
+```bash
+docker compose up -d --force-recreate
 ```
 
 Stop:

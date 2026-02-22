@@ -12,6 +12,7 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 from src.config import ServiceConfig
+from src.event_router import EventRouter
 from src.errors import ExternalServiceError, ValidationError
 from src.models import FrigateEvent
 from src.policy_engine import should_process
@@ -33,6 +34,7 @@ class MQTTClient:
         self._status_retain = config.mqtt.retain
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._state_manager = StateManager(config.state_file)
+        self._event_router = EventRouter()
         self._policy_runtime_state: dict[str, Any] = {
             "events": {
                 "recent_event_ids": [],
@@ -241,7 +243,8 @@ class MQTTClient:
             state=self._policy_runtime_state,
             config=self._config,
         )
-        if decision.should_process:
+        route_result = self._event_router.route(event, decision)
+        if route_result.route == "processing":
             self._remember_policy_event(event)
 
     def _remember_policy_event(self, event: FrigateEvent) -> None:
