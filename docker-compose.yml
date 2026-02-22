@@ -10,6 +10,8 @@ services:
       MQTT_PORT: ${MQTT_PORT:-1883}
       TZ: America/Los_Angeles
       OPENAI_API_KEY: ${OPENAI_API_KEY:-dev-placeholder-key}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       MQTT_USERNAME: ${MQTT_USERNAME:-}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       FRIGATE_BASE_URL: ${FRIGATE_BASE_URL:-http://host.docker.internal:5000}

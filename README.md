@@ -132,6 +132,7 @@ Authorization:
 Runtime:
 - Server defaults to `0.0.0.0:8080`.
 - Override with `SYNTHIA_API_HOST` and `SYNTHIA_API_PORT`.
+- In this repo's `docker-compose.yml`, API host/port are sourced directly from `.env`, so set both values there.
 
 ## UI Routes (FastAPI + Jinja)
 
@@ -398,6 +399,9 @@ Metric formulas:
 
 ## Troubleshooting
 
+- No logs in expected files:
+  - Current component files are `logs/core.log`, `logs/mqtt.log`, `logs/policy.log`, `logs/config.log`, `logs/ai.log`.
+  - Ensure host `logs/` is writable by the container user.
 - `status=budget_blocked`:
   - Raise `home/synthiavision/control/monthly_budget/set` or lower model usage settings (`ai.vision_detail`, `ai.image_preprocess.max_side_px`).
 - High token usage:
@@ -406,5 +410,8 @@ Metric formulas:
 - No OpenAI results:
   - Ensure `OPENAI_API_KEY` is set in env and container.
   - Check `last_error` topic for `openai_failed` / `schema_failed`.
+- Cannot log in as admin on first run:
+  - Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env`.
+  - Admin bootstrap runs only when no users exist in SQLite.
 - Time/date rollover surprises:
   - Daily counters reset on date change, monthly totals reset when month key changes.
