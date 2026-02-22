@@ -318,6 +318,10 @@ SQLite bootstrap:
 - On startup, the service initializes SQLite schema from `Documents/schema.sql`.
 - Connection pragmas include WAL mode, busy timeout, and foreign key enforcement.
 - Seed defaults are written into `kv` if missing (idempotent).
+- Worker-path journaling writes to SQLite:
+  - `events`: one row per handled event (accepted or rejected) with latest result fields
+  - `metrics`: processing-path rows for OpenAI usage or skip reasons
+  - `errors`: runtime component errors with short detail + optional event/camera linkage
 
 Camera runtime source of truth:
 - Discovered cameras are persisted in SQLite `cameras`.

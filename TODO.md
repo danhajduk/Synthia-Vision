@@ -131,14 +131,14 @@ Acceptance:
 ---
 
 ## Phase 6 – Event / Metrics / Error Journaling
-- [ ] Write one `events` row for each handled event (accepted or rejected).
-- [ ] Write `metrics` row when processing path runs.
-- [ ] Record reject reasons and skipped reasons in DB, not MQTT debug topics.
-- [ ] Record runtime errors in `errors` with component and short detail.
-- [ ] Ensure journaling is non-blocking relative to MQTT intake (writes happen in worker context only).
+- [x] Write one `events` row for each handled event (accepted or rejected).
+- [x] Write `metrics` row when processing path runs.
+- [x] Record reject reasons and skipped reasons in DB, not MQTT debug topics.
+- [x] Record runtime errors in `errors` with component and short detail.
+- [x] Ensure journaling is non-blocking relative to MQTT intake (writes happen in worker context only).
 
 Acceptance:
-- [ ] Explainability data exists in SQLite for recent events.
+- [x] Explainability data exists in SQLite for recent events.
 - [ ] MQTT clutter does not increase.
 
 ---

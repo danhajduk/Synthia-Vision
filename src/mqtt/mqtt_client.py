@@ -16,7 +16,7 @@ import paho.mqtt.client as mqtt
 
 from src.config import ServiceConfig
 from src.config.settings import PolicyCameraConfig
-from src.db import CameraStore
+from src.db import CameraStore, EventStore
 from src.event_router import EventRouter
 from src.ha_discovery import HADiscoveryPublisher
 from src.errors import ExternalServiceError, ValidationError
@@ -83,6 +83,7 @@ class MQTTClient:
         self._dropped_queue_full_total = 0
         self._state_manager = StateManager(config.state_file)
         self._camera_store = CameraStore(config.paths.db_file)
+        self._event_store = EventStore(config.paths.db_file)
         self._snapshot_manager = SnapshotManager(config)
         self._openai_client: OpenAIClient | None = None
         try:
@@ -626,6 +627,12 @@ class MQTTClient:
                 event.event_id,
                 event.camera,
             )
+            self._journal_event(
+                event=event,
+                accepted=False,
+                reject_reason="service_disabled",
+                result_status="skipped",
+            )
             self._publish_camera_status_only(event=event, result_status="skipped")
             return
 
@@ -650,6 +657,12 @@ class MQTTClient:
                 event.event_type,
                 gate.reason,
             )
+            self._journal_event(
+                event=event,
+                accepted=False,
+                reject_reason=gate.reason,
+                result_status="suppressed",
+            )
             self._publish_camera_status_only(event=event, result_status="suppressed")
             return
 
@@ -658,6 +671,12 @@ class MQTTClient:
                 "Event suppressed by camera toggle event_id=%s camera=%s",
                 event.event_id,
                 event.camera,
+            )
+            self._journal_event(
+                event=event,
+                accepted=False,
+                reject_reason="camera_disabled",
+                result_status="skipped",
             )
             self._publish_camera_status_only(event=event, result_status="skipped")
             return
@@ -669,11 +688,25 @@ class MQTTClient:
         )
         route_result = self._event_router.route(event, decision)
         if route_result.route == "processing":
+            self._journal_event(
+                event=event,
+                accepted=True,
+                reject_reason=None,
+                result_status="processing",
+            )
             self._record_processed_event_metrics()
             self._remember_policy_event(event)
             self._fetch_snapshot_for_event(event)
             return
 
+        self._journal_event(
+            event=event,
+            accepted=False,
+            reject_reason=route_result.reason,
+            cooldown_remaining_s=_as_optional_float(route_result.details.get("cooldown_remaining_s")),
+            dedupe_hit=route_result.reason == "duplicate_event_id",
+            result_status="skipped",
+        )
         self._publish_camera_status_only(event=event, result_status="skipped")
 
     async def _queue_worker_loop(self) -> None:
@@ -693,11 +726,17 @@ class MQTTClient:
                 continue
             try:
                 self._evaluate_policy(event)
-            except Exception:
+            except Exception as exc:
                 LOGGER.exception(
                     "Unhandled event processing failure event_id=%s camera=%s",
                     event.event_id,
                     event.camera,
+                )
+                self._journal_error(
+                    component="worker",
+                    message="unhandled_event_processing_failure",
+                    detail=str(exc),
+                    event=event,
                 )
         LOGGER.info("Event queue worker stopped")
 
@@ -971,6 +1010,18 @@ class MQTTClient:
 
     def _fetch_snapshot_for_event(self, event: FrigateEvent) -> None:
         if self._is_budget_blocked():
+            self._journal_event(
+                event=event,
+                accepted=True,
+                result_status="blocked_budget",
+                action="unknown",
+                subject_type="unknown",
+                description="blocked: monthly budget exceeded",
+            )
+            self._journal_metric(
+                event_id=event.event_id,
+                skipped_openai_reason="budget_blocked",
+            )
             self._publish_sync(self._status_topic, "budget_blocked")
             self._publish_last_error(
                 f"budget_blocked camera={event.camera} event_id={event.event_id}"
@@ -996,6 +1047,24 @@ class MQTTClient:
                 event.camera,
                 exc,
             )
+            self._journal_event(
+                event=event,
+                accepted=True,
+                result_status="snapshot_failed",
+                action="unknown",
+                subject_type="unknown",
+                description="snapshot fetch failed",
+            )
+            self._journal_metric(
+                event_id=event.event_id,
+                skipped_openai_reason="snapshot_fail",
+            )
+            self._journal_error(
+                component="snapshot",
+                message="snapshot_failed",
+                detail=str(exc),
+                event=event,
+            )
             self._publish_last_error(f"snapshot_failed camera={event.camera} event_id={event.event_id}: {exc}")
             self._publish_camera_result(
                 event=event,
@@ -1013,6 +1082,19 @@ class MQTTClient:
             len(snapshot),
         )
         if self._openai_client is None:
+            self._journal_event(
+                event=event,
+                accepted=True,
+                result_status="openai_failed",
+                action="unknown",
+                subject_type="unknown",
+                description="openai client unavailable",
+                snapshot_bytes=len(snapshot),
+            )
+            self._journal_metric(
+                event_id=event.event_id,
+                skipped_openai_reason="openai_unavailable",
+            )
             self._publish_last_error(
                 f"openai_failed camera={event.camera} event_id={event.event_id}: openai client unavailable"
             )
@@ -1038,6 +1120,25 @@ class MQTTClient:
                 event.camera,
                 exc,
             )
+            self._journal_event(
+                event=event,
+                accepted=True,
+                result_status="schema_failed",
+                action="unknown",
+                subject_type="unknown",
+                description="classification schema validation failed",
+                snapshot_bytes=len(snapshot),
+            )
+            self._journal_metric(
+                event_id=event.event_id,
+                skipped_openai_reason="schema_fail",
+            )
+            self._journal_error(
+                component="ai",
+                message="schema_failed",
+                detail=str(exc),
+                event=event,
+            )
             self._publish_last_error(
                 f"schema_failed camera={event.camera} event_id={event.event_id}: {exc}"
             )
@@ -1056,6 +1157,25 @@ class MQTTClient:
                 event.event_id,
                 event.camera,
                 exc,
+            )
+            self._journal_event(
+                event=event,
+                accepted=True,
+                result_status="openai_failed",
+                action="unknown",
+                subject_type="unknown",
+                description="classification failed",
+                snapshot_bytes=len(snapshot),
+            )
+            self._journal_metric(
+                event_id=event.event_id,
+                skipped_openai_reason="openai_fail",
+            )
+            self._journal_error(
+                component="ai",
+                message="openai_failed",
+                detail=str(exc),
+                event=event,
             )
             self._publish_last_error(
                 f"openai_failed camera={event.camera} event_id={event.event_id}: {exc}"
@@ -1088,6 +1208,25 @@ class MQTTClient:
                     force_low_budget=True,
                 )
             except (ValidationError, ExternalServiceError) as exc:
+                self._journal_event(
+                    event=event,
+                    accepted=True,
+                    result_status="token_budget_exceeded",
+                    action="unknown",
+                    subject_type="unknown",
+                    description="token budget exceeded",
+                    snapshot_bytes=len(snapshot),
+                )
+                self._journal_metric(
+                    event_id=event.event_id,
+                    skipped_openai_reason="token_budget_exceeded",
+                )
+                self._journal_error(
+                    component="ai",
+                    message="token_budget_exceeded",
+                    detail=str(exc),
+                    event=event,
+                )
                 self._publish_last_error(
                     f"token_budget_exceeded camera={event.camera} event_id={event.event_id}: {exc}"
                 )
@@ -1101,6 +1240,19 @@ class MQTTClient:
                 )
                 return
             if usage.total_tokens > 8000:
+                self._journal_event(
+                    event=event,
+                    accepted=True,
+                    result_status="token_budget_exceeded",
+                    action="unknown",
+                    subject_type="unknown",
+                    description="token budget exceeded",
+                    snapshot_bytes=len(snapshot),
+                )
+                self._journal_metric(
+                    event_id=event.event_id,
+                    skipped_openai_reason="token_budget_exceeded",
+                )
                 self._publish_last_error(
                     f"token_budget_exceeded camera={event.camera} event_id={event.event_id} total_tokens={usage.total_tokens}"
                 )
@@ -1127,6 +1279,26 @@ class MQTTClient:
             subject_type=classification.subject_type,
             confidence_percent=confidence_percent,
             description=classification.description,
+        )
+        self._journal_event(
+            event=event,
+            accepted=True,
+            result_status="ok",
+            action=action,
+            subject_type=classification.subject_type,
+            confidence=classification.confidence,
+            description=classification.description,
+            snapshot_bytes=len(snapshot),
+            image_width=usage.processed_size[0],
+            image_height=usage.processed_size[1],
+            vision_detail=usage.vision_detail,
+        )
+        self._journal_metric(
+            event_id=event.event_id,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            cost_usd=usage.cost_usd,
+            model=usage.model,
         )
         self._record_openai_usage_metrics(usage=usage, camera=event.camera)
 
@@ -1407,6 +1579,100 @@ class MQTTClient:
                 exc,
             )
 
+    def _journal_event(
+        self,
+        *,
+        event: FrigateEvent,
+        accepted: bool,
+        reject_reason: str | None = None,
+        cooldown_remaining_s: float | None = None,
+        dedupe_hit: bool = False,
+        result_status: str | None = None,
+        action: str | None = None,
+        subject_type: str | None = None,
+        confidence: float | None = None,
+        description: str | None = None,
+        snapshot_bytes: int | None = None,
+        image_width: int | None = None,
+        image_height: int | None = None,
+        vision_detail: str | None = None,
+    ) -> None:
+        try:
+            self._event_store.upsert_event(
+                event=event,
+                accepted=accepted,
+                reject_reason=reject_reason,
+                cooldown_remaining_s=cooldown_remaining_s,
+                dedupe_hit=dedupe_hit,
+                result_status=result_status,
+                action=action,
+                subject_type=subject_type,
+                confidence=confidence,
+                description=description,
+                snapshot_bytes=snapshot_bytes,
+                image_width=image_width,
+                image_height=image_height,
+                vision_detail=vision_detail,
+            )
+        except Exception as exc:
+            LOGGER.warning(
+                "Failed to journal event event_id=%s camera=%s error=%s",
+                event.event_id,
+                event.camera,
+                exc,
+            )
+
+    def _journal_metric(
+        self,
+        *,
+        event_id: str,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        cost_usd: float | None = None,
+        model: str | None = None,
+        phash: str | None = None,
+        phash_distance: int | None = None,
+        skipped_openai_reason: str | None = None,
+        latency_snapshot_ms: float | None = None,
+        latency_openai_ms: float | None = None,
+        latency_total_ms: float | None = None,
+    ) -> None:
+        try:
+            self._event_store.insert_metric(
+                event_id=event_id,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cost_usd=cost_usd,
+                model=model,
+                phash=phash,
+                phash_distance=phash_distance,
+                skipped_openai_reason=skipped_openai_reason,
+                latency_snapshot_ms=latency_snapshot_ms,
+                latency_openai_ms=latency_openai_ms,
+                latency_total_ms=latency_total_ms,
+            )
+        except Exception as exc:
+            LOGGER.warning("Failed to journal metric event_id=%s error=%s", event_id, exc)
+
+    def _journal_error(
+        self,
+        *,
+        component: str,
+        message: str,
+        detail: str | None = None,
+        event: FrigateEvent | None = None,
+    ) -> None:
+        try:
+            self._event_store.insert_error(
+                component=component,
+                message=message,
+                detail=detail,
+                event_id=event.event_id if event is not None else None,
+                camera=event.camera if event is not None else None,
+            )
+        except Exception as exc:
+            LOGGER.warning("Failed to journal runtime error component=%s error=%s", component, exc)
+
     def _sync_queue_stats_to_db(self) -> None:
         try:
             self._camera_store.upsert_kv(
@@ -1641,3 +1907,9 @@ def _parse_confidence_threshold(value: str) -> int | None:
     if parsed < 0 or parsed > 100:
         return None
     return parsed
+
+
+def _as_optional_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
