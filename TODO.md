@@ -166,7 +166,7 @@ Acceptance:
 
 ## Phase 8 – Auth + Bootstrap (Secure First Run)
 - [ ] Add session-based auth with roles: `guest`, `admin`.
-- [ ] Secure password hashing (bcrypt/argon2).
+- [x] Secure password hashing (bcrypt/argon2).
 - [ ] First-run behavior:
 - [x] If users table empty and `ADMIN_PASSWORD` is set, create admin on startup (one-time).
 - [ ] Else allow `/ui/setup/first-run` only from localhost OR only with `FIRST_RUN_TOKEN`.
