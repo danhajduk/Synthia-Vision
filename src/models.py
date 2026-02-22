@@ -16,6 +16,7 @@ class FrigateEvent:
     camera: str
     label: str
     event_type: str
+    score: float | None = None
     start_time: float | None = None
     end_time: float | None = None
     event_ts: float | None = None
@@ -42,6 +43,7 @@ class FrigateEvent:
             camera=camera,
             label=label,
             event_type=event_type,
+            score=_as_float_or_none(event_data.get("score")),
             start_time=_as_float_or_none(event_data.get("start_time")),
             end_time=_as_float_or_none(event_data.get("end_time")),
             event_ts=_as_float_or_none(payload.get("time")),

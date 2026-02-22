@@ -111,9 +111,9 @@ policy:
       actions:
         # Optional: allow/deny actions per camera
         allowed: ["deliver_package", "pickup_package", "visitor", "family_member", "solicitor", "unknown"]
-    front_yard:
-      enabled: false
-      labels: ["person", "car"]
+    livingroom:
+      enabled: true
+      labels: ["person"] 
       confidence_threshold: 0.65
       cooldown_s: 60
 
@@ -121,7 +121,7 @@ modes:
   # These are HA-controlled toggles that modify behavior
   doorbell_only_mode:
     enabled: true
-    allowed_cameras: ["doorbell"]
+    allowed_cameras: ["doorbell", "livingroom"]  # could also block specific cameras instead of allow-listing
 
   high_precision_mode:
     enabled: false

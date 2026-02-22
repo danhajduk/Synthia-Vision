@@ -41,7 +41,7 @@ No step should require the entire pipeline to be complete.
 ## 2.3 Subscribe to Frigate Events
 - [x] Subscribe to `frigate/events`
 - [x] Log raw event_id + camera + type
-- [x] Ignore all processing for now
+- [x] Evaluate policy decisions for incoming events
 
 ✅ TEST:
 - Publish a canned Frigate event to MQTT
@@ -52,10 +52,10 @@ No step should require the entire pipeline to be complete.
 # Phase 3 – Policy Engine (Pure Logic First)
 
 ## 3.1 Implement policy_engine.py
-- [ ] Pure function:
+- [x] Pure function:
   should_process(event, state, config) -> Decision
-- [ ] Handle:
-  - process_on == "end"
+- [x] Handle:
+  - process_on == policy.process_on no more then once every policy.min_process_interval_s per camera
   - allowed labels
   - enabled cameras
   - doorbell_only_mode
@@ -141,8 +141,8 @@ No step should require the entire pipeline to be complete.
 # Phase 6 – State & Cost Tracking
 
 ## 6.1 Atomic State Store
-- [ ] load_state()
-- [ ] save_state_atomic() (temp + rename)
+- [x] load_state()
+- [x] save_state_atomic() (temp + rename)
 
 ✅ UNIT TEST:
 - Verify atomic write works

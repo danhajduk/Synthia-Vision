@@ -6,7 +6,8 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 
 - Foundation is complete.
 - Phase 2 (MQTT + Event Intake) is complete.
-- Next: Phase 3 policy engine logic.
+- Phase 3.1 policy decision logic is implemented and wired into MQTT intake.
+- Next: Phase 3.2 event router and full pipeline stages.
 
 ## Implemented
 
@@ -25,7 +26,22 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
   - `enabled` when ready
   - `stopped` on graceful shutdown
 - Heartbeat timestamp publishing on interval
-- Subscribe to Frigate events topic and log `event_id`, `camera`, `type` (no routing yet)
+- Subscribe to Frigate events topic and log `event_id`, `camera`, `type`
+- Policy decision evaluation is executed for incoming events
+- Policy runtime state is persisted atomically to state JSON
+
+### Policy Engine
+- Pure function: `should_process(event, state, config) -> Decision`
+- Rules implemented:
+  - allowed event types (`policy.defaults.process_on`)
+  - duplicate event check
+  - camera enabled check
+  - doorbell-only mode camera gating
+  - label allow-list
+  - confidence threshold
+  - cooldown/min interval enforcement
+- Decision logs emitted on `synthia_vision.policy`
+- Rejection logs include explicit reason and details
 
 ## Active MQTT Topics (Now)
 
@@ -52,6 +68,7 @@ Key current settings:
 - `logging.components.ai`
 - `logging.files.core|mqtt|config|policy|ai`
 - `logging.retention_days`
+- `service.paths.state_file`
 
 Env overrides supported:
 - `SYNTHIA_CONFIG`
@@ -119,3 +136,13 @@ Stop:
 ```bash
 docker compose down
 ```
+
+## State Persistence
+
+Policy runtime state is persisted in JSON with atomic writes:
+- `events.recent_event_ids`
+- `events.last_by_camera.<camera>.last_event_id`
+- `events.last_by_camera.<camera>.last_event_ts`
+
+Configured via:
+- `service.paths.state_file`

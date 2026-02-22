@@ -12,7 +12,10 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 from src.config import ServiceConfig
-from src.errors import ExternalServiceError
+from src.errors import ExternalServiceError, ValidationError
+from src.models import FrigateEvent
+from src.policy_engine import should_process
+from src.state_manager import StateManager
 
 LOGGER = logging.getLogger("synthia_vision.mqtt")
 
@@ -29,6 +32,13 @@ class MQTTClient:
         self._events_topic = config.mqtt.events_topic
         self._status_retain = config.mqtt.retain
         self._heartbeat_task: asyncio.Task[None] | None = None
+        self._state_manager = StateManager(config.state_file)
+        self._policy_runtime_state: dict[str, Any] = {
+            "events": {
+                "recent_event_ids": [],
+                "last_by_camera": {},
+            }
+        }
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -61,6 +71,7 @@ class MQTTClient:
 
     async def startup_connect(self) -> None:
         """Connect and publish initial retained startup status."""
+        await self._load_policy_state()
         self._disconnect_requested = False
         self._client.loop_start()
         self._client.connect_async(
@@ -201,6 +212,7 @@ class MQTTClient:
             camera,
             event_type,
         )
+        self._evaluate_policy(payload)
 
     def _decode_json_payload(self, payload_bytes: bytes) -> dict[str, Any] | None:
         try:
@@ -216,6 +228,72 @@ class MQTTClient:
             LOGGER.warning("Ignoring Frigate event message: payload is not a JSON object")
             return None
         return decoded
+
+    def _evaluate_policy(self, payload: dict[str, Any]) -> None:
+        try:
+            event = FrigateEvent.from_mqtt_payload(payload)
+        except ValidationError as exc:
+            LOGGER.warning("Skipping policy evaluation: invalid event payload (%s)", exc)
+            return
+
+        decision = should_process(
+            event=event,
+            state=self._policy_runtime_state,
+            config=self._config,
+        )
+        if decision.should_process:
+            self._remember_policy_event(event)
+
+    def _remember_policy_event(self, event: FrigateEvent) -> None:
+        events_data = self._policy_runtime_state.setdefault("events", {})
+        recent_event_ids = events_data.setdefault("recent_event_ids", [])
+        if isinstance(recent_event_ids, list):
+            recent_event_ids.append(event.event_id)
+            max_ids = max(1, self._config.dedupe.recent_event_ids_max)
+            if len(recent_event_ids) > max_ids:
+                del recent_event_ids[:-max_ids]
+
+        last_by_camera = events_data.setdefault("last_by_camera", {})
+        if isinstance(last_by_camera, dict):
+            last_by_camera[event.camera] = {
+                "last_event_id": event.event_id,
+                "last_event_ts": event.event_ts if event.event_ts is not None else time.time(),
+            }
+        self._save_policy_state()
+
+    async def _load_policy_state(self) -> None:
+        loaded = await asyncio.to_thread(self._state_manager.load_state)
+        events_data = loaded.get("events")
+        if not isinstance(events_data, dict):
+            events_data = {"recent_event_ids": [], "last_by_camera": {}}
+
+        recent_event_ids = events_data.get("recent_event_ids")
+        if not isinstance(recent_event_ids, list):
+            recent_event_ids = []
+
+        last_by_camera = events_data.get("last_by_camera")
+        if not isinstance(last_by_camera, dict):
+            last_by_camera = {}
+
+        max_ids = max(1, self._config.dedupe.recent_event_ids_max)
+        self._policy_runtime_state = {
+            "events": {
+                "recent_event_ids": recent_event_ids[-max_ids:],
+                "last_by_camera": last_by_camera,
+            }
+        }
+        LOGGER.info(
+            "Loaded policy state from %s (recent_event_ids=%s cameras=%s)",
+            self._config.state_file,
+            len(self._policy_runtime_state["events"]["recent_event_ids"]),
+            len(self._policy_runtime_state["events"]["last_by_camera"]),
+        )
+
+    def _save_policy_state(self) -> None:
+        try:
+            self._state_manager.save_state_atomic(self._policy_runtime_state)
+        except OSError as exc:
+            LOGGER.warning("Failed to persist policy state: %s", exc)
 
     def _start_heartbeat(self) -> None:
         if self._heartbeat_task is not None and not self._heartbeat_task.done():
