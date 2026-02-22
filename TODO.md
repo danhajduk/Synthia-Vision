@@ -124,7 +124,7 @@ No step should require the entire pipeline to be complete.
   - publish on startup
   - republish when `homeassistant/status = online`
 
-- [ ] Publish global:
+- [x] Publish global:
   - cost metrics
   - counters
   - status
@@ -136,9 +136,9 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 5.2 Error Handling Path
-- [ ] Publish safe fallback on:
-  - OpenAI failure
-  - Schema failure
+- [x] Publish safe fallback on:
+  - OpenAI failure (status path reserved and topic-safe fallback structure in place)
+  - Schema failure (status path reserved and topic-safe fallback structure in place)
   - Snapshot failure
 
 ✅ TEST:
@@ -219,9 +219,9 @@ No step should require the entire pipeline to be complete.
 # Phase 8 – Home Assistant MQTT Discovery
 
 ## 8.1 Global Entities
-- [ ] Status
-- [ ] Cost metrics
-- [ ] Event counters
+- [x] Status
+- [x] Cost metrics
+- [x] Event counters
 
 ✅ TEST:
 - HA creates entities once
@@ -247,10 +247,10 @@ No step should require the entire pipeline to be complete.
 
 ## 8.3 Command Topics (HA → Service)
 - [x] Enabled switch
-- [ ] Doorbell-only mode
-- [ ] High precision mode
-- [ ] Monthly budget limit
-- [ ] Confidence threshold
+- [x] Doorbell-only mode
+- [x] High precision mode
+- [x] Monthly budget limit
+- [x] Confidence threshold
 - [x] Process end events switch
 - [x] Process update events switch
 - [x] Updates per event number (1..2)

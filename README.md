@@ -35,6 +35,10 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
   - process `end` events toggle
   - process `update` events toggle
   - updates-per-event limit (`1..2`) for each `event_id`
+- Global metrics publishing:
+  - event counters (`count_total`, `count_today`)
+  - core cost/token placeholders (`cost.*`, `tokens.*`)
+  - retained publish on startup and after accepted processing events
 
 ### Policy Engine
 - Pure function: `should_process(event, state, config) -> Decision`
@@ -67,7 +71,21 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Heartbeat: `synthia/synthiavision/heartbeat_ts`
 - Subscribed input: `frigate/events` (from config)
 - Core control topics:
+  - `.../control/enabled` + `.../set`
+  - `.../control/monthly_budget` + `.../set`
+  - `.../control/confidence_threshold` + `.../set`
+  - `.../control/doorbell_only_mode` + `.../set`
+  - `.../control/high_precision_mode` + `.../set`
   - `.../control/updates_per_event` + `.../set`
+- Core metrics topics:
+  - `.../events/count_total`
+  - `.../events/count_today`
+  - `.../cost/last`
+  - `.../cost/daily_total`
+  - `.../cost/month2day_total`
+  - `.../cost/avg_per_event`
+  - `.../tokens/avg_per_request`
+  - `.../tokens/avg_per_day`
 - Per-camera output:
   - `.../camera/{camera}/enabled` (`ON`/`OFF`)
   - `.../camera/{camera}/enabled/set` (`ON`/`OFF` command)
@@ -98,6 +116,15 @@ Key current settings:
 - `topics.camera.process_end_events`
 - `topics.camera.process_update_events`
 - `topics.control.updates_per_event`
+- `topics.control.enabled`
+- `topics.control.monthly_budget`
+- `topics.control.confidence_threshold`
+- `topics.control.doorbell_only_mode`
+- `topics.control.high_precision_mode`
+- `topics.events.count_total`
+- `topics.events.count_today`
+- `topics.cost.*`
+- `topics.tokens.*`
 - `logging.level`
 - `logging.components.core`
 - `logging.components.mqtt`
@@ -191,6 +218,14 @@ docker compose down
 ## State Persistence
 
 Policy runtime state is persisted in JSON with atomic writes:
+- `controls.updates_per_event`
+- `controls.camera_event_processing.<camera>.process_end_events`
+- `controls.camera_event_processing.<camera>.process_update_events`
+- `metrics.count_total`
+- `metrics.count_today`
+- `metrics.count_today_date`
+- `metrics.cost_*`
+- `metrics.tokens_*`
 - `events.recent_event_ids`
 - `events.last_by_camera.<camera>.last_event_id`
 - `events.last_by_camera.<camera>.last_event_ts`

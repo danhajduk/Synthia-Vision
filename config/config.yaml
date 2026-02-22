@@ -172,6 +172,10 @@ topics:
     avg_per_event: "{mqtt_prefix}/cost/avg_per_event"
     monthly_by_camera: "{mqtt_prefix}/cost/monthly_by_camera/{camera}"
 
+  tokens:
+    avg_per_request: "{mqtt_prefix}/tokens/avg_per_request"
+    avg_per_day: "{mqtt_prefix}/tokens/avg_per_day"
+
   events:
     count_total: "{mqtt_prefix}/events/count_total"
     count_today: "{mqtt_prefix}/events/count_today"
@@ -183,6 +187,10 @@ topics:
     monthly_budget_set: "{mqtt_prefix}/control/monthly_budget/set"
     confidence_threshold: "{mqtt_prefix}/control/confidence_threshold"
     confidence_threshold_set: "{mqtt_prefix}/control/confidence_threshold/set"
+    doorbell_only_mode: "{mqtt_prefix}/control/doorbell_only_mode"
+    doorbell_only_mode_set: "{mqtt_prefix}/control/doorbell_only_mode/set"
+    high_precision_mode: "{mqtt_prefix}/control/high_precision_mode"
+    high_precision_mode_set: "{mqtt_prefix}/control/high_precision_mode/set"
     updates_per_event: "{mqtt_prefix}/control/updates_per_event"
     updates_per_event_set: "{mqtt_prefix}/control/updates_per_event/set"
 

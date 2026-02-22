@@ -43,6 +43,7 @@ class MQTTClient:
         self._disconnect_requested = False
         self._status_topic = _resolve_status_topic(config)
         self._heartbeat_topic = _resolve_heartbeat_topic(config)
+        self._last_error_topic = _resolve_last_error_topic(config)
         self._events_topic = config.mqtt.events_topic
         self._ha_status_topic = f"{config.mqtt_discovery.prefix}/status"
         self._control_set_pattern = re.compile(
@@ -59,8 +60,24 @@ class MQTTClient:
         self._event_router = EventRouter()
         self._policy_runtime_state: dict[str, Any] = {
             "controls": {
+                "enabled": True,
+                "monthly_budget": float(self._config.budget.monthly_budget_limit),
+                "confidence_threshold": int(round(self._config.policy.defaults.confidence_threshold * 100)),
+                "doorbell_only_mode": bool(self._config.modes.doorbell_only_mode.enabled),
+                "high_precision_mode": bool(self._config.modes.high_precision_mode.enabled),
                 "updates_per_event": 1,
                 "camera_event_processing": {},
+            },
+            "metrics": {
+                "count_total": 0,
+                "count_today": 0,
+                "count_today_date": datetime.now().date().isoformat(),
+                "cost_last": 0.0,
+                "cost_daily_total": 0.0,
+                "cost_month2day_total": 0.0,
+                "cost_avg_per_event": 0.0,
+                "tokens_avg_per_request": 0.0,
+                "tokens_avg_per_day": 0.0,
             },
             "events": {
                 "recent_event_ids": [],
@@ -68,6 +85,12 @@ class MQTTClient:
             }
         }
         self._event_controls = EventControlSettings()
+        self._runtime_metrics: dict[str, Any] = {}
+        self._service_enabled: bool = True
+        self._monthly_budget_limit: float = float(self._config.budget.monthly_budget_limit)
+        self._confidence_threshold_percent: int = int(
+            round(self._config.policy.defaults.confidence_threshold * 100)
+        )
         self._process_end_events_by_camera: dict[str, bool] = {}
         self._process_update_events_by_camera: dict[str, bool] = {}
         self._updates_processed_count: dict[str, int] = {}
@@ -129,6 +152,7 @@ class MQTTClient:
         self._publish_discovery_configs()
         self._publish_core_defaults_unknown()
         self._publish_camera_defaults_all()
+        self._publish_global_metrics()
         await self.publish_status("enabled")
         self._start_heartbeat()
         LOGGER.info("MQTT ready status published")
@@ -331,10 +355,73 @@ class MQTTClient:
         raw_value = payload.decode("utf-8", errors="replace").strip()
         topics = self._resolve_core_topics()
 
+        if key == "enabled":
+            parsed = parse_on_off(raw_value)
+            if parsed is None:
+                LOGGER.warning("Ignoring invalid enabled payload=%s", raw_value)
+                self._publish_last_error(f"invalid enabled payload: {raw_value}")
+                return True
+            self._service_enabled = parsed
+            self._publish_sync(topics["control_enabled"], bool_to_on_off(parsed))
+            self._persist_runtime_controls()
+            LOGGER.info("Updated service enabled=%s", parsed)
+            return True
+
+        if key == "monthly_budget":
+            parsed_budget = _parse_monthly_budget(raw_value)
+            if parsed_budget is None:
+                LOGGER.warning("Ignoring invalid monthly_budget payload=%s", raw_value)
+                self._publish_last_error(f"invalid monthly_budget payload: {raw_value}")
+                return True
+            self._monthly_budget_limit = parsed_budget
+            self._config.budget.monthly_budget_limit = parsed_budget
+            self._publish_sync(topics["control_monthly_budget"], f"{parsed_budget:.2f}")
+            self._persist_runtime_controls()
+            LOGGER.info("Updated monthly_budget=%s", parsed_budget)
+            return True
+
+        if key == "confidence_threshold":
+            parsed_threshold = _parse_confidence_threshold(raw_value)
+            if parsed_threshold is None:
+                LOGGER.warning("Ignoring invalid confidence_threshold payload=%s", raw_value)
+                self._publish_last_error(f"invalid confidence_threshold payload: {raw_value}")
+                return True
+            self._confidence_threshold_percent = parsed_threshold
+            self._config.policy.defaults.confidence_threshold = parsed_threshold / 100.0
+            self._publish_sync(topics["control_confidence_threshold"], str(parsed_threshold))
+            self._persist_runtime_controls()
+            LOGGER.info("Updated confidence_threshold_percent=%s", parsed_threshold)
+            return True
+
+        if key == "doorbell_only_mode":
+            parsed = parse_on_off(raw_value)
+            if parsed is None:
+                LOGGER.warning("Ignoring invalid doorbell_only_mode payload=%s", raw_value)
+                self._publish_last_error(f"invalid doorbell_only_mode payload: {raw_value}")
+                return True
+            self._config.modes.doorbell_only_mode.enabled = parsed
+            self._publish_sync(topics["control_doorbell_only_mode"], bool_to_on_off(parsed))
+            self._persist_runtime_controls()
+            LOGGER.info("Updated doorbell_only_mode=%s", parsed)
+            return True
+
+        if key == "high_precision_mode":
+            parsed = parse_on_off(raw_value)
+            if parsed is None:
+                LOGGER.warning("Ignoring invalid high_precision_mode payload=%s", raw_value)
+                self._publish_last_error(f"invalid high_precision_mode payload: {raw_value}")
+                return True
+            self._config.modes.high_precision_mode.enabled = parsed
+            self._publish_sync(topics["control_high_precision_mode"], bool_to_on_off(parsed))
+            self._persist_runtime_controls()
+            LOGGER.info("Updated high_precision_mode=%s", parsed)
+            return True
+
         if key == "updates_per_event":
             parsed_int = parse_updates_per_event(raw_value)
             if parsed_int is None:
                 LOGGER.warning("Ignoring invalid updates_per_event payload=%s", raw_value)
+                self._publish_last_error(f"invalid updates_per_event payload: {raw_value}")
                 return True
             self._event_controls.updates_per_event = parsed_int
             self._publish_sync(topics["control_updates_per_event"], str(parsed_int))
@@ -365,6 +452,9 @@ class MQTTClient:
                     camera,
                     raw_value,
                 )
+                self._publish_last_error(
+                    f"invalid camera enabled payload camera={camera} payload={raw_value}"
+                )
                 return True
             self._camera_enabled_overrides[camera] = parsed
             self._publish_sync(topics["enabled"], bool_to_on_off(parsed))
@@ -381,6 +471,9 @@ class MQTTClient:
                     camera,
                     raw_value,
                 )
+                self._publish_last_error(
+                    f"invalid camera process_end_events payload camera={camera} payload={raw_value}"
+                )
                 return True
             self._process_end_events_by_camera[camera] = parsed
             self._publish_sync(topics["process_end_events"], bool_to_on_off(parsed))
@@ -395,6 +488,9 @@ class MQTTClient:
                     "Ignoring invalid camera process_update_events payload camera=%s payload=%s",
                     camera,
                     raw_value,
+                )
+                self._publish_last_error(
+                    f"invalid camera process_update_events payload camera={camera} payload={raw_value}"
                 )
                 return True
             self._process_update_events_by_camera[camera] = parsed
@@ -421,13 +517,16 @@ class MQTTClient:
             decoded = json.loads(payload_bytes.decode("utf-8"))
         except UnicodeDecodeError:
             LOGGER.warning("Ignoring Frigate event message: invalid UTF-8 payload")
+            self._publish_last_error("frigate event invalid UTF-8 payload")
             return None
         except json.JSONDecodeError:
             LOGGER.warning("Ignoring Frigate event message: invalid JSON payload")
+            self._publish_last_error("frigate event invalid JSON payload")
             return None
 
         if not isinstance(decoded, dict):
             LOGGER.warning("Ignoring Frigate event message: payload is not a JSON object")
+            self._publish_last_error("frigate event payload is not JSON object")
             return None
         return decoded
 
@@ -436,6 +535,22 @@ class MQTTClient:
             event = FrigateEvent.from_mqtt_payload(payload)
         except ValidationError as exc:
             LOGGER.warning("Skipping policy evaluation: invalid event payload (%s)", exc)
+            self._publish_last_error(f"invalid event payload: {exc}")
+            return
+
+        if not self._service_enabled:
+            LOGGER.info(
+                "Event suppressed by service enabled toggle event_id=%s camera=%s",
+                event.event_id,
+                event.camera,
+            )
+            self._publish_camera_result(
+                event=event,
+                result_status="skipped",
+                action="unknown",
+                confidence_percent="unknown",
+                description="skipped: service disabled",
+            )
             return
 
         gate = apply_event_controls(
@@ -462,6 +577,13 @@ class MQTTClient:
                 event.event_type,
                 gate.reason,
             )
+            self._publish_camera_result(
+                event=event,
+                result_status="suppressed",
+                action="unknown",
+                confidence_percent="unknown",
+                description=f"suppressed: {gate.reason}",
+            )
             return
 
         if not self._is_camera_enabled_runtime(event.camera):
@@ -470,7 +592,13 @@ class MQTTClient:
                 event.event_id,
                 event.camera,
             )
-            self._publish_camera_unknown(event.camera)
+            self._publish_camera_result(
+                event=event,
+                result_status="skipped",
+                action="unknown",
+                confidence_percent="unknown",
+                description="skipped: camera disabled",
+            )
             return
 
         decision = should_process(
@@ -480,10 +608,18 @@ class MQTTClient:
         )
         route_result = self._event_router.route(event, decision)
         if route_result.route == "processing":
+            self._record_processed_event_metrics()
             self._remember_policy_event(event)
             self._fetch_snapshot_for_event(event)
-        elif route_result.reason == "camera_disabled":
-            self._publish_camera_unknown(event.camera)
+            return
+
+        self._publish_camera_result(
+            event=event,
+            result_status="skipped",
+            action="unknown",
+            confidence_percent="unknown",
+            description=f"skipped: {route_result.reason}",
+        )
 
     def _remember_policy_event(self, event: FrigateEvent) -> None:
         events_data = self._policy_runtime_state.setdefault("events", {})
@@ -516,9 +652,54 @@ class MQTTClient:
         if not isinstance(last_by_camera, dict):
             last_by_camera = {}
 
+        metrics_data = loaded.get("metrics")
+        if not isinstance(metrics_data, dict):
+            metrics_data = {}
+        today_key = datetime.now().date().isoformat()
+        loaded_metrics = {
+            "count_total": int(metrics_data.get("count_total", 0)),
+            "count_today": int(metrics_data.get("count_today", 0)),
+            "count_today_date": str(metrics_data.get("count_today_date", today_key)),
+            "cost_last": float(metrics_data.get("cost_last", 0.0)),
+            "cost_daily_total": float(metrics_data.get("cost_daily_total", 0.0)),
+            "cost_month2day_total": float(metrics_data.get("cost_month2day_total", 0.0)),
+            "cost_avg_per_event": float(metrics_data.get("cost_avg_per_event", 0.0)),
+            "tokens_avg_per_request": float(metrics_data.get("tokens_avg_per_request", 0.0)),
+            "tokens_avg_per_day": float(metrics_data.get("tokens_avg_per_day", 0.0)),
+        }
+        if loaded_metrics["count_today_date"] != today_key:
+            loaded_metrics["count_today"] = 0
+            loaded_metrics["count_today_date"] = today_key
+
         max_ids = max(1, self._config.dedupe.recent_event_ids_max)
         loaded_controls = controls_from_state(loaded)
         self._event_controls = loaded_controls
+        self._runtime_metrics = loaded_metrics
+        controls_data = loaded.get("controls")
+        if not isinstance(controls_data, dict):
+            controls_data = {}
+
+        self._service_enabled = bool(controls_data.get("enabled", True))
+        self._monthly_budget_limit = float(
+            controls_data.get("monthly_budget", self._config.budget.monthly_budget_limit)
+        )
+        self._config.budget.monthly_budget_limit = self._monthly_budget_limit
+        self._confidence_threshold_percent = int(
+            controls_data.get(
+                "confidence_threshold",
+                round(self._config.policy.defaults.confidence_threshold * 100),
+            )
+        )
+        self._confidence_threshold_percent = max(0, min(100, self._confidence_threshold_percent))
+        self._config.policy.defaults.confidence_threshold = (
+            self._confidence_threshold_percent / 100.0
+        )
+        self._config.modes.doorbell_only_mode.enabled = bool(
+            controls_data.get("doorbell_only_mode", self._config.modes.doorbell_only_mode.enabled)
+        )
+        self._config.modes.high_precision_mode.enabled = bool(
+            controls_data.get("high_precision_mode", self._config.modes.high_precision_mode.enabled)
+        )
         loaded_camera_controls: dict[str, dict[str, bool]] = {}
         for camera in self._config.policy.cameras:
             process_end_events, process_update_events = camera_event_controls_from_state(
@@ -535,9 +716,15 @@ class MQTTClient:
             }
         self._policy_runtime_state = {
             "controls": {
+                "enabled": self._service_enabled,
+                "monthly_budget": self._monthly_budget_limit,
+                "confidence_threshold": self._confidence_threshold_percent,
+                "doorbell_only_mode": self._config.modes.doorbell_only_mode.enabled,
+                "high_precision_mode": self._config.modes.high_precision_mode.enabled,
                 "updates_per_event": loaded_controls.updates_per_event,
                 "camera_event_processing": loaded_camera_controls,
             },
+            "metrics": loaded_metrics,
             "events": {
                 "recent_event_ids": recent_event_ids[-max_ids:],
                 "last_by_camera": last_by_camera,
@@ -569,6 +756,7 @@ class MQTTClient:
                 event.camera,
                 exc,
             )
+            self._publish_last_error(f"snapshot_failed camera={event.camera} event_id={event.event_id}: {exc}")
             self._publish_camera_result(
                 event=event,
                 result_status="snapshot_failed",
@@ -621,11 +809,62 @@ class MQTTClient:
     def _publish_core_defaults_unknown(self) -> None:
         topics = self._resolve_core_topics()
         explicit_defaults = {
-            "control_enabled": "OFF",
+            "control_enabled": bool_to_on_off(self._service_enabled),
+            "control_monthly_budget": f"{self._monthly_budget_limit:.2f}",
+            "control_confidence_threshold": str(self._confidence_threshold_percent),
+            "control_doorbell_only_mode": bool_to_on_off(
+                self._config.modes.doorbell_only_mode.enabled
+            ),
+            "control_high_precision_mode": bool_to_on_off(
+                self._config.modes.high_precision_mode.enabled
+            ),
             "control_updates_per_event": str(self._event_controls.updates_per_event),
         }
         for key, topic in topics.items():
             self._publish_sync(topic, explicit_defaults.get(key, "unknown"))
+
+    def _publish_global_metrics(self) -> None:
+        topics = self._resolve_core_topics()
+        self._publish_sync(topics["events_count_total"], str(int(self._runtime_metrics.get("count_total", 0))))
+        self._publish_sync(topics["events_count_today"], str(int(self._runtime_metrics.get("count_today", 0))))
+        self._publish_sync(topics["cost_last"], f"{float(self._runtime_metrics.get('cost_last', 0.0)):.4f}")
+        self._publish_sync(
+            topics["cost_daily_total"],
+            f"{float(self._runtime_metrics.get('cost_daily_total', 0.0)):.4f}",
+        )
+        self._publish_sync(
+            topics["cost_month2day_total"],
+            f"{float(self._runtime_metrics.get('cost_month2day_total', 0.0)):.4f}",
+        )
+        self._publish_sync(
+            topics["cost_avg_per_event"],
+            f"{float(self._runtime_metrics.get('cost_avg_per_event', 0.0)):.4f}",
+        )
+        self._publish_sync(
+            topics["tokens_avg_per_request"],
+            f"{float(self._runtime_metrics.get('tokens_avg_per_request', 0.0)):.2f}",
+        )
+        self._publish_sync(
+            topics["tokens_avg_per_day"],
+            f"{float(self._runtime_metrics.get('tokens_avg_per_day', 0.0)):.2f}",
+        )
+
+    def _record_processed_event_metrics(self) -> None:
+        today_key = datetime.now().date().isoformat()
+        if str(self._runtime_metrics.get("count_today_date", today_key)) != today_key:
+            self._runtime_metrics["count_today"] = 0
+            self._runtime_metrics["count_today_date"] = today_key
+
+        self._runtime_metrics["count_total"] = int(self._runtime_metrics.get("count_total", 0)) + 1
+        self._runtime_metrics["count_today"] = int(self._runtime_metrics.get("count_today", 0)) + 1
+
+        count_total = max(1, int(self._runtime_metrics["count_total"]))
+        month_total = float(self._runtime_metrics.get("cost_month2day_total", 0.0))
+        self._runtime_metrics["cost_avg_per_event"] = month_total / float(count_total)
+
+        self._policy_runtime_state["metrics"] = dict(self._runtime_metrics)
+        self._save_policy_state()
+        self._publish_global_metrics()
 
     def _publish_camera_unknown(self, camera: str) -> None:
         topics = self._resolve_camera_topics(camera)
@@ -713,6 +952,8 @@ class MQTTClient:
             "control_enabled": self._resolve_topic_path("control.enabled", "control/enabled"),
             "control_monthly_budget": self._resolve_topic_path("control.monthly_budget", "control/monthly_budget"),
             "control_confidence_threshold": self._resolve_topic_path("control.confidence_threshold", "control/confidence_threshold"),
+            "control_doorbell_only_mode": self._resolve_topic_path("control.doorbell_only_mode", "control/doorbell_only_mode"),
+            "control_high_precision_mode": self._resolve_topic_path("control.high_precision_mode", "control/high_precision_mode"),
             "control_updates_per_event": self._resolve_topic_path("control.updates_per_event", "control/updates_per_event"),
         }
 
@@ -721,6 +962,11 @@ class MQTTClient:
         if not isinstance(controls, dict):
             controls = {}
             self._policy_runtime_state["controls"] = controls
+        controls["enabled"] = self._service_enabled
+        controls["monthly_budget"] = self._monthly_budget_limit
+        controls["confidence_threshold"] = self._confidence_threshold_percent
+        controls["doorbell_only_mode"] = self._config.modes.doorbell_only_mode.enabled
+        controls["high_precision_mode"] = self._config.modes.high_precision_mode.enabled
         controls["updates_per_event"] = self._event_controls.updates_per_event
         camera_event_processing: dict[str, dict[str, bool]] = {}
         for camera in self._config.policy.cameras:
@@ -775,6 +1021,12 @@ class MQTTClient:
                 )
         except Exception as exc:
             LOGGER.warning("MQTT publish error topic=%s error=%s", topic, exc)
+
+    def _publish_last_error(self, message: str) -> None:
+        safe_message = message.strip()
+        if not safe_message:
+            return
+        self._publish_sync(self._last_error_topic, safe_message)
 
     def _to_iso_timestamp(self, event_ts: float | None) -> str:
         ts = event_ts if event_ts is not None else time.time()
@@ -835,6 +1087,11 @@ def _resolve_heartbeat_topic(config: ServiceConfig) -> str:
     return heartbeat_template.replace("{mqtt_prefix}", config.service.mqtt_prefix)
 
 
+def _resolve_last_error_topic(config: ServiceConfig) -> str:
+    template = str(config.topics.get("last_error", "{mqtt_prefix}/last_error"))
+    return template.replace("{mqtt_prefix}", config.service.mqtt_prefix)
+
+
 def _safe_payload_preview(payload: str | bytes | bytearray) -> str:
     if isinstance(payload, str):
         preview = payload
@@ -846,3 +1103,23 @@ def _safe_payload_preview(payload: str | bytes | bytearray) -> str:
     if len(preview) > 240:
         return f"{preview[:240]}...(+{len(preview) - 240} chars)"
     return preview
+
+
+def _parse_monthly_budget(value: str) -> float | None:
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
+    if parsed < 0 or parsed > 200:
+        return None
+    return parsed
+
+
+def _parse_confidence_threshold(value: str) -> int | None:
+    try:
+        parsed = int(float(value))
+    except ValueError:
+        return None
+    if parsed < 0 or parsed > 100:
+        return None
+    return parsed

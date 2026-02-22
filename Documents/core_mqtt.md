@@ -64,6 +64,8 @@ State topics (retained):
 -   `.../control/enabled`
 -   `.../control/monthly_budget`
 -   `.../control/confidence_threshold`
+-   `.../control/doorbell_only_mode`
+-   `.../control/high_precision_mode`
 -   `.../control/updates_per_event`
 
 Command topics:
@@ -71,6 +73,8 @@ Command topics:
 -   `.../control/enabled/set`
 -   `.../control/monthly_budget/set`
 -   `.../control/confidence_threshold/set`
+-   `.../control/doorbell_only_mode/set`
+-   `.../control/high_precision_mode/set`
 -   `.../control/updates_per_event/set`
 
 ------------------------------------------------------------------------
@@ -167,6 +171,26 @@ Command topics:
 -   Unit: %
 -   Mode: slider
 -   Icon: `mdi:percent`
+
+------------------------------------------------------------------------
+
+## Doorbell Only Mode (Switch)
+
+-   Entity: `switch.synthia_vision_doorbell_only_mode`
+-   State Topic: `.../control/doorbell_only_mode`
+-   Command Topic: `.../control/doorbell_only_mode/set`
+-   Payload: `ON` / `OFF`
+-   Icon: `mdi:doorbell-video`
+
+------------------------------------------------------------------------
+
+## High Precision Mode (Switch)
+
+-   Entity: `switch.synthia_vision_high_precision_mode`
+-   State Topic: `.../control/high_precision_mode`
+-   Command Topic: `.../control/high_precision_mode/set`
+-   Payload: `ON` / `OFF`
+-   Icon: `mdi:target`
 
 ------------------------------------------------------------------------
 
