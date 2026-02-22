@@ -14,6 +14,7 @@ from src.errors import ConfigError
 LOGGER = logging.getLogger("synthia_vision.config")
 
 ENV_PLACEHOLDER_PATTERN = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+SUPPORTED_CONFIG_SCHEMA_VERSION = 1
 
 
 @dataclass(slots=True)
@@ -60,6 +61,7 @@ class ServicePathsConfig:
     state_file: Path = Path("state/state.json")
     config_file: Path = Path("config/config.yaml")
     snapshots_dir: Path = Path("state/snapshots")
+    db_file: Path = Path("state/synthia_vision.db")
 
 
 @dataclass(slots=True)
@@ -248,8 +250,9 @@ class ServiceConfig:
 def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
     """Load configuration from YAML file with environment placeholder support."""
     path = Path(config_path or os.getenv("SYNTHIA_CONFIG", "config/config.yaml"))
-    raw_data = _load_yaml_mapping(path)
-    resolved_data = _resolve_env_placeholders(raw_data)
+    merged_data = _load_yaml_mapping_with_includes(path)
+    resolved_data = _resolve_env_placeholders(merged_data)
+    _validate_schema_version(resolved_data, path)
 
     service_data = _as_mapping(resolved_data.get("service", {}), "service")
     service_paths_data = _as_mapping(service_data.get("paths", {}), "service.paths")
@@ -335,6 +338,9 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
             config_file=Path(str(service_paths_data.get("config_file", path))),
             snapshots_dir=Path(
                 str(service_paths_data.get("snapshots_dir", "state/snapshots"))
+            ),
+            db_file=Path(
+                str(service_paths_data.get("db_file", "state/synthia_vision.db"))
             ),
         ),
         mqtt=MQTTConfig(
@@ -565,6 +571,65 @@ def _load_yaml_mapping(path: Path) -> dict[str, Any]:
     if not isinstance(loaded, dict):
         raise ConfigError(f"Configuration root must be a mapping: {path}")
     return loaded
+
+
+def _load_yaml_mapping_with_includes(path: Path) -> dict[str, Any]:
+    root = _load_yaml_mapping(path)
+    includes = root.get("includes", [])
+    if not isinstance(includes, list):
+        raise ConfigError("Expected list at: includes")
+    merged = dict(root)
+    merged.pop("includes", None)
+    for include_path in _expand_include_paths(path.parent, includes):
+        include_data = _load_yaml_mapping(include_path)
+        merged = _deep_merge_mappings(merged, include_data)
+    return merged
+
+
+def _expand_include_paths(base_dir: Path, includes: list[Any]) -> list[Path]:
+    expanded: list[Path] = []
+    for include in includes:
+        if not isinstance(include, str) or not include.strip():
+            raise ConfigError("All includes entries must be non-empty strings")
+        raw = include.strip()
+        # Support explicit file paths and glob patterns like config.d/*.yaml.
+        if any(token in raw for token in ("*", "?", "[")):
+            matches = sorted((base_dir / ".").glob(raw))
+            if not matches:
+                raise ConfigError(f"Config include glob matched no files: {raw}")
+            expanded.extend(path for path in matches if path.is_file())
+            continue
+        include_path = (base_dir / raw).resolve()
+        if not include_path.exists():
+            raise ConfigError(f"Config include not found: {raw}")
+        if not include_path.is_file():
+            raise ConfigError(f"Config include is not a file: {raw}")
+        expanded.append(include_path)
+    return expanded
+
+
+def _deep_merge_mappings(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = dict(base)
+    for key, value in override.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_mappings(merged[key], value)
+            continue
+        # Lists are replaced by design (not concatenated) for predictable overrides.
+        merged[key] = value
+    return merged
+
+
+def _validate_schema_version(data: dict[str, Any], config_path: Path) -> None:
+    raw = data.get("schema_version")
+    if not isinstance(raw, int):
+        raise ConfigError(
+            f"Config schema_version is required and must be an integer in {config_path}"
+        )
+    if raw != SUPPORTED_CONFIG_SCHEMA_VERSION:
+        raise ConfigError(
+            "Unsupported config schema_version="
+            f"{raw}; expected {SUPPORTED_CONFIG_SCHEMA_VERSION}"
+        )
 
 
 def _resolve_env_placeholders(value: Any) -> Any:

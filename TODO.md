@@ -27,22 +27,22 @@ Acceptance:
 ---
 
 ## Phase 1 – Config Refactor + MQTT Normalization
-- [ ] Add root config model fields: `schema_version`, `includes`, `service.paths.db_file`.
-- [ ] Implement include-based loader:
-- [ ] Subtask: `config.yaml` as root.
-- [ ] Subtask: `config.d/*.yaml` merged in order.
-- [ ] Subtask: deep-merge dicts; lists are replace semantics.
-- [ ] Add schema version validation with clear failure message.
-- [ ] Normalize MQTT topic derivation from `service.mqtt_prefix`.
-- [ ] Ensure no internal hardcoded `synthia/synthiavision/...` topics remain.
-- [ ] Add config override precedence documentation:
-- [ ] Merge order: root -> config.d (sorted) -> environment overrides.
-- [ ] Explicitly document list replacement semantics.
+- [x] Add root config model fields: `schema_version`, `includes`, `service.paths.db_file`.
+- [x] Implement include-based loader:
+- [x] Subtask: `config.yaml` as root.
+- [x] Subtask: `config.d/*.yaml` merged in order.
+- [x] Subtask: deep-merge dicts; lists are replace semantics.
+- [x] Add schema version validation with clear failure message.
+- [x] Normalize MQTT topic derivation from `service.mqtt_prefix`.
+- [x] Ensure no internal hardcoded `synthia/synthiavision/...` topics remain.
+- [x] Add config override precedence documentation:
+- [x] Merge order: root -> config.d (sorted) -> environment overrides.
+- [x] Explicitly document list replacement semantics.
 
 Acceptance:
-- [ ] Existing runtime config loads via includes.
-- [ ] Schema mismatch fails fast with clear error.
-- [ ] Topic normalization verified.
+- [x] Existing runtime config loads via includes.
+- [x] Schema mismatch fails fast with clear error.
+- [x] Topic normalization verified.
 
 ---
 

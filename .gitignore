@@ -38,6 +38,7 @@ scripts/
 # Local config secrets/overrides
 config/*.local.yaml
 config/*.secret.yaml
+config/config.d/99-local.yaml
 .env
 .env.*
 

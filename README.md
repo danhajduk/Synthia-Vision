@@ -135,8 +135,22 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 
 ## Configuration
 
-Primary file:
+Primary root file:
 - `config/config.yaml`
+
+Modular includes:
+- `config/config.yaml` includes `config/config.d/*.yaml` in sorted order.
+- Recommended convention:
+  - `config/config.d/00-defaults.yaml` (repo defaults)
+  - `config/config.d/99-local.yaml` (local overrides, gitignored)
+- Merge precedence:
+  - root config
+  - included module files (in order)
+  - environment overrides
+- Merge behavior:
+  - dictionaries deep-merge
+  - lists replace earlier values (not concatenated)
+- Config schema version is validated via `schema_version` at root.
 
 Key current settings:
 - `mqtt.heartbeat_interval_seconds`
