@@ -16,6 +16,7 @@ from src.event_router import EventRouter
 from src.errors import ExternalServiceError, ValidationError
 from src.models import FrigateEvent
 from src.policy_engine import should_process
+from src.snapshot_manager import SnapshotManager
 from src.state_manager import StateManager
 
 LOGGER = logging.getLogger("synthia_vision.mqtt")
@@ -34,6 +35,7 @@ class MQTTClient:
         self._status_retain = config.mqtt.retain
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._state_manager = StateManager(config.state_file)
+        self._snapshot_manager = SnapshotManager(config)
         self._event_router = EventRouter()
         self._policy_runtime_state: dict[str, Any] = {
             "events": {
@@ -246,6 +248,7 @@ class MQTTClient:
         route_result = self._event_router.route(event, decision)
         if route_result.route == "processing":
             self._remember_policy_event(event)
+            self._fetch_snapshot_for_event(event)
 
     def _remember_policy_event(self, event: FrigateEvent) -> None:
         events_data = self._policy_runtime_state.setdefault("events", {})
@@ -297,6 +300,24 @@ class MQTTClient:
             self._state_manager.save_state_atomic(self._policy_runtime_state)
         except OSError as exc:
             LOGGER.warning("Failed to persist policy state: %s", exc)
+
+    def _fetch_snapshot_for_event(self, event: FrigateEvent) -> None:
+        try:
+            snapshot = self._snapshot_manager.fetch_event_snapshot(event.event_id)
+        except ExternalServiceError as exc:
+            LOGGER.warning(
+                "Snapshot fetch failed event_id=%s camera=%s error=%s",
+                event.event_id,
+                event.camera,
+                exc,
+            )
+            return
+        LOGGER.info(
+            "Snapshot ready event_id=%s camera=%s bytes=%s",
+            event.event_id,
+            event.camera,
+            len(snapshot),
+        )
 
     def _start_heartbeat(self) -> None:
         if self._heartbeat_task is not None and not self._heartbeat_task.done():

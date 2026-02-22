@@ -8,7 +8,8 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Phase 2 (MQTT + Event Intake) is complete.
 - Phase 3.1 policy decision logic is implemented and wired into MQTT intake.
 - Phase 3.2 event routing is implemented (accepted vs rejected routes + counters/logs).
-- Next: Phase 4 snapshot manager and downstream pipeline stages.
+- Phase 4 snapshot manager is implemented and wired for accepted events.
+- Next: Phase 5 OpenAI classification and downstream publishing stages.
 
 ## Implemented
 
@@ -44,6 +45,13 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Decision logs emitted on `synthia_vision.policy`
 - Rejection logs include explicit reason and details
 
+### Snapshot Manager
+- Frigate snapshot fetch by event ID (`/api/events/{event_id}/snapshot.jpg`)
+- Request timeout handling and retry/backoff policy
+- Max-bytes guard for response safety
+- Optional debug snapshot save to `service.paths.snapshots_dir` when `frigate.snapshot.debug_save=true`
+- Snapshot fetch is invoked for events routed to `processing`
+
 ## Active MQTT Topics (Now)
 
 - Status: `synthia/synthiavision/status`
@@ -70,6 +78,13 @@ Key current settings:
 - `logging.files.core|mqtt|config|policy|ai`
 - `logging.retention_days`
 - `service.paths.state_file`
+- `service.paths.snapshots_dir`
+- `frigate.snapshot.endpoint_template`
+- `frigate.snapshot.timeout_s`
+- `frigate.snapshot.retries`
+- `frigate.snapshot.retry_backoff_s`
+- `frigate.snapshot.max_bytes`
+- `frigate.snapshot.debug_save`
 
 Env overrides supported:
 - `SYNTHIA_CONFIG`

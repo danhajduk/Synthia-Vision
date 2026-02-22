@@ -42,6 +42,7 @@ frigate:
     max_bytes: 3000000                     # ~3MB cap
     retries: 3
     retry_backoff_s: [0.3, 0.8, 1.5]
+    debug_save: true
 
 ai:
   provider: "openai"

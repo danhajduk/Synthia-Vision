@@ -98,6 +98,7 @@ class FrigateSnapshotConfig:
     timeout_seconds: int = 5
     max_bytes: int = 3_000_000
     retries: int = 3
+    debug_save: bool = False
     retry_backoff_seconds: list[float] = field(default_factory=lambda: [0.3, 0.8, 1.5])
 
 
@@ -330,6 +331,7 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 timeout_seconds=int(frigate_snapshot_data.get("timeout_s", 5)),
                 max_bytes=int(frigate_snapshot_data.get("max_bytes", 3_000_000)),
                 retries=int(frigate_snapshot_data.get("retries", 3)),
+                debug_save=_as_bool(frigate_snapshot_data.get("debug_save", False)),
                 retry_backoff_seconds=_as_float_list(
                     frigate_snapshot_data.get("retry_backoff_s", [0.3, 0.8, 1.5]),
                     "frigate.snapshot.retry_backoff_s",

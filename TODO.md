@@ -85,7 +85,7 @@ No step should require the entire pipeline to be complete.
 # Phase 4 – Snapshot Manager
 
 ## 4.1 Fetch Event Snapshot
-- [ ] Implement snapshot_manager.py
+- [x] Implement snapshot_manager.py
   - GET /api/events/{event_id}/snapshot.jpg
   - timeout handling
   - retry with backoff
@@ -101,8 +101,8 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 4.2 Optional Debug Save
-- [ ] If debug enabled:
-  - Save snapshot to /app/state/snapshots/
+- [x] If debug enabled:
+  - Save snapshot to /app/state/snapshots/[event_id].jpg
 
 ✅ TEST:
 - Confirm image file is written
