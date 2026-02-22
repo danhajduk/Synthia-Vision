@@ -15,6 +15,7 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 from src.config import ServiceConfig
+from src.db import CameraStore
 from src.event_router import EventRouter
 from src.ha_discovery import HADiscoveryPublisher
 from src.errors import ExternalServiceError, ValidationError
@@ -80,6 +81,7 @@ class MQTTClient:
         self._dropped_update_total = 0
         self._dropped_queue_full_total = 0
         self._state_manager = StateManager(config.state_file)
+        self._camera_store = CameraStore(config.paths.db_file)
         self._snapshot_manager = SnapshotManager(config)
         self._openai_client: OpenAIClient | None = None
         try:
@@ -468,9 +470,6 @@ class MQTTClient:
 
         camera = match.group(1)
         key = match.group(2)
-        if camera not in self._config.policy.cameras:
-            LOGGER.warning("Ignoring enabled command for unknown camera=%s", camera)
-            return True
 
         raw_value = payload.decode("utf-8", errors="replace").strip()
         topics = self._resolve_camera_topics(camera)
@@ -595,6 +594,7 @@ class MQTTClient:
             self._loop.call_soon_threadsafe(self._queue_event.set)
 
     def _evaluate_policy(self, event: FrigateEvent) -> None:
+        self._upsert_discovered_camera(event)
 
         if not self._service_enabled:
             LOGGER.info(
@@ -1290,10 +1290,31 @@ class MQTTClient:
     def _is_camera_enabled_runtime(self, camera: str) -> bool:
         if camera in self._camera_enabled_overrides:
             return self._camera_enabled_overrides[camera]
+        try:
+            db_enabled = self._camera_store.get_camera_enabled(camera)
+        except Exception as exc:
+            LOGGER.warning("Camera enabled lookup failed camera=%s error=%s", camera, exc)
+            db_enabled = None
+        if db_enabled is not None:
+            return db_enabled
         camera_policy = self._config.policy.cameras.get(camera)
         if camera_policy is not None:
             return camera_policy.enabled
         return self._config.policy.defaults.enabled
+
+    def _upsert_discovered_camera(self, event: FrigateEvent) -> None:
+        try:
+            self._camera_store.upsert_discovered_camera(
+                event.camera,
+                last_seen_ts=event.event_ts,
+            )
+        except Exception as exc:
+            LOGGER.warning(
+                "Failed to upsert discovered camera camera=%s event_id=%s error=%s",
+                event.camera,
+                event.event_id,
+                exc,
+            )
 
     def _resolve_core_topics(self) -> dict[str, str]:
         return {
