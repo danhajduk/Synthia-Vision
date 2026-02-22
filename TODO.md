@@ -195,7 +195,7 @@ Admin APIs:
 - [x] `GET /api/errors`
 
 Acceptance:
-- [ ] Role gates enforced consistently.
+- [x] Role gates enforced consistently.
 - [ ] Guest API responses are safe for HA iframe use.
 
 ---

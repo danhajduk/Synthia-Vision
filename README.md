@@ -118,6 +118,15 @@ Admin endpoints currently available:
 - `POST /api/control/{name}`
 - `GET /api/errors`
 
+Auth/session endpoints:
+- `POST /api/auth/login` (sets HTTPOnly session cookie)
+- `POST /api/auth/logout` (clears session cookie)
+- `GET /api/auth/me`
+
+Authorization:
+- Guest endpoints are readable without login (`/api/status`, `/api/metrics/summary`, `/api/cameras/summary`).
+- Admin endpoints require an authenticated `admin` session cookie.
+
 Runtime:
 - Server defaults to `0.0.0.0:8080`.
 - Override with `SYNTHIA_API_HOST` and `SYNTHIA_API_PORT`.
