@@ -486,6 +486,10 @@ class MQTTClient:
                 )
                 return True
             self._camera_enabled_overrides[camera] = parsed
+            try:
+                self._camera_store.set_camera_enabled(camera, parsed)
+            except Exception as exc:
+                LOGGER.warning("Failed to persist camera enabled camera=%s error=%s", camera, exc)
             self._publish_sync(topics["enabled"], bool_to_on_off(parsed))
             if not parsed:
                 self._publish_camera_unknown(camera)
@@ -505,6 +509,13 @@ class MQTTClient:
                 )
                 return True
             self._process_end_events_by_camera[camera] = parsed
+            try:
+                self._camera_store.set_camera_event_controls(
+                    camera,
+                    process_end_events=parsed,
+                )
+            except Exception as exc:
+                LOGGER.warning("Failed to persist process_end_events camera=%s error=%s", camera, exc)
             self._publish_sync(topics["process_end_events"], bool_to_on_off(parsed))
             self._persist_runtime_controls()
             LOGGER.info("Camera process_end_events updated camera=%s enabled=%s", camera, parsed)
@@ -523,6 +534,13 @@ class MQTTClient:
                 )
                 return True
             self._process_update_events_by_camera[camera] = parsed
+            try:
+                self._camera_store.set_camera_event_controls(
+                    camera,
+                    process_update_events=parsed,
+                )
+            except Exception as exc:
+                LOGGER.warning("Failed to persist process_update_events camera=%s error=%s", camera, exc)
             self._publish_sync(topics["process_update_events"], bool_to_on_off(parsed))
             self._persist_runtime_controls()
             LOGGER.info(
@@ -572,6 +590,7 @@ class MQTTClient:
                 if event_type == "update":
                     self._dropped_events_total += 1
                     self._dropped_update_total += 1
+                    self._sync_queue_stats_to_db()
                     LOGGER.warning(
                         "Dropped incoming update due to full queue event_id=%s camera=%s depth=%s",
                         event.event_id,
@@ -583,6 +602,7 @@ class MQTTClient:
                     dropped = self._event_queue.popleft()
                     self._dropped_events_total += 1
                     self._dropped_queue_full_total += 1
+                    self._sync_queue_stats_to_db()
                     LOGGER.warning(
                         "Dropped oldest event due to full queue dropped_event_id=%s dropped_camera=%s depth=%s",
                         dropped.event_id,
@@ -590,11 +610,14 @@ class MQTTClient:
                         queue_len,
                     )
             self._event_queue.append(event)
+            queue_depth = len(self._event_queue)
         if self._loop is not None:
             self._loop.call_soon_threadsafe(self._queue_event.set)
+        self._sync_queue_depth_to_db(queue_depth)
 
     def _evaluate_policy(self, event: FrigateEvent) -> None:
         self._upsert_discovered_camera(event)
+        camera_runtime = self._resolve_camera_runtime_settings(event.camera)
 
         if not self._service_enabled:
             LOGGER.info(
@@ -609,12 +632,9 @@ class MQTTClient:
             event_id=f"{event.camera}:{event.event_id}",
             event_type=event.event_type,
             settings=EventControlSettings(
-                process_end_events=self._process_end_events_by_camera.get(event.camera, True),
-                process_update_events=self._process_update_events_by_camera.get(
-                    event.camera,
-                    False,
-                ),
-                updates_per_event=self._event_controls.updates_per_event,
+                process_end_events=camera_runtime.process_end_events,
+                process_update_events=camera_runtime.process_update_events,
+                updates_per_event=camera_runtime.updates_per_event,
                 update_ttl_seconds=self._event_controls.update_ttl_seconds,
             ),
             updates_processed_count=self._updates_processed_count,
@@ -632,7 +652,7 @@ class MQTTClient:
             self._publish_camera_status_only(event=event, result_status="suppressed")
             return
 
-        if not self._is_camera_enabled_runtime(event.camera):
+        if not camera_runtime.enabled:
             LOGGER.info(
                 "Event suppressed by camera toggle event_id=%s camera=%s",
                 event.event_id,
@@ -744,6 +764,28 @@ class MQTTClient:
             except asyncio.CancelledError:
                 pass
             self._degraded_monitor_task = None
+
+    def _resolve_camera_runtime_settings(self, camera: str):
+        try:
+            return self._camera_store.get_runtime_settings(
+                camera,
+                default_process_end_events=self._process_end_events_by_camera.get(camera, True),
+                default_process_update_events=self._process_update_events_by_camera.get(
+                    camera,
+                    False,
+                ),
+                default_updates_per_event=self._event_controls.updates_per_event,
+            )
+        except Exception as exc:
+            LOGGER.warning("Camera runtime settings lookup failed camera=%s error=%s", camera, exc)
+            from types import SimpleNamespace
+
+            return SimpleNamespace(
+                enabled=False,
+                process_end_events=self._process_end_events_by_camera.get(camera, True),
+                process_update_events=self._process_update_events_by_camera.get(camera, False),
+                updates_per_event=self._event_controls.updates_per_event,
+            )
 
     def _remember_policy_event(self, event: FrigateEvent) -> None:
         events_data = self._policy_runtime_state.setdefault("events", {})
@@ -1292,15 +1334,12 @@ class MQTTClient:
             return self._camera_enabled_overrides[camera]
         try:
             db_enabled = self._camera_store.get_camera_enabled(camera)
+            if db_enabled is not None:
+                return db_enabled
         except Exception as exc:
             LOGGER.warning("Camera enabled lookup failed camera=%s error=%s", camera, exc)
-            db_enabled = None
-        if db_enabled is not None:
-            return db_enabled
-        camera_policy = self._config.policy.cameras.get(camera)
-        if camera_policy is not None:
-            return camera_policy.enabled
-        return self._config.policy.defaults.enabled
+        # Unknown cameras must remain disabled until explicitly enabled.
+        return False
 
     def _upsert_discovered_camera(self, event: FrigateEvent) -> None:
         try:
@@ -1315,6 +1354,29 @@ class MQTTClient:
                 event.event_id,
                 exc,
             )
+
+    def _sync_queue_stats_to_db(self) -> None:
+        try:
+            self._camera_store.upsert_kv(
+                "counters.dropped_events_total",
+                str(self._dropped_events_total),
+            )
+            self._camera_store.upsert_kv(
+                "counters.dropped_update_total",
+                str(self._dropped_update_total),
+            )
+            self._camera_store.upsert_kv(
+                "counters.dropped_queue_full_total",
+                str(self._dropped_queue_full_total),
+            )
+        except Exception as exc:
+            LOGGER.warning("Failed to persist queue drop counters: %s", exc)
+
+    def _sync_queue_depth_to_db(self, depth: int) -> None:
+        try:
+            self._camera_store.upsert_kv("runtime.queue_depth", str(depth))
+        except Exception as exc:
+            LOGGER.warning("Failed to persist queue depth: %s", exc)
 
     def _resolve_core_topics(self) -> dict[str, str]:
         return {
