@@ -16,13 +16,13 @@ Execution rule:
 ---
 
 ## Phase 0 – Guardrails / Constraints
-- [ ] Snapshot current behavior and document known MQTT/runtime behavior.
-- [ ] Define constants for queue/degraded thresholds (`queue_max=50`, degrade high-water and recovery).
-- [ ] Add/confirm test harness for new pipeline modules.
+- [x] Snapshot current behavior and document known MQTT/runtime behavior.
+- [x] Define constants for queue/degraded thresholds (`queue_max=50`, degrade high-water and recovery).
+- [x] Add/confirm test harness for new pipeline modules.
 
 Acceptance:
-- [ ] Baseline tests run.
-- [ ] New sprint constants/config entries are defined in one place.
+- [x] Baseline tests run.
+- [x] New sprint constants/config entries are defined in one place.
 
 ---
 
