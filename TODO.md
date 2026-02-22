@@ -187,12 +187,12 @@ Guest APIs:
 - [x] `GET /api/cameras/summary`
 
 Admin APIs:
-- [ ] `GET /api/events`
-- [ ] `GET /api/events/{id}`
-- [ ] `GET /api/cameras`
-- [ ] `POST /api/cameras/{camera_key}`
-- [ ] `POST /api/control/{name}`
-- [ ] `GET /api/errors`
+- [x] `GET /api/events`
+- [x] `GET /api/events/{id}`
+- [x] `GET /api/cameras`
+- [x] `POST /api/cameras/{camera_key}`
+- [x] `POST /api/control/{name}`
+- [x] `GET /api/errors`
 
 Acceptance:
 - [ ] Role gates enforced consistently.

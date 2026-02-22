@@ -110,6 +110,14 @@ Guest endpoints are now exposed by the built-in API server:
 - `GET /api/metrics/summary`
 - `GET /api/cameras/summary`
 
+Admin endpoints currently available:
+- `GET /api/events`
+- `GET /api/events/{id}`
+- `GET /api/cameras`
+- `POST /api/cameras/{camera_key}`
+- `POST /api/control/{name}`
+- `GET /api/errors`
+
 Runtime:
 - Server defaults to `0.0.0.0:8080`.
 - Override with `SYNTHIA_API_HOST` and `SYNTHIA_API_PORT`.

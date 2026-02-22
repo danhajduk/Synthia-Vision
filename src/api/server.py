@@ -7,26 +7,72 @@ import os
 from dataclasses import dataclass
 
 from src.config import ServiceConfig
-from src.db import SummaryStore
+from src.db import AdminStore, SummaryStore
 
 
 def create_guest_api_app(config: ServiceConfig):
-    from fastapi import FastAPI
+    from fastapi import FastAPI, HTTPException
 
-    store = SummaryStore(config.paths.db_file)
+    summary_store = SummaryStore(config.paths.db_file)
+    admin_store = AdminStore(config.paths.db_file)
     app = FastAPI(title="Synthia Vision API", version="0.1.0")
 
     @app.get("/api/status")
     async def api_status():
-        return store.get_status_summary()
+        return summary_store.get_status_summary()
 
     @app.get("/api/metrics/summary")
     async def api_metrics_summary():
-        return {"metrics": store.get_metrics_summary()}
+        return {"metrics": summary_store.get_metrics_summary()}
 
     @app.get("/api/cameras/summary")
     async def api_cameras_summary():
-        return store.get_cameras_summary()
+        return summary_store.get_cameras_summary()
+
+    @app.get("/api/events")
+    async def api_events(
+        limit: int = 100,
+        offset: int = 0,
+        camera: str | None = None,
+        accepted: bool | None = None,
+    ):
+        return admin_store.list_events(
+            limit=limit,
+            offset=offset,
+            camera=camera,
+            accepted=accepted,
+        )
+
+    @app.get("/api/events/{event_id}")
+    async def api_event_detail(event_id: str):
+        item = admin_store.get_event(event_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="event not found")
+        return item
+
+    @app.get("/api/cameras")
+    async def api_cameras():
+        return admin_store.list_cameras()
+
+    @app.post("/api/cameras/{camera_key}")
+    async def api_camera_update(camera_key: str, payload: dict):
+        try:
+            return admin_store.update_camera(camera_key, payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/control/{name}")
+    async def api_control_update(name: str, payload: dict):
+        if "value" not in payload:
+            raise HTTPException(status_code=400, detail="payload.value is required")
+        try:
+            return admin_store.update_control(name, payload["value"])
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/errors")
+    async def api_errors(limit: int = 100, offset: int = 0):
+        return admin_store.list_errors(limit=limit, offset=offset)
 
     return app
 
