@@ -19,6 +19,7 @@ from src.ha_discovery import HADiscoveryPublisher
 from src.errors import ExternalServiceError, ValidationError
 from src.models import FrigateEvent
 from src.policy_engine import should_process
+from src.openai import OpenAIClient, OpenAIUsage, enforce_classification_result
 from src.runtime_controls import (
     EventControlSettings,
     apply_event_controls,
@@ -56,6 +57,11 @@ class MQTTClient:
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._state_manager = StateManager(config.state_file)
         self._snapshot_manager = SnapshotManager(config)
+        self._openai_client: OpenAIClient | None = None
+        try:
+            self._openai_client = OpenAIClient(config)
+        except ExternalServiceError as exc:
+            LOGGER.warning("OpenAI client unavailable at startup: %s", exc)
         self._ha_discovery = HADiscoveryPublisher(config)
         self._event_router = EventRouter()
         self._policy_runtime_state: dict[str, Any] = {
@@ -75,6 +81,7 @@ class MQTTClient:
                 "cost_last": 0.0,
                 "cost_daily_total": 0.0,
                 "cost_month2day_total": 0.0,
+                "cost_monthly_by_camera": {},
                 "cost_avg_per_event": 0.0,
                 "tokens_avg_per_request": 0.0,
                 "tokens_avg_per_day": 0.0,
@@ -663,13 +670,20 @@ class MQTTClient:
             "cost_last": float(metrics_data.get("cost_last", 0.0)),
             "cost_daily_total": float(metrics_data.get("cost_daily_total", 0.0)),
             "cost_month2day_total": float(metrics_data.get("cost_month2day_total", 0.0)),
+            "cost_monthly_by_camera": {},
             "cost_avg_per_event": float(metrics_data.get("cost_avg_per_event", 0.0)),
             "tokens_avg_per_request": float(metrics_data.get("tokens_avg_per_request", 0.0)),
             "tokens_avg_per_day": float(metrics_data.get("tokens_avg_per_day", 0.0)),
         }
+        raw_by_camera = metrics_data.get("cost_monthly_by_camera")
+        if isinstance(raw_by_camera, dict):
+            loaded_metrics["cost_monthly_by_camera"] = {
+                str(camera): float(amount) for camera, amount in raw_by_camera.items()
+            }
         if loaded_metrics["count_today_date"] != today_key:
             loaded_metrics["count_today"] = 0
             loaded_metrics["count_today_date"] = today_key
+            loaded_metrics["cost_daily_total"] = 0.0
 
         max_ids = max(1, self._config.dedupe.recent_event_ids_max)
         loaded_controls = controls_from_state(loaded)
@@ -760,6 +774,10 @@ class MQTTClient:
             self._publish_camera_result(
                 event=event,
                 result_status="snapshot_failed",
+                action="unknown",
+                subject_type="unknown",
+                confidence_percent="unknown",
+                description="snapshot fetch failed",
             )
             return
         LOGGER.info(
@@ -768,14 +786,73 @@ class MQTTClient:
             event.camera,
             len(snapshot),
         )
-        # Phase 5.1.1: Publish camera state topics before OpenAI is wired in.
+        if self._openai_client is None:
+            self._publish_last_error(
+                f"openai_failed camera={event.camera} event_id={event.event_id}: openai client unavailable"
+            )
+            self._publish_camera_result(
+                event=event,
+                result_status="openai_failed",
+                action="unknown",
+                subject_type="unknown",
+                confidence_percent="unknown",
+                description="openai client unavailable",
+            )
+            return
+        try:
+            classification, usage = self._openai_client.classify(
+                snapshot_bytes=snapshot,
+                camera_name=event.camera,
+            )
+        except ValidationError as exc:
+            LOGGER.warning(
+                "OpenAI schema validation failed event_id=%s camera=%s error=%s",
+                event.event_id,
+                event.camera,
+                exc,
+            )
+            self._publish_last_error(
+                f"schema_failed camera={event.camera} event_id={event.event_id}: {exc}"
+            )
+            self._publish_camera_result(
+                event=event,
+                result_status="schema_failed",
+                action="unknown",
+                subject_type="unknown",
+                confidence_percent="unknown",
+                description="classification schema validation failed",
+            )
+            return
+        except ExternalServiceError as exc:
+            LOGGER.warning(
+                "OpenAI classification failed event_id=%s camera=%s error=%s",
+                event.event_id,
+                event.camera,
+                exc,
+            )
+            self._publish_last_error(
+                f"openai_failed camera={event.camera} event_id={event.event_id}: {exc}"
+            )
+            self._publish_camera_result(
+                event=event,
+                result_status="openai_failed",
+                action="unknown",
+                subject_type="unknown",
+                confidence_percent="unknown",
+                description="classification failed",
+            )
+            return
+
+        confidence_percent = max(0, min(100, int(round(classification.confidence * 100.0))))
         self._publish_camera_result(
             event=event,
             result_status="ok",
-            action="unknown",
-            confidence_percent=0,
-            description="snapshot captured; classification pending",
+            action=classification.action,
+            subject_type=classification.subject_type,
+            confidence_percent=confidence_percent,
+            description=classification.description,
         )
+        self._record_openai_usage_metrics(usage=usage, camera=event.camera)
 
     def _publish_camera_result(
         self,
@@ -783,28 +860,52 @@ class MQTTClient:
         event: FrigateEvent,
         result_status: str,
         action: str | None = None,
+        subject_type: str | None = None,
         confidence_percent: int | str | None = None,
         description: str | None = None,
     ) -> None:
         topics = self._resolve_camera_topics(event.camera)
         last_event_ts_iso = self._to_iso_timestamp(event.event_ts)
 
+        effective_status = result_status
+        effective_action = action
+        effective_subject_type = subject_type
+        effective_description = description
+        if action is not None or subject_type is not None or description is not None:
+            enforced_action, enforced_subject_type, enforced_description, enforce_status = (
+                enforce_classification_result(
+                    action=action or self._config.policy.actions.default_action,
+                    subject_type=subject_type or self._config.policy.subject_types.default,
+                    description=description or "",
+                    camera=event.camera,
+                    config=self._config,
+                )
+            )
+            effective_action = enforced_action
+            effective_subject_type = enforced_subject_type
+            effective_description = enforced_description
+            if enforce_status != "ok":
+                effective_status = enforce_status
+
         # Publish order follows camera_mqtt.md recommendation.
         self._publish_sync(topics["last_event_id"], event.event_id)
         self._publish_sync(topics["last_event_ts"], last_event_ts_iso)
-        self._publish_sync(topics["result_status"], result_status)
-        if action is not None:
-            self._publish_sync(topics["action"], action)
+        self._publish_sync(topics["result_status"], effective_status)
+        if effective_action is not None:
+            self._publish_sync(topics["action"], effective_action)
+        if effective_subject_type is not None:
+            self._publish_sync(topics["subject_type"], effective_subject_type)
         if confidence_percent is not None:
             self._publish_sync(topics["confidence"], str(confidence_percent))
-        if description is not None:
-            self._publish_sync(topics["description"], description)
+        if effective_description is not None:
+            self._publish_sync(topics["description"], effective_description)
 
     def _publish_camera_defaults_all(self) -> None:
         for camera in sorted(self._config.policy.cameras.keys()):
             self._publish_camera_enabled_state(camera)
             self._publish_camera_event_control_states(camera)
             self._publish_camera_unknown(camera)
+            self._publish_camera_monthly_cost(camera)
 
     def _publish_core_defaults_unknown(self) -> None:
         topics = self._resolve_core_topics()
@@ -866,15 +967,64 @@ class MQTTClient:
         self._save_policy_state()
         self._publish_global_metrics()
 
+    def _record_openai_usage_metrics(self, *, usage: OpenAIUsage, camera: str) -> None:
+        today_key = datetime.now().date().isoformat()
+        if str(self._runtime_metrics.get("count_today_date", today_key)) != today_key:
+            self._runtime_metrics["count_today"] = 0
+            self._runtime_metrics["count_today_date"] = today_key
+            self._runtime_metrics["cost_daily_total"] = 0.0
+
+        self._runtime_metrics["cost_last"] = float(usage.cost_usd)
+        self._runtime_metrics["cost_daily_total"] = float(
+            self._runtime_metrics.get("cost_daily_total", 0.0)
+        ) + float(usage.cost_usd)
+        self._runtime_metrics["cost_month2day_total"] = float(
+            self._runtime_metrics.get("cost_month2day_total", 0.0)
+        ) + float(usage.cost_usd)
+
+        camera_costs = self._runtime_metrics.get("cost_monthly_by_camera")
+        if not isinstance(camera_costs, dict):
+            camera_costs = {}
+            self._runtime_metrics["cost_monthly_by_camera"] = camera_costs
+        camera_costs[camera] = float(camera_costs.get(camera, 0.0)) + float(usage.cost_usd)
+
+        count_total = max(1, int(self._runtime_metrics.get("count_total", 0)))
+        self._runtime_metrics["cost_avg_per_event"] = float(
+            self._runtime_metrics.get("cost_month2day_total", 0.0)
+        ) / float(count_total)
+
+        previous_avg = float(self._runtime_metrics.get("tokens_avg_per_request", 0.0))
+        self._runtime_metrics["tokens_avg_per_request"] = (
+            (previous_avg * float(count_total - 1)) + float(usage.total_tokens)
+        ) / float(count_total)
+        count_today = max(1, int(self._runtime_metrics.get("count_today", 0)))
+        self._runtime_metrics["tokens_avg_per_day"] = (
+            self._runtime_metrics["tokens_avg_per_request"] * float(count_today)
+        )
+
+        self._policy_runtime_state["metrics"] = dict(self._runtime_metrics)
+        self._save_policy_state()
+        self._publish_global_metrics()
+        self._publish_camera_monthly_cost(camera)
+
     def _publish_camera_unknown(self, camera: str) -> None:
         topics = self._resolve_camera_topics(camera)
         self._publish_sync(topics["last_event_id"], "unknown")
         self._publish_sync(topics["last_event_ts"], "unknown")
         self._publish_sync(topics["result_status"], "unknown")
         self._publish_sync(topics["action"], "unknown")
+        self._publish_sync(topics["subject_type"], "unknown")
         self._publish_sync(topics["confidence"], "unknown")
         self._publish_sync(topics["description"], "unknown")
         self._publish_sync(topics["monthly_cost"], "unknown")
+
+    def _publish_camera_monthly_cost(self, camera: str) -> None:
+        topics = self._resolve_camera_topics(camera)
+        camera_costs = self._runtime_metrics.get("cost_monthly_by_camera", {})
+        if not isinstance(camera_costs, dict):
+            self._publish_sync(topics["monthly_cost"], "unknown")
+            return
+        self._publish_sync(topics["monthly_cost"], f"{float(camera_costs.get(camera, 0.0)):.4f}")
 
     def _publish_camera_enabled_state(self, camera: str) -> None:
         topics = self._resolve_camera_topics(camera)
@@ -908,6 +1058,7 @@ class MQTTClient:
             "process_update_events": "{mqtt_prefix}/camera/{camera}/process_update_events",
             "process_update_events_set": "{mqtt_prefix}/camera/{camera}/process_update_events/set",
             "action": "{mqtt_prefix}/camera/{camera}/action",
+            "subject_type": "{mqtt_prefix}/camera/{camera}/subject_type",
             "confidence": "{mqtt_prefix}/camera/{camera}/confidence",
             "description": "{mqtt_prefix}/camera/{camera}/description",
             "result_status": "{mqtt_prefix}/camera/{camera}/result_status",

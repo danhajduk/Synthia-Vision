@@ -51,6 +51,8 @@ ai:
     model: "gpt-4o-mini"                   # pick your preferred vision-capable model
     timeout_s: 20
     max_output_tokens: 200
+    retry_attempts: 3
+    retry_backoff_s: [0.5, 1.0, 2.0]
 
   # Controls strict JSON output
   structured_output:
@@ -60,7 +62,7 @@ ai:
     schema:
       type: object
       additionalProperties: false
-      required: ["action", "confidence", "description"]
+      required: ["action", "subject_type", "confidence", "description"]
       properties:
         action:
           type: string
@@ -68,11 +70,28 @@ ai:
             - unknown
             - deliver_package
             - pickup_package
-            - visitor
-            - family_member
-            - solicitor
+            - package_left_unattended
+            - vehicle_arrival
+            - vehicle_departure
+            - vehicle_detected
+            - delivery_vehicle
+            - loitering
+            - suspicious_activity
+            - animal_detected
+            - person_entered
+            - person_exited
+            - in_bed
+            - out_of_bed
+        subject_type:
+          type: string
+          enum:
+            - none
+            - adult
+            - child
+            - pet
             - animal
-            - false_alarm
+            - vehicle
+            - unknown
         confidence:
           type: number
           minimum: 0
@@ -83,14 +102,106 @@ ai:
           maxLength: 200
 
   prompts:
+    default_preset: "outdoor"
     system: >
-      You are Synthia Vision. Classify the scene from a door camera snapshot.
+      You are Synthia Vision. Classify a home camera snapshot.
+      Do NOT identify people.
       Return ONLY valid JSON matching the provided schema.
       Keep the description short and factual.
+    presets:
+      outdoor:
+        system: |
+          You are Synthia Vision. Classify a single outdoor security snapshot for home automation.
+          Do NOT identify people. Do NOT guess names, relationships, or personal traits.
+          Return ONLY valid JSON matching the schema. No extra text.
+        user: |
+          Camera: {camera_name}
+          Context: Outdoor home area (porch/driveway/yard).
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence: 0..1.
+          Description: 1 short factual sentence (<= 200 chars). No identity/relationship guesses.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown" and subject_type="unknown".
+      indoor:
+        system: |
+          You are Synthia Vision. Classify a single indoor snapshot for home automation.
+          Privacy rules: do NOT identify people; do NOT infer relationships; avoid sensitive attribute guesses.
+          Return ONLY valid JSON matching the schema. No extra text.
+        user: |
+          Camera: {camera_name}
+          Context: Indoor common area.
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence 0..1.
+          Description <= 200 chars, factual.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown", subject_type="unknown".
+      kids_bedroom:
+        system: |
+          You are Synthia Vision. Classify a kids bedroom snapshot for safety/awareness automations.
+          Do NOT identify people. Be conservative. Prefer in_bed/out_of_bed.
+          Return ONLY valid JSON matching the schema. No extra text.
+        user: |
+          Camera: {camera_name}
+          Context: Kids bedroom.
+          Choose action ONLY from allowed_actions (prefer in_bed/out_of_bed).
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence 0..1.
+          Description <= 200 chars, factual.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown", subject_type="unknown".
+      security:
+        system: |
+          You are Synthia Vision. Classify a home security snapshot with safety focus.
+          Do NOT identify people. Use suspicious_activity only with clear evidence.
+          Return ONLY valid JSON matching schema. No extra text.
+        user: |
+          Camera: {camera_name}
+          Context: Home security.
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence 0..1.
+          Description <= 200 chars, factual.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If uncertain, action="unknown", subject_type="unknown".
     # Optional per-camera prompt overrides later:
     per_camera: {}
 
 policy:
+  actions:
+    default_action: "unknown"
+    allowed:
+      - unknown
+      - deliver_package
+      - pickup_package
+      - package_left_unattended
+      - vehicle_arrival
+      - vehicle_departure
+      - vehicle_detected
+      - delivery_vehicle
+      - loitering
+      - suspicious_activity
+      - animal_detected
+      - person_entered
+      - person_exited
+      - in_bed
+      - out_of_bed
+  subject_types:
+    default: "unknown"
+    allowed:
+      - none
+      - adult
+      - child
+      - pet
+      - animal
+      - vehicle
+      - unknown
+
   # Global defaults applied to all cameras unless overridden below
   defaults:
     enabled: true
@@ -107,15 +218,17 @@ policy:
     doorbell:
       name: "Front Door"
       enabled: true
+      prompt_preset: "outdoor"
       labels: ["person"]
       confidence_threshold: 0.75
       cooldown_s: 30
       actions:
         # Optional: allow/deny actions per camera
-        allowed: ["deliver_package", "pickup_package", "visitor", "family_member", "solicitor", "unknown"]
+        allowed: ["unknown", "deliver_package", "pickup_package", "package_left_unattended", "loitering", "suspicious_activity", "vehicle_detected", "delivery_vehicle", "animal_detected"]
     livingroom:
       name: "Living Room"
       enabled: true
+      prompt_preset: "indoor"
       labels: ["person"] 
       confidence_threshold: 0.65
       cooldown_s: 60
@@ -159,6 +272,7 @@ topics:
     process_update_events: "{mqtt_prefix}/camera/{camera}/process_update_events"
     process_update_events_set: "{mqtt_prefix}/camera/{camera}/process_update_events/set"
     action: "{mqtt_prefix}/camera/{camera}/action"
+    subject_type: "{mqtt_prefix}/camera/{camera}/subject_type"
     confidence: "{mqtt_prefix}/camera/{camera}/confidence"
     description: "{mqtt_prefix}/camera/{camera}/description"
     result_status: "{mqtt_prefix}/camera/{camera}/result_status"

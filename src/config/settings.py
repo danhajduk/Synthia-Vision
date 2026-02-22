@@ -114,6 +114,8 @@ class OpenAIConfig:
     model: str = "gpt-4o-mini"
     timeout_seconds: int = 20
     max_output_tokens: int = 200
+    retry_attempts: int = 3
+    retry_backoff_seconds: list[float] = field(default_factory=lambda: [0.5, 1.0, 2.0])
 
 
 @dataclass(slots=True)
@@ -125,6 +127,8 @@ class AIConfig:
     schema: dict[str, Any] | None = None
     system_prompt: str = ""
     per_camera_prompts: dict[str, str] | None = None
+    default_prompt_preset: str = "outdoor"
+    prompt_presets: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -147,12 +151,27 @@ class PolicyCameraConfig:
     confidence_threshold: float = 0.75
     cooldown_seconds: int = 30
     allowed_actions: list[str] = field(default_factory=list)
+    prompt_preset: str | None = None
+
+
+@dataclass(slots=True)
+class PolicyActionsConfig:
+    default_action: str = "unknown"
+    allowed: list[str] = field(default_factory=lambda: ["unknown"])
+
+
+@dataclass(slots=True)
+class PolicySubjectTypesConfig:
+    default: str = "unknown"
+    allowed: list[str] = field(default_factory=lambda: ["unknown"])
 
 
 @dataclass(slots=True)
 class PolicyConfig:
     defaults: PolicyDefaultsConfig
     cameras: dict[str, PolicyCameraConfig]
+    actions: PolicyActionsConfig
+    subject_types: PolicySubjectTypesConfig
 
 
 @dataclass(slots=True)
@@ -237,6 +256,10 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
     prompts_data = _as_mapping(ai_data.get("prompts", {}), "ai.prompts")
     policy_data = _as_mapping(resolved_data.get("policy", {}), "policy")
     policy_defaults_data = _as_mapping(policy_data.get("defaults", {}), "policy.defaults")
+    policy_actions_data = _as_mapping(policy_data.get("actions", {}), "policy.actions")
+    policy_subject_types_data = _as_mapping(
+        policy_data.get("subject_types", {}), "policy.subject_types"
+    )
     policy_cameras_data = _as_mapping(policy_data.get("cameras", {}), "policy.cameras")
     modes_data = _as_mapping(resolved_data.get("modes", {}), "modes")
     doorbell_only_mode_data = _as_mapping(
@@ -346,6 +369,11 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 model=str(openai_data.get("model", "gpt-4o-mini")),
                 timeout_seconds=int(openai_data.get("timeout_s", 20)),
                 max_output_tokens=int(openai_data.get("max_output_tokens", 200)),
+                retry_attempts=int(openai_data.get("retry_attempts", 3)),
+                retry_backoff_seconds=_as_float_list(
+                    openai_data.get("retry_backoff_s", [0.5, 1.0, 2.0]),
+                    "ai.openai.retry_backoff_s",
+                ),
             ),
             structured_output_mode=str(structured_output_data.get("mode", "json_schema")),
             schema_name=str(structured_output_data.get("schema_name", "synthia_vision_event")),
@@ -357,6 +385,10 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
             per_camera_prompts=_as_mapping(
                 prompts_data.get("per_camera", {}),
                 "ai.prompts.per_camera",
+            ),
+            default_prompt_preset=str(prompts_data.get("default_preset", "outdoor")),
+            prompt_presets=_build_prompt_presets(
+                _as_mapping(prompts_data.get("presets", {}), "ai.prompts.presets")
             ),
         ),
         policy=PolicyConfig(
@@ -386,6 +418,20 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 ),
             ),
             cameras=_build_camera_policy_map(policy_cameras_data),
+            actions=PolicyActionsConfig(
+                default_action=str(policy_actions_data.get("default_action", "unknown")),
+                allowed=_as_string_list(
+                    policy_actions_data.get("allowed", ["unknown"]),
+                    "policy.actions.allowed",
+                ),
+            ),
+            subject_types=PolicySubjectTypesConfig(
+                default=str(policy_subject_types_data.get("default", "unknown")),
+                allowed=_as_string_list(
+                    policy_subject_types_data.get("allowed", ["unknown"]),
+                    "policy.subject_types.allowed",
+                ),
+            ),
         ),
         modes=ModesConfig(
             doorbell_only_mode=ModeConfig(
@@ -452,12 +498,25 @@ def _build_camera_policy_map(data: dict[str, Any]) -> dict[str, PolicyCameraConf
             ),
             confidence_threshold=float(raw_value.get("confidence_threshold", 0.75)),
             cooldown_seconds=int(raw_value.get("cooldown_s", 30)),
+            prompt_preset=_optional_str(raw_value.get("prompt_preset")),
             allowed_actions=_as_string_list(
                 actions_data.get("allowed", []),
                 f"policy.cameras.{camera_name}.actions.allowed",
             ),
         )
     return cameras
+
+
+def _build_prompt_presets(data: dict[str, Any]) -> dict[str, dict[str, str]]:
+    presets: dict[str, dict[str, str]] = {}
+    for preset_name, raw_value in data.items():
+        if not isinstance(raw_value, dict):
+            raise ConfigError(f"Expected mapping at: ai.prompts.presets.{preset_name}")
+        presets[preset_name] = {
+            "system": str(raw_value.get("system", "")),
+            "user": str(raw_value.get("user", "")),
+        }
+    return presets
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:
@@ -551,6 +610,38 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError(
             "Missing OpenAI API key. Set ai.openai.api_key or OPENAI_API_KEY."
         )
+    if config.openai.retry_attempts < 1:
+        raise ConfigError("ai.openai.retry_attempts must be >= 1")
+    if config.policy.actions.default_action not in set(config.policy.actions.allowed):
+        raise ConfigError("policy.actions.default_action must be included in policy.actions.allowed")
+    if config.policy.subject_types.default not in set(config.policy.subject_types.allowed):
+        raise ConfigError(
+            "policy.subject_types.default must be included in policy.subject_types.allowed"
+        )
+    if not config.policy.actions.allowed:
+        raise ConfigError("policy.actions.allowed must not be empty")
+    if not config.policy.subject_types.allowed:
+        raise ConfigError("policy.subject_types.allowed must not be empty")
+    if (
+        config.ai.prompt_presets
+        and config.ai.default_prompt_preset not in set(config.ai.prompt_presets.keys())
+    ):
+        raise ConfigError("ai.prompts.default_preset must exist in ai.prompts.presets")
+    allowed_action_set = set(config.policy.actions.allowed)
+    for camera_name, camera_policy in config.policy.cameras.items():
+        if camera_policy.prompt_preset and config.ai.prompt_presets:
+            if camera_policy.prompt_preset not in set(config.ai.prompt_presets.keys()):
+                raise ConfigError(
+                    f"policy.cameras.{camera_name}.prompt_preset must exist in ai.prompts.presets"
+                )
+        if camera_policy.allowed_actions:
+            invalid_actions = [
+                action for action in camera_policy.allowed_actions if action not in allowed_action_set
+            ]
+            if invalid_actions:
+                raise ConfigError(
+                    f"policy.cameras.{camera_name}.actions.allowed contains invalid values: {invalid_actions}"
+                )
 
 
 def _required_str(value: Any, field_name: str) -> str:

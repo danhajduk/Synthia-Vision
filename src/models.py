@@ -55,17 +55,21 @@ class OpenAIClassification:
     """Validated structured output from OpenAI."""
 
     action: str
+    subject_type: str
     confidence: float
     description: str
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "OpenAIClassification":
         action = payload.get("action")
+        subject_type = payload.get("subject_type")
         confidence = payload.get("confidence")
         description = payload.get("description")
 
         if not isinstance(action, str) or not action:
             raise ValidationError("OpenAI payload missing action")
+        if not isinstance(subject_type, str) or not subject_type:
+            raise ValidationError("OpenAI payload missing subject_type")
         if not isinstance(description, str) or not description:
             raise ValidationError("OpenAI payload missing description")
         if not isinstance(confidence, (int, float)):
@@ -77,6 +81,7 @@ class OpenAIClassification:
 
         return cls(
             action=action,
+            subject_type=subject_type,
             confidence=confidence_value,
             description=description,
         )

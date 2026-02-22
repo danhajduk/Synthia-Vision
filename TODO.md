@@ -117,8 +117,15 @@ No step should require the entire pipeline to be complete.
   - last_event_ts
   - result_status
   - action
+  - subject_type
   - confidence
   - description
+- [x] 5.1.2 Identity-free action contract + subject_type contract:
+  - global `policy.actions` allowlist + per-camera override
+  - global `policy.subject_types` allowlist/default
+  - per-camera `prompt_preset` + `ai.prompts.presets` + `default_preset`
+  - enforce invalid `action` and `subject_type` to configured defaults
+  - truncate `description` to 200 chars
 - [x] 5.1.1a Publish HA MQTT Discovery configs:
   - core entities + per-camera entities
   - publish on startup
@@ -149,11 +156,11 @@ No step should require the entire pipeline to be complete.
 # Phase 6 – OpenAI Client
 
 ## 6.1 Structured Classification
-- [ ] openai_client.py
+- [x] openai_client.py
   classify(snapshot_bytes, context) -> (result, usage, cost)
 
-- [ ] Enforce strict JSON schema validation
-- [ ] Extract:
+- [x] Enforce strict JSON schema validation
+- [x] Extract:
   - prompt_tokens
   - completion_tokens
   - cost
@@ -166,8 +173,8 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 6.2 Retry Policy
-- [ ] Retry transient OpenAI failures
-- [ ] Do NOT retry schema validation failures
+- [x] Retry transient OpenAI failures
+- [x] Do NOT retry schema validation failures
 
 ✅ TEST:
 - Simulate retryable exception
@@ -232,6 +239,7 @@ No step should require the entire pipeline to be complete.
 ## 8.2 Per-Camera Entities
 - [x] Enabled toggle
 - [x] Action
+- [x] Subject type
 - [x] Confidence
 - [x] Description
 - [x] Result status

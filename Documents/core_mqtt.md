@@ -169,7 +169,7 @@ Command topics:
 -   Range: 0--100
 -   Step: 1
 -   Unit: %
--   Mode: slider
+-   Mode: box
 -   Icon: `mdi:percent`
 
 ------------------------------------------------------------------------

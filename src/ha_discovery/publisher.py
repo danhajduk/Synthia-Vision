@@ -286,6 +286,15 @@ class HADiscoveryPublisher:
                 },
             ),
             (
+                "subject_type",
+                "sensor",
+                {
+                    "name": "Subject Type",
+                    "icon": "mdi:tag",
+                    "state_topic": self._camera_topic(camera, "subject_type"),
+                },
+            ),
+            (
                 "description",
                 "sensor",
                 {

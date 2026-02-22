@@ -9,7 +9,9 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Phase 3.1 policy decision logic is implemented and wired into MQTT intake.
 - Phase 3.2 event routing is implemented (accepted vs rejected routes + counters/logs).
 - Phase 4 snapshot manager is implemented and wired for accepted events.
-- Next: Phase 5 OpenAI classification and downstream publishing stages.
+- Phase 5.1 MQTT publishing + HA discovery is implemented (including identity-free `action` + `subject_type` contract scaffolding).
+- Phase 6 OpenAI client is implemented with strict JSON schema validation and retry handling.
+- Next: Phase 7 cost rollovers, budget guard, and richer state accounting.
 
 ## Implemented
 
@@ -61,9 +63,27 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Snapshot fetch is invoked for events routed to `processing`
 - Phase 5.1.1 publisher wiring:
   - publishes per-camera runtime topics after snapshot step
-  - publishes `result_status=ok` with placeholder action/confidence/description until OpenAI stage
+  - publishes `result_status=ok` with placeholder action/subject_type/confidence/description until OpenAI stage
   - publishes `result_status=snapshot_failed` when snapshot retrieval fails
   - publishes HA discovery configs (core + per-camera) on startup and on `homeassistant/status=online`
+- Phase 5.1.2 identity-free result contract scaffolding:
+  - global action allowlist (`policy.actions.allowed`) with per-camera overrides
+  - global subject type allowlist (`policy.subject_types.allowed`)
+  - preset-aware prompt template support (`ai.prompts.default_preset`, `ai.prompts.presets`, camera `prompt_preset`)
+  - post-classification enforcement helper (`invalid_action`, `invalid_subject_type`, description max 200 chars)
+
+### OpenAI Client
+- Implemented `src/openai/client.py`:
+  - image + prompt request using structured JSON schema
+  - dynamic per-camera action enums and global subject type enums
+  - retries transient provider failures (`timeout`, connection, rate limit, API error)
+  - no retries for schema/validation errors
+  - extracts prompt/completion/total tokens
+  - estimates request cost for supported models and updates runtime cost metrics
+- MQTT publish path now classifies accepted events and publishes:
+  - `result_status=ok` with action/subject_type/confidence/description
+  - `result_status=schema_failed` for invalid model payloads
+  - `result_status=openai_failed` for provider/runtime failures
 
 ## Active MQTT Topics (Now)
 
@@ -97,6 +117,7 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
   - `.../camera/{camera}/last_event_ts` (ISO timestamp)
   - `.../camera/{camera}/result_status`
   - `.../camera/{camera}/action`
+  - `.../camera/{camera}/subject_type`
   - `.../camera/{camera}/confidence` (0-100 integer)
   - `.../camera/{camera}/description`
   - `.../cost/monthly_by_camera/{camera}`
@@ -110,6 +131,16 @@ Key current settings:
 - `mqtt.heartbeat_interval_seconds`
 - `policy.defaults.process_on` (now supports list, e.g. `["end", "update"]`)
 - `policy.defaults.min_process_interval_s` (future processing throttle)
+- `policy.actions.default_action`
+- `policy.actions.allowed`
+- `policy.subject_types.default`
+- `policy.subject_types.allowed`
+- `policy.cameras.<camera>.prompt_preset`
+- `policy.cameras.<camera>.actions.allowed`
+- `ai.prompts.default_preset`
+- `ai.prompts.presets`
+- `ai.openai.retry_attempts`
+- `ai.openai.retry_backoff_s`
 - `topics.status`
 - `topics.heartbeat_ts`
 - `topics.camera.result_status`

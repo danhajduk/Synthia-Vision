@@ -47,6 +47,7 @@ Per-camera state topics:
 -   `.../camera/{camera}/process_end_events` (`ON|OFF`)
 -   `.../camera/{camera}/process_update_events` (`ON|OFF`)
 -   `.../camera/{camera}/action`
+-   `.../camera/{camera}/subject_type`
 -   `.../camera/{camera}/confidence` (0--100 integer)
 -   `.../camera/{camera}/description`
 -   `.../camera/{camera}/result_status`
@@ -90,8 +91,10 @@ Per-camera command topic:
     -   General cameras: `mdi:cctv`
 
 Suggested action values (expandable): - `unknown` - `deliver_package` -
-`pickup_package` - `visitor` - `family_member` - `solicitor` -
-`animal` - `false_alarm`
+`pickup_package` - `package_left_unattended` - `vehicle_arrival` -
+`vehicle_departure` - `vehicle_detected` - `delivery_vehicle` -
+`loitering` - `suspicious_activity` - `animal_detected` -
+`person_entered` - `person_exited` - `in_bed` - `out_of_bed`
 
 ## 2a) Process End Events (Switch)
 
@@ -122,6 +125,15 @@ Suggested action values (expandable): - `unknown` - `deliver_package` -
 -   Icon: `mdi:percent`
 
 Rule: - Publish integer percent. Example: 0.87 → 87.
+
+## 3a) Subject Type (Enum Sensor)
+
+-   Entity: `sensor.sv_<camera>_subject_type`
+-   Name: `Subject Type`
+-   Topic: `.../camera/{camera}/subject_type`
+-   Icon: `mdi:tag`
+
+Suggested values: `none | adult | child | pet | animal | vehicle | unknown`.
 
 ## 4) Description (Sensor)
 
@@ -195,9 +207,10 @@ When publishing a camera result, publish in this order:
 2.  last_event_ts
 3.  result_status
 4.  action
-5.  confidence
-6.  description
-7.  monthly_by_camera (optional if updated elsewhere)
+5.  subject_type
+6.  confidence
+7.  description
+8.  monthly_by_camera (optional if updated elsewhere)
 
 Reason: - "identity and time" update first, then the interpretation.
 
