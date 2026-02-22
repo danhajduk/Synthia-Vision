@@ -94,7 +94,8 @@ Suggested action values (expandable): - `unknown` - `deliver_package` -
 `pickup_package` - `package_left_unattended` - `vehicle_arrival` -
 `vehicle_departure` - `vehicle_detected` - `delivery_vehicle` -
 `loitering` - `suspicious_activity` - `animal_detected` -
-`person_entered` - `person_exited` - `in_bed` - `out_of_bed`
+`person_entered` - `person_exited` - `in_bed` - `out_of_bed` -
+`room_occupied`
 
 ## 2a) Process End Events (Switch)
 

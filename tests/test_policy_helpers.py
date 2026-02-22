@@ -29,7 +29,7 @@ def _build_test_config() -> SimpleNamespace:
         cameras=cameras,
         actions=SimpleNamespace(
             default_action="unknown",
-            allowed=["unknown", "deliver_package", "animal_detected"],
+            allowed=["unknown", "room_occupied", "deliver_package", "animal_detected"],
         ),
         subject_types=SimpleNamespace(
             default="unknown",
@@ -63,7 +63,21 @@ class PolicyHelpersTests(unittest.TestCase):
 
     def test_resolve_allowed_actions_fallback_global(self) -> None:
         allowed = resolve_allowed_actions("inside", self.config)
-        self.assertEqual(allowed, ["unknown", "deliver_package", "animal_detected"])
+        self.assertEqual(
+            allowed,
+            ["unknown", "room_occupied", "deliver_package", "animal_detected"],
+        )
+
+    def test_room_occupied_rejected_when_not_in_camera_override(self) -> None:
+        action, _subject_type, _description, status = enforce_classification_result(
+            action="room_occupied",
+            subject_type="adult",
+            description="person present",
+            camera="front",
+            config=self.config,
+        )
+        self.assertEqual(action, "unknown")
+        self.assertEqual(status, "invalid_action")
 
     def test_invalid_action_forced_to_unknown(self) -> None:
         action, subject_type, description, status = enforce_classification_result(
@@ -115,6 +129,18 @@ class PolicyHelpersTests(unittest.TestCase):
         self.assertIn("Front Door", system)
         self.assertIn("deliver_package", user)
         self.assertIn("adult", user)
+
+    def test_subject_type_values_pass_through_when_allowed(self) -> None:
+        for subject in ["vehicle", "animal", "pet", "unknown", "none"]:
+            _action, subject_type, _description, status = enforce_classification_result(
+                action="deliver_package",
+                subject_type=subject,
+                description="scene",
+                camera="front",
+                config=self.config,
+            )
+            self.assertEqual(subject_type, subject)
+            self.assertEqual(status, "ok")
 
 
 if __name__ == "__main__":

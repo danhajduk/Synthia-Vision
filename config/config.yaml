@@ -68,6 +68,7 @@ ai:
           type: string
           enum:
             - unknown
+            - room_occupied
             - deliver_package
             - pickup_package
             - package_left_unattended
@@ -136,6 +137,13 @@ ai:
           Choose subject_type ONLY from allowed_subject_types.
           Confidence 0..1.
           Description <= 200 chars, factual.
+          Prefer action "room_occupied" for normal indoor presence (people visible) when no other action fits.
+          Use action "unknown" only when you cannot confidently classify anything, including room_occupied.
+          Choose subject_type="adult" or "child" only when clearly distinguishable.
+          If a person is visible but you cannot tell adult vs child, use subject_type="unknown".
+          If no person/animal/vehicle is present, use subject_type="none".
+          If a vehicle is the main subject, use subject_type="vehicle".
+          If an animal/pet is the main subject, use subject_type="animal" or "pet"; choose "pet" only when clearly domestic.
           allowed_actions: {allowed_actions}
           allowed_subject_types: {allowed_subject_types}
           If unclear, action="unknown", subject_type="unknown".
@@ -166,6 +174,13 @@ ai:
           Choose subject_type ONLY from allowed_subject_types.
           Confidence 0..1.
           Description <= 200 chars, factual.
+          If humans are present but not suspicious, use action="room_occupied" instead of "unknown".
+          Use suspicious_activity only with clear evidence.
+          Choose subject_type="adult" or "child" only when clearly distinguishable.
+          If a person is visible but you cannot tell adult vs child, use subject_type="unknown".
+          If no person/animal/vehicle is present, use subject_type="none".
+          If a vehicle is the main subject, use subject_type="vehicle".
+          If an animal/pet is the main subject, use subject_type="animal" or "pet"; choose "pet" only when clearly domestic.
           allowed_actions: {allowed_actions}
           allowed_subject_types: {allowed_subject_types}
           If uncertain, action="unknown", subject_type="unknown".
@@ -177,6 +192,7 @@ policy:
     default_action: "unknown"
     allowed:
       - unknown
+      - room_occupied
       - deliver_package
       - pickup_package
       - package_left_unattended
@@ -220,7 +236,7 @@ policy:
       enabled: true
       prompt_preset: "outdoor"
       labels: ["person"]
-      confidence_threshold: 0.75
+      confidence_threshold: 0.60
       cooldown_s: 30
       actions:
         # Optional: allow/deny actions per camera
@@ -237,7 +253,7 @@ modes:
   # These are HA-controlled toggles that modify behavior
   doorbell_only_mode:
     enabled: true
-    allowed_cameras: ["doorbell", "livingroom"]  # could also block specific cameras instead of allow-listing
+    allowed_cameras: ["doorbell"]  # could also block specific cameras instead of allow-listing
 
   high_precision_mode:
     enabled: false

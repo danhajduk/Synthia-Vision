@@ -133,6 +133,7 @@ Key current settings:
 - `policy.defaults.min_process_interval_s` (future processing throttle)
 - `policy.actions.default_action`
 - `policy.actions.allowed`
+  - includes neutral indoor state action `room_occupied`
 - `policy.subject_types.default`
 - `policy.subject_types.allowed`
 - `policy.cameras.<camera>.prompt_preset`

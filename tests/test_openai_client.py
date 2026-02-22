@@ -32,15 +32,19 @@ def _build_config() -> SimpleNamespace:
             "front": SimpleNamespace(
                 allowed_actions=["unknown", "deliver_package"],
                 prompt_preset="outdoor",
-            )
+            ),
+            "inside": SimpleNamespace(
+                allowed_actions=[],
+                prompt_preset="indoor",
+            ),
         },
         actions=SimpleNamespace(
             default_action="unknown",
-            allowed=["unknown", "deliver_package"],
+            allowed=["unknown", "room_occupied", "deliver_package"],
         ),
         subject_types=SimpleNamespace(
             default="unknown",
-            allowed=["adult", "unknown"],
+            allowed=["none", "adult", "child", "pet", "animal", "vehicle", "unknown"],
         ),
     )
     ai = SimpleNamespace(
@@ -51,6 +55,10 @@ def _build_config() -> SimpleNamespace:
         prompt_presets={
             "outdoor": {
                 "system": "sys {camera_name}",
+                "user": "allowed_actions={allowed_actions} allowed_subject_types={allowed_subject_types}",
+            },
+            "indoor": {
+                "system": "indoor {camera_name}",
                 "user": "allowed_actions={allowed_actions} allowed_subject_types={allowed_subject_types}",
             }
         },
@@ -101,6 +109,18 @@ class OpenAIClientTests(unittest.TestCase):
         self.assertEqual(int(round(classification.confidence * 100)), 82)
         self.assertGreater(usage.total_tokens, 0)
         self.assertGreaterEqual(usage.cost_usd, 0.0)
+
+    def test_classify_allows_room_occupied_for_indoor_camera(self) -> None:
+        def _create(**_kwargs):
+            return _FakeResponse(
+                '{"action":"room_occupied","subject_type":"unknown","confidence":0.91,"description":"people visible in room"}',
+                prompt_tokens=100,
+                completion_tokens=20,
+            )
+
+        client = self._build_client(_create)
+        classification, _usage = client.classify(snapshot_bytes=b"abc", camera_name="inside")
+        self.assertEqual(classification.action, "room_occupied")
 
     def test_classify_invalid_json(self) -> None:
         def _create(**_kwargs):
