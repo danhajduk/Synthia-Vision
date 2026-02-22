@@ -78,15 +78,15 @@ def create_guest_api_app(config: ServiceConfig):
 
     @app.get("/api/status")
     async def api_status():
-        return summary_store.get_status_summary()
+        return summary_store.get_guest_status_payload()
 
     @app.get("/api/metrics/summary")
     async def api_metrics_summary():
-        return {"metrics": summary_store.get_metrics_summary()}
+        return {"metrics": summary_store.get_guest_metrics_payload()}
 
     @app.get("/api/cameras/summary")
     async def api_cameras_summary():
-        return summary_store.get_cameras_summary()
+        return summary_store.get_guest_cameras_payload()
 
     @app.get("/api/events")
     async def api_events(

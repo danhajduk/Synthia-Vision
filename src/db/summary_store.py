@@ -145,6 +145,50 @@ class SummaryStore:
             "items": items,
         }
 
+    def get_guest_status_payload(self) -> dict[str, Any]:
+        # Keep guest payload intentionally narrow for iframe-safe dashboards.
+        status = self.get_status_summary()
+        return {
+            "service_status": status.get("service_status", "unknown"),
+            "db_ready": bool(status.get("db_ready", False)),
+            "timestamp": status.get("timestamp"),
+        }
+
+    def get_guest_metrics_payload(self) -> dict[str, Any]:
+        metrics = self.get_metrics_summary()
+        return {
+            "count_total": int(metrics.get("count_total", 0)),
+            "count_today": int(metrics.get("count_today", 0)),
+            "count_today_date": str(metrics.get("count_today_date", "")),
+            "cost_last": float(metrics.get("cost_last", 0.0)),
+            "cost_daily_total": float(metrics.get("cost_daily_total", 0.0)),
+            "cost_month2day_total": float(metrics.get("cost_month2day_total", 0.0)),
+            "cost_avg_per_event": float(metrics.get("cost_avg_per_event", 0.0)),
+            "tokens_avg_per_request": float(metrics.get("tokens_avg_per_request", 0.0)),
+            "tokens_avg_per_day": float(metrics.get("tokens_avg_per_day", 0.0)),
+            "cost_monthly_by_camera": dict(metrics.get("cost_monthly_by_camera", {})),
+        }
+
+    def get_guest_cameras_payload(self) -> dict[str, Any]:
+        cameras = self.get_cameras_summary()
+        sanitized_items: list[dict[str, Any]] = []
+        for item in cameras.get("items", []):
+            if not isinstance(item, dict):
+                continue
+            sanitized_items.append(
+                {
+                    "camera_key": str(item.get("camera_key", "")),
+                    "display_name": str(item.get("display_name", "")),
+                    "enabled": bool(item.get("enabled", False)),
+                    "last_seen_ts": str(item.get("last_seen_ts", "")),
+                    "monthly_cost": float(item.get("monthly_cost", 0.0)),
+                }
+            )
+        return {
+            "count": int(cameras.get("count", len(sanitized_items))),
+            "items": sanitized_items,
+        }
+
     def _get_kv(self, key: str) -> str | None:
         with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
             conn.execute("PRAGMA busy_timeout = 5000;")

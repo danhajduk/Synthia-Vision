@@ -126,6 +126,7 @@ Auth/session endpoints:
 Authorization:
 - Guest endpoints are readable without login (`/api/status`, `/api/metrics/summary`, `/api/cameras/summary`).
 - Admin endpoints require an authenticated `admin` session cookie.
+- Guest endpoint payloads are intentionally sanitized for iframe safety and do not expose reject reasons, skipped-openai reasons, or raw description fields.
 
 Runtime:
 - Server defaults to `0.0.0.0:8080`.

@@ -66,6 +66,23 @@ class SummaryStoreTests(unittest.TestCase):
             self.assertEqual(cameras["count"], 1)
             self.assertEqual(cameras["items"][0]["camera_key"], "doorbell")
 
+            guest_status = store.get_guest_status_payload()
+            self.assertEqual(set(guest_status.keys()), {"service_status", "db_ready", "timestamp"})
+            self.assertNotIn("queue_depth", guest_status)
+            self.assertNotIn("setup_completed", guest_status)
+
+            guest_metrics = store.get_guest_metrics_payload()
+            self.assertNotIn("reject_reason", guest_metrics)
+            self.assertNotIn("skipped_openai_reason", guest_metrics)
+            self.assertNotIn("description", guest_metrics)
+
+            guest_cameras = store.get_guest_cameras_payload()
+            self.assertEqual(guest_cameras["count"], 1)
+            item = guest_cameras["items"][0]
+            self.assertNotIn("discovered_first_ts", item)
+            self.assertNotIn("description", item)
+            self.assertNotIn("reject_reason", item)
+
     def test_status_defaults_when_kv_missing(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             db_path = Path(td) / "synthia_vision.db"
