@@ -31,6 +31,9 @@ logs/
 # Runtime state (keep dir, ignore contents by default)
 state/*
 !state/.gitkeep
+state/*.db
+state/*.db-wal
+state/*.db-shm
 
 # Local helper scripts (do not commit)
 scripts/

@@ -304,6 +304,12 @@ Policy runtime state is persisted in JSON with atomic writes:
 
 Configured via:
 - `service.paths.state_file`
+- `service.paths.db_file` (SQLite event/metrics/errors store)
+
+SQLite bootstrap:
+- On startup, the service initializes SQLite schema from `Documents/schema.sql`.
+- Connection pragmas include WAL mode, busy timeout, and foreign key enforcement.
+- Seed defaults are written into `kv` if missing (idempotent).
 
 Metric formulas:
 - `metrics.cost_avg_per_event = metrics.cost_month2day_total / metrics.count_total`

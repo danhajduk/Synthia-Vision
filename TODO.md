@@ -59,31 +59,31 @@ Acceptance:
 ---
 
 ## Phase 3 – SQLite Foundation + Schema + Indexes + WAL
-- [ ] Add SQLite DB path default: `/app/state/synthia_vision.db`.
-- [ ] Implement DB init with WAL mode and sane busy timeout.
-- [ ] Add tables:
-- [ ] Subtask: `events`
-- [ ] Subtask: `metrics`
-- [ ] Subtask: `errors`
-- [ ] Subtask: `users`
-- [ ] Subtask: `kv`
-- [ ] Subtask: `cameras`
-- [ ] Add indexes:
-- [ ] Subtask: `events(ts)`
-- [ ] Subtask: `events(camera, ts)`
-- [ ] Subtask: `events(accepted, ts)`
-- [ ] Subtask: `metrics(event_id)`
-- [ ] Subtask: `cameras(last_seen_ts)`
-- [ ] Subtask: `errors(ts)`
-- [ ] Add DB access module (`src/db/...`) with robust write helpers.
-- [ ] Enable WAL mode explicitly (`PRAGMA journal_mode=WAL;`).
-- [ ] Set busy_timeout (>= 5000ms).
-- [ ] Ensure foreign_keys=ON.
-- [ ] Add DB schema_version table or kv entry.
+- [x] Add SQLite DB path default: `/app/state/synthia_vision.db`.
+- [x] Implement DB init with WAL mode and sane busy timeout.
+- [x] Add tables:
+- [x] Subtask: `events`
+- [x] Subtask: `metrics`
+- [x] Subtask: `errors`
+- [x] Subtask: `users`
+- [x] Subtask: `kv`
+- [x] Subtask: `cameras`
+- [x] Add indexes:
+- [x] Subtask: `events(ts)`
+- [x] Subtask: `events(camera, ts)`
+- [x] Subtask: `events(accepted, ts)`
+- [x] Subtask: `metrics(event_id)`
+- [x] Subtask: `cameras(last_seen_ts)`
+- [x] Subtask: `errors(ts)`
+- [x] Add DB access module (`src/db/...`) with robust write helpers.
+- [x] Enable WAL mode explicitly (`PRAGMA journal_mode=WAL;`).
+- [x] Set busy_timeout (>= 5000ms).
+- [x] Ensure foreign_keys=ON.
+- [x] Add DB schema_version table or kv entry.
 
 Acceptance:
-- [ ] DB initializes on startup.
-- [ ] Table/index creation is idempotent.
+- [x] DB initializes on startup.
+- [x] Table/index creation is idempotent.
 
 ---
 
