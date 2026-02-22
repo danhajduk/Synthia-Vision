@@ -109,79 +109,9 @@ No step should require the entire pipeline to be complete.
 
 ---
 
-# Phase 5 – OpenAI Client
+# Phase 5 – Publishing Results
 
-## 5.1 Structured Classification
-- [ ] openai_client.py
-  classify(snapshot_bytes, context) -> (result, usage, cost)
-
-- [ ] Enforce strict JSON schema validation
-- [ ] Extract:
-  - prompt_tokens
-  - completion_tokens
-  - cost
-
-✅ UNIT TEST:
-- Valid JSON → parsed
-- Invalid JSON → rejected safely
-- Missing field → rejected
-
----
-
-## 5.2 Retry Policy
-- [ ] Retry transient OpenAI failures
-- [ ] Do NOT retry schema validation failures
-
-✅ TEST:
-- Simulate retryable exception
-- Confirm max attempts respected
-
----
-
-# Phase 6 – State & Cost Tracking
-
-## 6.1 Atomic State Store
-- [x] load_state()
-- [x] save_state_atomic() (temp + rename)
-
-✅ UNIT TEST:
-- Verify atomic write works
-- Simulate crash mid-write (optional advanced)
-
----
-
-## 6.2 Counters & Resets
-- [ ] count_total
-- [ ] count_today
-- [ ] month2day_total
-- [ ] daily_total
-- [ ] avg_per_event
-- [ ] monthly_by_camera
-
-- [ ] Day rollover reset
-- [ ] Month rollover reset
-
-✅ UNIT TEST:
-- Simulate date change
-- Verify correct reset behavior
-
----
-
-## 6.3 Budget Guard
-- [ ] Block OpenAI calls if over monthly limit
-- [ ] Publish status = "budget_blocked"
-- [ ] Allow recovery if budget increased
-
-✅ TEST:
-- Force cost over limit
-- Confirm OpenAI not called
-- Confirm status updates
-
----
-
-# Phase 7 – Publishing Results
-
-## 7.1 MQTT Publisher
+## 5.1 MQTT Publisher
 - [ ] Publish per-camera:
   - action
   - confidence
@@ -200,7 +130,7 @@ No step should require the entire pipeline to be complete.
 
 ---
 
-## 7.2 Error Handling Path
+## 5.2 Error Handling Path
 - [ ] Publish safe fallback on:
   - OpenAI failure
   - Schema failure
@@ -208,6 +138,76 @@ No step should require the entire pipeline to be complete.
 
 ✅ TEST:
 - Simulate each failure type
+
+---
+
+# Phase 6 – OpenAI Client
+
+## 6.1 Structured Classification
+- [ ] openai_client.py
+  classify(snapshot_bytes, context) -> (result, usage, cost)
+
+- [ ] Enforce strict JSON schema validation
+- [ ] Extract:
+  - prompt_tokens
+  - completion_tokens
+  - cost
+
+✅ UNIT TEST:
+- Valid JSON → parsed
+- Invalid JSON → rejected safely
+- Missing field → rejected
+
+---
+
+## 6.2 Retry Policy
+- [ ] Retry transient OpenAI failures
+- [ ] Do NOT retry schema validation failures
+
+✅ TEST:
+- Simulate retryable exception
+- Confirm max attempts respected
+
+---
+
+# Phase 7 – State & Cost Tracking
+
+## 7.1 Atomic State Store
+- [x] load_state()
+- [x] save_state_atomic() (temp + rename)
+
+✅ UNIT TEST:
+- Verify atomic write works
+- Simulate crash mid-write (optional advanced)
+
+---
+
+## 7.2 Counters & Resets
+- [ ] count_total
+- [ ] count_today
+- [ ] month2day_total
+- [ ] daily_total
+- [ ] avg_per_event
+- [ ] monthly_by_camera
+
+- [ ] Day rollover reset
+- [ ] Month rollover reset
+
+✅ UNIT TEST:
+- Simulate date change
+- Verify correct reset behavior
+
+---
+
+## 7.3 Budget Guard
+- [ ] Block OpenAI calls if over monthly limit
+- [ ] Publish status = "budget_blocked"
+- [ ] Allow recovery if budget increased
+
+✅ TEST:
+- Force cost over limit
+- Confirm OpenAI not called
+- Confirm status updates
 
 ---
 
