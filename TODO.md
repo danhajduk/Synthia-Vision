@@ -88,24 +88,24 @@ Acceptance:
 ---
 
 ## Phase 4 – Queue / Backpressure / Degraded Status
-- [ ] Introduce bounded intake queue (size 50).
-- [ ] Keep MQTT callback lightweight: parse + validate/normalize + enqueue only.
-- [ ] Add dedicated worker for processing queue items.
-- [ ] Implementation note: prefer `collections.deque(maxlen=50)` but avoid implicit auto-drop behavior; enforce drop decisions explicitly in code.
-- [ ] Drop policy:
-- [ ] Subtask: if full and incoming is `update`, drop incoming update.
-- [ ] Subtask: else if full, drop oldest (`popleft`) then enqueue incoming.
+- [x] Introduce bounded intake queue (size 50).
+- [x] Keep MQTT callback lightweight: parse + validate/normalize + enqueue only.
+- [x] Add dedicated worker for processing queue items.
+- [x] Implementation note: prefer `collections.deque(maxlen=50)` but avoid implicit auto-drop behavior; enforce drop decisions explicitly in code.
+- [x] Drop policy:
+- [x] Subtask: if full and incoming is `update`, drop incoming update.
+- [x] Subtask: else if full, drop oldest (`popleft`) then enqueue incoming.
 - [ ] Track drop counters in SQLite and summary API.
-- [ ] Implement degraded status transitions:
-- [ ] Degrade when queue > 40 for > 30s.
-- [ ] Recover when queue < 10.
-- [ ] Publish only existing status topic.
+- [x] Implement degraded status transitions:
+- [x] Degrade when queue > 40 for > 30s.
+- [x] Recover when queue < 10.
+- [x] Publish only existing status topic.
 - [ ] Track queue_depth metric for summary API.
 
 Acceptance:
-- [ ] Queue never exceeds 50.
-- [ ] MQTT thread stays responsive under burst load.
-- [ ] Degraded transitions behave as specified.
+- [x] Queue never exceeds 50.
+- [x] MQTT thread stays responsive under burst load.
+- [x] Degraded transitions behave as specified.
 
 ---
 

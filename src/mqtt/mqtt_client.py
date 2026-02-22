@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from datetime import datetime, timezone
 import json
 import logging
@@ -34,6 +35,12 @@ from src.runtime_controls import (
     parse_on_off,
     parse_updates_per_event,
 )
+from src.runtime import (
+    DEGRADE_HIGH_WATERMARK,
+    DEGRADE_LOW_WATERMARK,
+    DEGRADE_SUSTAIN_SECONDS,
+    EVENT_QUEUE_MAX_SIZE,
+)
 from src.snapshot_manager import SnapshotManager
 from src.state_manager import StateManager
 
@@ -60,6 +67,18 @@ class MQTTClient:
         )
         self._status_retain = config.mqtt.retain
         self._heartbeat_task: asyncio.Task[None] | None = None
+        self._queue_worker_task: asyncio.Task[None] | None = None
+        self._degraded_monitor_task: asyncio.Task[None] | None = None
+        self._queue_event = asyncio.Event()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._event_queue: deque[FrigateEvent] = deque(maxlen=EVENT_QUEUE_MAX_SIZE)
+        self._event_queue_lock = threading.Lock()
+        self._stop_requested = False
+        self._is_degraded = False
+        self._above_high_since: float | None = None
+        self._dropped_events_total = 0
+        self._dropped_update_total = 0
+        self._dropped_queue_full_total = 0
         self._state_manager = StateManager(config.state_file)
         self._snapshot_manager = SnapshotManager(config)
         self._openai_client: OpenAIClient | None = None
@@ -141,8 +160,10 @@ class MQTTClient:
 
     async def startup_connect(self) -> None:
         """Connect and publish initial retained startup status."""
+        self._loop = asyncio.get_running_loop()
         await self._load_policy_state()
         self._disconnect_requested = False
+        self._stop_requested = False
         self._client.loop_start()
         self._client.connect_async(
             host=self._config.mqtt.host,
@@ -166,13 +187,16 @@ class MQTTClient:
         self._publish_core_defaults_unknown()
         self._publish_camera_defaults_all()
         self._publish_global_metrics()
-        await self.publish_status("budget_blocked" if self._is_budget_blocked() else "enabled")
+        self._start_queue_worker()
+        await self.publish_status(self._effective_runtime_status())
         self._start_heartbeat()
         LOGGER.info("MQTT ready status published")
 
     async def shutdown(self) -> None:
         """Graceful shutdown with final retained status publication."""
         self._disconnect_requested = True
+        self._stop_requested = True
+        await self._stop_queue_worker()
         await self._stop_heartbeat()
         try:
             await self.publish_status("stopped")
@@ -340,24 +364,16 @@ class MQTTClient:
             return
         if message.topic != self._events_topic:
             return
-        payload = self._decode_json_payload(message.payload)
-        if payload is None:
+        event = self._decode_event_payload(message.payload)
+        if event is None:
             return
-
-        event_block = payload.get("after") or payload.get("event") or {}
-        if not isinstance(event_block, dict):
-            event_block = {}
-
-        event_id = event_block.get("id", "unknown")
-        camera = event_block.get("camera", "unknown")
-        event_type = payload.get("type", "unknown")
         LOGGER.info(
             "Frigate event received: event_id=%s camera=%s type=%s",
-            event_id,
-            camera,
-            event_type,
+            event.event_id,
+            event.camera,
+            event.event_type,
         )
-        self._evaluate_policy(payload)
+        self._enqueue_event_from_callback(event)
 
     def _handle_core_control_message(self, topic: str, payload: bytes) -> bool:
         match = self._control_set_pattern.match(topic)
@@ -389,10 +405,7 @@ class MQTTClient:
             self._monthly_budget_limit = parsed_budget
             self._config.budget.monthly_budget_limit = parsed_budget
             self._publish_sync(topics["control_monthly_budget"], f"{parsed_budget:.2f}")
-            self._publish_sync(
-                self._status_topic,
-                "budget_blocked" if self._is_budget_blocked() else "enabled",
-            )
+            self._publish_sync(self._status_topic, self._effective_runtime_status())
             self._persist_runtime_controls()
             LOGGER.info("Updated monthly_budget=%s", parsed_budget)
             return True
@@ -529,7 +542,7 @@ class MQTTClient:
             LOGGER.info("Home Assistant online detected; republishing discovery configs")
             self._publish_discovery_configs()
 
-    def _decode_json_payload(self, payload_bytes: bytes) -> dict[str, Any] | None:
+    def _decode_event_payload(self, payload_bytes: bytes) -> FrigateEvent | None:
         try:
             decoded = json.loads(payload_bytes.decode("utf-8"))
         except UnicodeDecodeError:
@@ -545,15 +558,43 @@ class MQTTClient:
             LOGGER.warning("Ignoring Frigate event message: payload is not a JSON object")
             self._publish_last_error("frigate event payload is not JSON object")
             return None
-        return decoded
-
-    def _evaluate_policy(self, payload: dict[str, Any]) -> None:
         try:
-            event = FrigateEvent.from_mqtt_payload(payload)
+            return FrigateEvent.from_mqtt_payload(decoded)
         except ValidationError as exc:
             LOGGER.warning("Skipping policy evaluation: invalid event payload (%s)", exc)
             self._publish_last_error(f"invalid event payload: {exc}")
-            return
+            return None
+
+    def _enqueue_event_from_callback(self, event: FrigateEvent) -> None:
+        event_type = event.event_type.strip().lower()
+        with self._event_queue_lock:
+            queue_len = len(self._event_queue)
+            if queue_len >= EVENT_QUEUE_MAX_SIZE:
+                if event_type == "update":
+                    self._dropped_events_total += 1
+                    self._dropped_update_total += 1
+                    LOGGER.warning(
+                        "Dropped incoming update due to full queue event_id=%s camera=%s depth=%s",
+                        event.event_id,
+                        event.camera,
+                        queue_len,
+                    )
+                    return
+                if self._event_queue:
+                    dropped = self._event_queue.popleft()
+                    self._dropped_events_total += 1
+                    self._dropped_queue_full_total += 1
+                    LOGGER.warning(
+                        "Dropped oldest event due to full queue dropped_event_id=%s dropped_camera=%s depth=%s",
+                        dropped.event_id,
+                        dropped.camera,
+                        queue_len,
+                    )
+            self._event_queue.append(event)
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._queue_event.set)
+
+    def _evaluate_policy(self, event: FrigateEvent) -> None:
 
         if not self._service_enabled:
             LOGGER.info(
@@ -613,6 +654,96 @@ class MQTTClient:
             return
 
         self._publish_camera_status_only(event=event, result_status="skipped")
+
+    async def _queue_worker_loop(self) -> None:
+        LOGGER.info("Started event queue worker max_size=%s", EVENT_QUEUE_MAX_SIZE)
+        while not self._stop_requested:
+            event: FrigateEvent | None = None
+            with self._event_queue_lock:
+                if self._event_queue:
+                    event = self._event_queue.popleft()
+                else:
+                    self._queue_event.clear()
+            if event is None:
+                try:
+                    await asyncio.wait_for(self._queue_event.wait(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
+                continue
+            try:
+                self._evaluate_policy(event)
+            except Exception:
+                LOGGER.exception(
+                    "Unhandled event processing failure event_id=%s camera=%s",
+                    event.event_id,
+                    event.camera,
+                )
+        LOGGER.info("Event queue worker stopped")
+
+    async def _degraded_monitor_loop(self) -> None:
+        LOGGER.info(
+            "Started degraded monitor high=%s low=%s sustain_s=%s",
+            DEGRADE_HIGH_WATERMARK,
+            DEGRADE_LOW_WATERMARK,
+            DEGRADE_SUSTAIN_SECONDS,
+        )
+        while not self._stop_requested:
+            depth = self._queue_depth()
+            now = time.monotonic()
+            if depth > DEGRADE_HIGH_WATERMARK:
+                if self._above_high_since is None:
+                    self._above_high_since = now
+                elif not self._is_degraded and (now - self._above_high_since) >= DEGRADE_SUSTAIN_SECONDS:
+                    self._is_degraded = True
+                    self._publish_sync(self._status_topic, "degraded")
+                    LOGGER.warning(
+                        "Runtime degraded due to queue pressure depth=%s dropped_total=%s dropped_update=%s dropped_oldest=%s",
+                        depth,
+                        self._dropped_events_total,
+                        self._dropped_update_total,
+                        self._dropped_queue_full_total,
+                    )
+            elif depth < DEGRADE_LOW_WATERMARK:
+                self._above_high_since = None
+                if self._is_degraded:
+                    self._is_degraded = False
+                    self._publish_sync(self._status_topic, self._effective_runtime_status())
+                    LOGGER.info("Runtime recovered from degraded mode depth=%s", depth)
+            await asyncio.sleep(1.0)
+        LOGGER.info("Degraded monitor stopped")
+
+    def _queue_depth(self) -> int:
+        with self._event_queue_lock:
+            return len(self._event_queue)
+
+    def _start_queue_worker(self) -> None:
+        if self._queue_worker_task is None or self._queue_worker_task.done():
+            self._queue_worker_task = asyncio.create_task(
+                self._queue_worker_loop(),
+                name="event-queue-worker",
+            )
+        if self._degraded_monitor_task is None or self._degraded_monitor_task.done():
+            self._degraded_monitor_task = asyncio.create_task(
+                self._degraded_monitor_loop(),
+                name="degraded-monitor",
+            )
+
+    async def _stop_queue_worker(self) -> None:
+        self._queue_event.set()
+        if self._queue_worker_task is not None:
+            self._queue_worker_task.cancel()
+            try:
+                await self._queue_worker_task
+            except asyncio.CancelledError:
+                pass
+            self._queue_worker_task = None
+        if self._degraded_monitor_task is not None:
+            self._degraded_monitor_task.cancel()
+            try:
+                await self._degraded_monitor_task
+            except asyncio.CancelledError:
+                pass
+            self._degraded_monitor_task = None
 
     def _remember_policy_event(self, event: FrigateEvent) -> None:
         events_data = self._policy_runtime_state.setdefault("events", {})
@@ -979,6 +1110,13 @@ class MQTTClient:
         for key, topic in topics.items():
             self._publish_sync(topic, explicit_defaults.get(key, "unknown"))
 
+    def _effective_runtime_status(self) -> str:
+        if self._is_budget_blocked():
+            return "budget_blocked"
+        if self._is_degraded:
+            return "degraded"
+        return "enabled"
+
     def _publish_global_metrics(self) -> None:
         topics = self._resolve_core_topics()
         self._publish_sync(topics["events_count_total"], str(int(self._runtime_metrics.get("count_total", 0))))
@@ -1054,10 +1192,7 @@ class MQTTClient:
         self._save_policy_state()
         self._publish_global_metrics()
         self._publish_camera_monthly_cost(camera)
-        if self._is_budget_blocked():
-            self._publish_sync(self._status_topic, "budget_blocked")
-        else:
-            self._publish_sync(self._status_topic, "enabled")
+        self._publish_sync(self._status_topic, self._effective_runtime_status())
 
     def _is_budget_blocked(self) -> bool:
         if not self._config.budget.enabled:
@@ -1287,7 +1422,7 @@ class MQTTClient:
             while True:
                 try:
                     await self.publish_heartbeat()
-                    await self.publish_status("budget_blocked" if self._is_budget_blocked() else "enabled")
+                    await self.publish_status(self._effective_runtime_status())
                 except ExternalServiceError as exc:
                     LOGGER.warning("Failed to publish heartbeat/status: %s", exc)
                 await asyncio.sleep(interval_seconds)

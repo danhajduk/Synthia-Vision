@@ -32,6 +32,14 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
   - `stopped` on graceful shutdown
 - Heartbeat timestamp publishing on interval
 - Subscribe to Frigate events topic and log `event_id`, `camera`, `type`
+- Bounded internal event queue (`max=50`) between MQTT callback and processing worker
+- Backpressure policy:
+  - drop incoming `update` events first when queue is full
+  - otherwise drop oldest queued event, then enqueue new event
+- MQTT callback stays lightweight for Frigate events (decode/normalize/enqueue only)
+- Degraded runtime status:
+  - publishes `degraded` when queue pressure stays high
+  - recovers to normal status when queue depth drops
 - Policy decision evaluation is executed for incoming events
 - Policy runtime state is persisted atomically to state JSON
 - Non-processed events publish only `last_event_id`, `last_event_ts`, and `result_status` (no action/subject/confidence/description updates)

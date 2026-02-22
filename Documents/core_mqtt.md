@@ -86,7 +86,7 @@ Command topics:
 -   Entity: `sensor.synthia_vision_status`
 -   Topic: `.../status`
 -   Icon: `mdi:brain`
--   States: `starting | enabled | budget_blocked | stopped | unavailable`
+-   States: `starting | enabled | degraded | budget_blocked | stopped | unavailable`
 
 ------------------------------------------------------------------------
 
