@@ -11,7 +11,8 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Phase 4 snapshot manager is implemented and wired for accepted events.
 - Phase 5.1 MQTT publishing + HA discovery is implemented (including identity-free `action` + `subject_type` contract scaffolding).
 - Phase 6 OpenAI client is implemented with strict JSON schema validation and retry handling.
-- Next: Phase 7 cost rollovers, budget guard, and richer state accounting.
+- Phase 7 state/cost counters, day/month rollovers, and budget guard are implemented.
+- Local tooling, Docker hardening, and documentation/testing scaffolding are in place.
 
 ## Implemented
 
@@ -255,6 +256,17 @@ Stop:
 docker compose down
 ```
 
+Restart without rebuild:
+```bash
+docker compose restart synthia-vision
+```
+
+Run local tooling:
+```bash
+python tools/publish_sample_event.py --host 127.0.0.1 --topic frigate/events
+python tools/run_pipeline_once.py --camera livingroom --event-type end
+```
+
 ## State Persistence
 
 Policy runtime state is persisted in JSON with atomic writes:
@@ -272,3 +284,16 @@ Policy runtime state is persisted in JSON with atomic writes:
 
 Configured via:
 - `service.paths.state_file`
+
+## Troubleshooting
+
+- `status=budget_blocked`:
+  - Raise `control/monthly_budget/set` or lower model usage settings (`ai.vision_detail`, `ai.image_preprocess.max_side_px`).
+- High token usage:
+  - Keep `ai.vision_detail=low`, `ai.image_preprocess.max_side_px=512`, and `crop_to_bbox=true`.
+  - Check `synthia_vision.ai` logs for `total_tokens`, `detail`, image sizes, and bytes.
+- No OpenAI results:
+  - Ensure `OPENAI_API_KEY` is set in env and container.
+  - Check `last_error` topic for `openai_failed` / `schema_failed`.
+- Time/date rollover surprises:
+  - Daily counters reset on date change, monthly totals reset when month key changes.

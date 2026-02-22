@@ -11,6 +11,13 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY src /app/src
 COPY config /app/config
 
-RUN mkdir -p /app/state /app/logs
+RUN addgroup --system synthia && adduser --system --ingroup synthia synthia \
+    && mkdir -p /app/state /app/logs \
+    && chown -R synthia:synthia /app
+
+USER synthia
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD python -c "from pathlib import Path; p=Path('/app/config/config.yaml'); raise SystemExit(0 if p.exists() else 1)"
 
 CMD ["python", "-m", "src.main"]

@@ -15,3 +15,4 @@ openai>=1.30
 # Utilities
 tenacity>=8.2        # retry/backoff (snapshot + API calls)
 Pillow>=10.0         # image resize/compress/crop preprocessing
+pytest>=8.0          # test runner for integration and local workflows

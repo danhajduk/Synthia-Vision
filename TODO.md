@@ -202,15 +202,15 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 7.2 Counters & Resets
-- [ ] count_total
-- [ ] count_today
-- [ ] month2day_total
-- [ ] daily_total
-- [ ] avg_per_event
-- [ ] monthly_by_camera
+- [x] count_total
+- [x] count_today
+- [x] month2day_total
+- [x] daily_total
+- [x] avg_per_event
+- [x] monthly_by_camera
 
-- [ ] Day rollover reset
-- [ ] Month rollover reset
+- [x] Day rollover reset
+- [x] Month rollover reset
 
 ✅ UNIT TEST:
 - Simulate date change
@@ -219,9 +219,9 @@ No step should require the entire pipeline to be complete.
 ---
 
 ## 7.3 Budget Guard
-- [ ] Block OpenAI calls if over monthly limit
-- [ ] Publish status = "budget_blocked"
-- [ ] Allow recovery if budget increased
+- [x] Block OpenAI calls if over monthly limit
+- [x] Publish status = "budget_blocked"
+- [x] Allow recovery if budget increased
 
 ✅ TEST:
 - Force cost over limit
@@ -280,10 +280,10 @@ No step should require the entire pipeline to be complete.
 # Phase 9 – Docker & Deployment
 
 ## 9.1 Dockerfile
-- [ ] Lightweight Python image
-- [ ] Non-root user
-- [ ] Proper working directory
-- [ ] Healthcheck
+- [x] Lightweight Python image
+- [x] Non-root user
+- [x] Proper working directory
+- [x] Healthcheck
 
 ---
 
@@ -306,11 +306,11 @@ No step should require the entire pipeline to be complete.
 # Phase 10 – Local Simulation Tools
 
 ## 10.1 Sample Event Publisher
-- [ ] tools/publish_sample_event.py
+- [x] tools/publish_sample_event.py
   - Publishes canned Frigate event
 
 ## 10.2 Offline Pipeline Runner
-- [ ] tools/run_pipeline_once.py
+- [x] tools/run_pipeline_once.py
   - Uses mock snapshot + mock OpenAI
 
 ✅ TEST:
@@ -320,14 +320,14 @@ No step should require the entire pipeline to be complete.
 
 # Phase 11 – Testing Infrastructure
 
-- [ ] Setup pytest
+- [x] Setup pytest
 - [x] Unit tests:
   - policy
   - event-type control routing (end/update toggles + updates_per_event limit)
   - state
   - cost
   - dedupe
-- [ ] Integration tests with mocks:
+- [x] Integration tests with mocks:
   - MQTT
   - httpx
   - OpenAI
@@ -336,10 +336,10 @@ No step should require the entire pipeline to be complete.
 
 # Phase 12 – Documentation
 
-- [ ] Update README run instructions
-- [ ] Document config.yaml structure
-- [ ] Document MQTT topics
-- [ ] Add troubleshooting section
+- [x] Update README run instructions
+- [x] Document config.yaml structure
+- [x] Document MQTT topics
+- [x] Add troubleshooting section
 
 ---
 

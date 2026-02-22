@@ -78,6 +78,7 @@ class MQTTClient:
                 "count_total": 0,
                 "count_today": 0,
                 "count_today_date": datetime.now().date().isoformat(),
+                "count_month_key": datetime.now().strftime("%Y-%m"),
                 "cost_last": 0.0,
                 "cost_daily_total": 0.0,
                 "cost_month2day_total": 0.0,
@@ -160,7 +161,7 @@ class MQTTClient:
         self._publish_core_defaults_unknown()
         self._publish_camera_defaults_all()
         self._publish_global_metrics()
-        await self.publish_status("enabled")
+        await self.publish_status("budget_blocked" if self._is_budget_blocked() else "enabled")
         self._start_heartbeat()
         LOGGER.info("MQTT ready status published")
 
@@ -383,6 +384,10 @@ class MQTTClient:
             self._monthly_budget_limit = parsed_budget
             self._config.budget.monthly_budget_limit = parsed_budget
             self._publish_sync(topics["control_monthly_budget"], f"{parsed_budget:.2f}")
+            self._publish_sync(
+                self._status_topic,
+                "budget_blocked" if self._is_budget_blocked() else "enabled",
+            )
             self._persist_runtime_controls()
             LOGGER.info("Updated monthly_budget=%s", parsed_budget)
             return True
@@ -667,6 +672,7 @@ class MQTTClient:
             "count_total": int(metrics_data.get("count_total", 0)),
             "count_today": int(metrics_data.get("count_today", 0)),
             "count_today_date": str(metrics_data.get("count_today_date", today_key)),
+            "count_month_key": str(metrics_data.get("count_month_key", datetime.now().strftime("%Y-%m"))),
             "cost_last": float(metrics_data.get("cost_last", 0.0)),
             "cost_daily_total": float(metrics_data.get("cost_daily_total", 0.0)),
             "cost_month2day_total": float(metrics_data.get("cost_month2day_total", 0.0)),
@@ -680,10 +686,7 @@ class MQTTClient:
             loaded_metrics["cost_monthly_by_camera"] = {
                 str(camera): float(amount) for camera, amount in raw_by_camera.items()
             }
-        if loaded_metrics["count_today_date"] != today_key:
-            loaded_metrics["count_today"] = 0
-            loaded_metrics["count_today_date"] = today_key
-            loaded_metrics["cost_daily_total"] = 0.0
+        self._apply_metric_rollovers(loaded_metrics)
 
         max_ids = max(1, self._config.dedupe.recent_event_ids_max)
         loaded_controls = controls_from_state(loaded)
@@ -758,6 +761,20 @@ class MQTTClient:
             LOGGER.warning("Failed to persist policy state: %s", exc)
 
     def _fetch_snapshot_for_event(self, event: FrigateEvent) -> None:
+        if self._is_budget_blocked():
+            self._publish_sync(self._status_topic, "budget_blocked")
+            self._publish_last_error(
+                f"budget_blocked camera={event.camera} event_id={event.event_id}"
+            )
+            self._publish_camera_result(
+                event=event,
+                result_status="blocked_budget",
+                action="unknown",
+                subject_type="unknown",
+                confidence_percent="unknown",
+                description="blocked: monthly budget exceeded",
+            )
+            return
         try:
             snapshot = self._snapshot_manager.fetch_event_snapshot(
                 event.event_id,
@@ -996,10 +1013,7 @@ class MQTTClient:
         )
 
     def _record_processed_event_metrics(self) -> None:
-        today_key = datetime.now().date().isoformat()
-        if str(self._runtime_metrics.get("count_today_date", today_key)) != today_key:
-            self._runtime_metrics["count_today"] = 0
-            self._runtime_metrics["count_today_date"] = today_key
+        self._apply_metric_rollovers(self._runtime_metrics)
 
         self._runtime_metrics["count_total"] = int(self._runtime_metrics.get("count_total", 0)) + 1
         self._runtime_metrics["count_today"] = int(self._runtime_metrics.get("count_today", 0)) + 1
@@ -1013,11 +1027,7 @@ class MQTTClient:
         self._publish_global_metrics()
 
     def _record_openai_usage_metrics(self, *, usage: OpenAIUsage, camera: str) -> None:
-        today_key = datetime.now().date().isoformat()
-        if str(self._runtime_metrics.get("count_today_date", today_key)) != today_key:
-            self._runtime_metrics["count_today"] = 0
-            self._runtime_metrics["count_today_date"] = today_key
-            self._runtime_metrics["cost_daily_total"] = 0.0
+        self._apply_metric_rollovers(self._runtime_metrics)
 
         self._runtime_metrics["cost_last"] = float(usage.cost_usd)
         self._runtime_metrics["cost_daily_total"] = float(
@@ -1051,6 +1061,28 @@ class MQTTClient:
         self._save_policy_state()
         self._publish_global_metrics()
         self._publish_camera_monthly_cost(camera)
+        if self._is_budget_blocked():
+            self._publish_sync(self._status_topic, "budget_blocked")
+        else:
+            self._publish_sync(self._status_topic, "enabled")
+
+    def _is_budget_blocked(self) -> bool:
+        if not self._config.budget.enabled:
+            return False
+        month_total = float(self._runtime_metrics.get("cost_month2day_total", 0.0))
+        return month_total >= float(self._monthly_budget_limit)
+
+    def _apply_metric_rollovers(self, metrics: dict[str, Any]) -> None:
+        today_key = datetime.now().date().isoformat()
+        month_key = datetime.now().strftime("%Y-%m")
+        if str(metrics.get("count_today_date", today_key)) != today_key:
+            metrics["count_today"] = 0
+            metrics["count_today_date"] = today_key
+            metrics["cost_daily_total"] = 0.0
+        if str(metrics.get("count_month_key", month_key)) != month_key:
+            metrics["count_month_key"] = month_key
+            metrics["cost_month2day_total"] = 0.0
+            metrics["cost_monthly_by_camera"] = {}
 
     def _publish_camera_unknown(self, camera: str) -> None:
         topics = self._resolve_camera_topics(camera)
@@ -1262,7 +1294,7 @@ class MQTTClient:
             while True:
                 try:
                     await self.publish_heartbeat()
-                    await self.publish_status("enabled")
+                    await self.publish_status("budget_blocked" if self._is_budget_blocked() else "enabled")
                 except ExternalServiceError as exc:
                     LOGGER.warning("Failed to publish heartbeat/status: %s", exc)
                 await asyncio.sleep(interval_seconds)
