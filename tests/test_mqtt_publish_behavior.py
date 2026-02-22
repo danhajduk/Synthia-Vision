@@ -70,6 +70,18 @@ class MQTTPublishBehaviorTests(unittest.TestCase):
             ["cam/last_event_id", "cam/last_event_ts", "cam/result_status"],
         )
 
+    def test_unknown_camera_stays_disabled_when_not_in_db(self) -> None:
+        if MQTTClient is None:
+            self.skipTest("paho-mqtt not installed")
+
+        class _CameraStoreStub:
+            def get_camera_enabled(self, _camera: str):
+                return None
+
+        client = MQTTClient.__new__(MQTTClient)
+        client._camera_store = _CameraStoreStub()
+        self.assertFalse(client._is_camera_enabled_runtime("garage"))
+
 
 if __name__ == "__main__":
     unittest.main()

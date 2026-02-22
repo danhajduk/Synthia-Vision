@@ -129,7 +129,6 @@ class MQTTClient:
         self._process_update_events_by_camera: dict[str, bool] = {}
         self._updates_processed_count: dict[str, int] = {}
         self._updates_last_seen_ts: dict[str, float] = {}
-        self._camera_enabled_overrides: dict[str, bool] = {}
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -485,7 +484,6 @@ class MQTTClient:
                     f"invalid camera enabled payload camera={camera} payload={raw_value}"
                 )
                 return True
-            self._camera_enabled_overrides[camera] = parsed
             try:
                 self._camera_store.set_camera_enabled(camera, parsed)
             except Exception as exc:
@@ -769,10 +767,13 @@ class MQTTClient:
         try:
             return self._camera_store.get_runtime_settings(
                 camera,
-                default_process_end_events=self._process_end_events_by_camera.get(camera, True),
+                default_process_end_events=self._process_end_events_by_camera.get(
+                    camera,
+                    self._event_controls.process_end_events,
+                ),
                 default_process_update_events=self._process_update_events_by_camera.get(
                     camera,
-                    False,
+                    self._event_controls.process_update_events,
                 ),
                 default_updates_per_event=self._event_controls.updates_per_event,
             )
@@ -782,8 +783,14 @@ class MQTTClient:
 
             return SimpleNamespace(
                 enabled=False,
-                process_end_events=self._process_end_events_by_camera.get(camera, True),
-                process_update_events=self._process_update_events_by_camera.get(camera, False),
+                process_end_events=self._process_end_events_by_camera.get(
+                    camera,
+                    self._event_controls.process_end_events,
+                ),
+                process_update_events=self._process_update_events_by_camera.get(
+                    camera,
+                    self._event_controls.process_update_events,
+                ),
                 updates_per_event=self._event_controls.updates_per_event,
             )
 
@@ -872,7 +879,11 @@ class MQTTClient:
             controls_data.get("high_precision_mode", self._config.modes.high_precision_mode.enabled)
         )
         loaded_camera_controls: dict[str, dict[str, bool]] = {}
-        for camera in self._config.policy.cameras:
+        raw_camera_controls = controls_data.get("camera_event_processing")
+        camera_names: list[str] = []
+        if isinstance(raw_camera_controls, dict):
+            camera_names = [str(camera) for camera in raw_camera_controls.keys()]
+        for camera in sorted(camera_names):
             process_end_events, process_update_events = camera_event_controls_from_state(
                 loaded,
                 camera,
@@ -1129,7 +1140,7 @@ class MQTTClient:
         self._publish_sync(topics["result_status"], result_status)
 
     def _publish_camera_defaults_all(self) -> None:
-        for camera in sorted(self._config.policy.cameras.keys()):
+        for camera in self._known_cameras():
             self._publish_camera_enabled_state(camera)
             self._publish_camera_event_control_states(camera)
             self._publish_camera_unknown(camera)
@@ -1280,15 +1291,14 @@ class MQTTClient:
 
     def _publish_camera_event_control_states(self, camera: str) -> None:
         topics = self._resolve_camera_topics(camera)
-        process_end = self._process_end_events_by_camera.get(camera, True)
-        process_update = self._process_update_events_by_camera.get(camera, False)
-        self._publish_sync(topics["process_end_events"], bool_to_on_off(process_end))
-        self._publish_sync(topics["process_update_events"], bool_to_on_off(process_update))
+        runtime = self._resolve_camera_runtime_settings(camera)
+        self._publish_sync(topics["process_end_events"], bool_to_on_off(runtime.process_end_events))
+        self._publish_sync(topics["process_update_events"], bool_to_on_off(runtime.process_update_events))
 
     def _publish_discovery_configs(self) -> None:
         if not self._config.mqtt_discovery.enabled:
             return
-        cameras = sorted(self._config.policy.cameras.keys())
+        cameras = self._known_cameras()
         messages = self._ha_discovery.build_messages(cameras)
         for message in messages:
             self._publish_sync(message.topic, message.payload, retain=True)
@@ -1330,8 +1340,6 @@ class MQTTClient:
         return topics
 
     def _is_camera_enabled_runtime(self, camera: str) -> bool:
-        if camera in self._camera_enabled_overrides:
-            return self._camera_enabled_overrides[camera]
         try:
             db_enabled = self._camera_store.get_camera_enabled(camera)
             if db_enabled is not None:
@@ -1378,6 +1386,25 @@ class MQTTClient:
         except Exception as exc:
             LOGGER.warning("Failed to persist queue depth: %s", exc)
 
+    def _known_cameras(self) -> list[str]:
+        try:
+            cameras = self._camera_store.list_camera_keys()
+        except Exception as exc:
+            LOGGER.warning("Failed to list cameras from db: %s", exc)
+            cameras = []
+        if cameras:
+            return sorted({str(camera) for camera in cameras})
+        camera_costs = self._runtime_metrics.get("cost_monthly_by_camera", {})
+        if not isinstance(camera_costs, dict):
+            camera_costs = {}
+        return sorted(
+            {
+                *self._process_end_events_by_camera.keys(),
+                *self._process_update_events_by_camera.keys(),
+                *camera_costs.keys(),
+            }
+        )
+
     def _resolve_core_topics(self) -> dict[str, str]:
         return {
             "cost_last": self._resolve_topic_path("cost.last", "cost/last"),
@@ -1408,12 +1435,20 @@ class MQTTClient:
         controls["high_precision_mode"] = self._config.modes.high_precision_mode.enabled
         controls["updates_per_event"] = self._event_controls.updates_per_event
         camera_event_processing: dict[str, dict[str, bool]] = {}
-        for camera in self._config.policy.cameras:
+        for camera in sorted(
+            {
+                *self._process_end_events_by_camera.keys(),
+                *self._process_update_events_by_camera.keys(),
+            }
+        ):
             camera_event_processing[camera] = {
-                "process_end_events": self._process_end_events_by_camera.get(camera, True),
+                "process_end_events": self._process_end_events_by_camera.get(
+                    camera,
+                    self._event_controls.process_end_events,
+                ),
                 "process_update_events": self._process_update_events_by_camera.get(
                     camera,
-                    False,
+                    self._event_controls.process_update_events,
                 ),
             }
         controls["camera_event_processing"] = camera_event_processing

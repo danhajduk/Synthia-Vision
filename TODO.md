@@ -110,23 +110,23 @@ Acceptance:
 ---
 
 ## Phase 5 – Camera Discovery + Camera Config in SQLite
-- [ ] Remove/ignore `policy.cameras` from YAML as source of truth.
+- [x] Remove/ignore `policy.cameras` from YAML as source of truth.
 - [x] Upsert discovered cameras from every Frigate event.
 - [x] Mandatory default for new cameras: `enabled=0`.
 - [x] Track `discovered_first_ts` and `last_seen_ts`.
 - [ ] Add transition rule for legacy YAML camera config:
-- [ ] Subtask: during migration window, legacy YAML camera values are ignored for runtime decisions.
+- [x] Subtask: during migration window, legacy YAML camera values are ignored for runtime decisions.
 - [ ] Subtask: optional one-time migration tool/import may copy YAML camera values into SQLite.
 - [ ] Add per-camera settings usage:
 - [ ] Subtask: `display_name`, `prompt_preset`, `confidence_threshold`, `cooldown_s`
 - [ ] Subtask: `process_end_events`, `process_update_events`, `updates_per_event`
 - [ ] Subtask: `vision_detail`, `phash_threshold`
 - [x] Add unique constraint on cameras.camera_key.
-- [ ] Do not auto-enable cameras under any circumstance.
+- [x] Do not auto-enable cameras under any circumstance.
 
 Acceptance:
-- [ ] New cameras appear in SQLite automatically.
-- [ ] New cameras are disabled by default.
+- [x] New cameras appear in SQLite automatically.
+- [x] New cameras are disabled by default.
 
 ---
 

@@ -77,6 +77,15 @@ class CameraStoreTests(unittest.TestCase):
             self.assertIsNotNone(row)
             self.assertEqual(row[0], "18")
 
+    def test_list_camera_keys_returns_sorted_values(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            store = CameraStore(db_path)
+            store.upsert_discovered_camera("livingroom")
+            store.upsert_discovered_camera("doorbell")
+            self.assertEqual(store.list_camera_keys(), ["doorbell", "livingroom"])
+
 
 if __name__ == "__main__":
     unittest.main()

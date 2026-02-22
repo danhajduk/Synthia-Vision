@@ -20,6 +20,14 @@ class CameraRuntimeSettings:
 class CameraStore:
     db_path: Path
 
+    def list_camera_keys(self) -> list[str]:
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            rows = conn.execute(
+                "SELECT camera_key FROM cameras ORDER BY camera_key ASC"
+            ).fetchall()
+        return [str(row[0]) for row in rows]
+
     def upsert_discovered_camera(self, camera_key: str, *, last_seen_ts: float | None = None) -> None:
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat()
