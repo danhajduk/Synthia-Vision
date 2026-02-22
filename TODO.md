@@ -1,352 +1,229 @@
-# Synthia Vision – TODO
+# Synthia Vision – TODO (Next Sprint)
 
-This roadmap is structured so that each milestone is independently testable.
-No step should require the entire pipeline to be complete.
+Sprint theme: **Boring runtime + local explain UI** with minimal MQTT clutter.
 
-## 1. Foundation
-- [x] Add `src/main.py` entrypoint and app lifecycle wiring.
-- [x] Add configuration loader (`config.yaml` + env override for secrets).
-- [x] Define core models for Frigate events and OpenAI structured output.
-- [x] Add logging setup and basic error handling conventions.
-- [x] Split logging config by component (`core`, `mqtt`, `config`, `policy`, `ai`).
-- [x] Add per-component log files with daily rotation and retention.
+Execution rule:
+- Complete one phase at a time.
+- When asked to continue, commit the previous phase and update docs before starting the next.
 
-# Phase 2 – MQTT + Event Intake
+## Phase 0 – Guardrails & Baseline
+- [ ] Snapshot current behavior and document known MQTT/runtime behavior.
+- [ ] Define constants for queue/degraded thresholds (`queue_max=50`, degrade high-water and recovery).
+- [ ] Add/confirm test harness for new pipeline modules.
 
-## 2.1 MQTT Client Wrapper
-- [x] Implement mqtt_client.py wrapper
-  - connect / reconnect handling
-  - graceful shutdown
-  - last will message
-- [x] Publish retained status topic on startup:
-  - home/synthiavision/status = "starting"
-  - then "enabled" when ready
-
-✅ TEST:
-- Start service
-- Verify retained status appears in MQTT Explorer
-- Restart service and confirm no duplicate behavior
+Acceptance:
+- [ ] Baseline tests run.
+- [ ] New sprint constants/config entries are defined in one place.
 
 ---
 
-## 2.2 Heartbeat
-- [x] Publish heartbeat timestamp every 30–60s
-  - home/synthiavision/heartbeat_ts
+## Phase 1 – Config Refactor (Root + Includes)
+- [ ] Add root config model fields: `schema_version`, `includes`, `service.paths.db_file`.
+- [ ] Implement include-based loader:
+  - [ ] `config.yaml` as root.
+  - [ ] `config.d/*.yaml` merged in order.
+  - [ ] Deep-merge dicts; lists are replace semantics.
+- [ ] Add schema version validation with clear failure message.
+- [ ] Normalize MQTT topic derivation from `service.mqtt_prefix`.
+- [ ] Ensure no internal hardcoded `synthia/synthiavision/...` topics remain.
 
-✅ TEST:
-- Confirm heartbeat updates without restarting container
-
----
-
-## 2.3 Subscribe to Frigate Events
-- [x] Subscribe to `frigate/events`
-- [x] Log raw event_id + camera + type
-- [x] Evaluate policy decisions for incoming events
-
-✅ TEST:
-- Publish a canned Frigate event to MQTT
-- Confirm log output shows receipt
+Acceptance:
+- [ ] Existing runtime config loads via includes.
+- [ ] Schema mismatch fails fast with clear error.
+- [ ] Topic normalization verified.
 
 ---
 
-# Phase 3 – Policy Engine (Pure Logic First)
+## Phase 2 – Disable Cropping (Full-Frame Only)
+- [ ] Remove/disable bbox/ROI cropping paths in preprocessing.
+- [ ] Keep resize/compress token controls.
+- [ ] Ensure `input_image` blocks remain used.
+- [ ] Force `crop_to_bbox=false` behavior (or remove option).
 
-## 3.1 Implement policy_engine.py
-- [x] Pure function:
-  should_process(event, state, config) -> Decision
-- [x] Handle:
-  - process_on == policy.process_on no more then once every policy.min_process_interval_s per camera
-  - allowed labels
-  - enabled cameras
-  - doorbell_only_mode
-  - confidence threshold
-  - cooldown logic
-  - duplicate event_id
-
-✅ UNIT TEST:
-- Valid end/person event → accepted
-- Wrong label → rejected
-- Cooldown active → rejected
-- Duplicate event_id → rejected
+Acceptance:
+- [ ] No crop path is active.
+- [ ] Token guard still works.
 
 ---
 
-## 3.2 Event Router
-- [x] event_router.py
-  - Routes accepted events to "processing"
-  - Routes rejected events to debug counter/log
+## Phase 3 – SQLite Foundation + DB Layer
+- [ ] Add SQLite DB path default: `/app/state/synthia_vision.db`.
+- [ ] Implement DB init with WAL mode and sane busy timeout.
+- [ ] Add tables:
+  - [ ] `events`
+  - [ ] `metrics`
+  - [ ] `errors`
+  - [ ] `users`
+  - [ ] `kv`
+  - [ ] `cameras`
+- [ ] Add DB access module (`src/db/...`) with robust write helpers.
 
-✅ TEST:
-- Feed sample events manually
-- Verify correct routing decision
-
----
-
-# Phase 4 – Snapshot Manager
-
-## 4.1 Fetch Event Snapshot
-- [x] Implement snapshot_manager.py
-  - GET /api/events/{event_id}/snapshot.jpg
-  - timeout handling
-  - retry with backoff
-  - max_bytes limit
-
-✅ TEST:
-- Mock httpx and simulate:
-  - success
-  - timeout
-  - retry then success
-  - retry then fail
+Acceptance:
+- [ ] DB initializes on startup.
+- [ ] Table creation is idempotent.
 
 ---
 
-## 4.2 Optional Debug Save
-- [x] If debug enabled:
-  - Save snapshot to /app/state/snapshots/[camera].jpg
+## Phase 4 – Camera Discovery + Camera Config in SQLite
+- [ ] Remove/ignore `policy.cameras` from YAML as source of truth.
+- [ ] Upsert discovered cameras from every Frigate event.
+- [ ] Mandatory default for new cameras: `enabled=0`.
+- [ ] Track `discovered_first_ts` and `last_seen_ts`.
+- [ ] Add per-camera settings columns usage:
+  - [ ] `prompt_preset`, `confidence_threshold`, `cooldown_s`
+  - [ ] `process_end_events`, `process_update_events`, `updates_per_event`
+  - [ ] `vision_detail`, `phash_threshold`
 
-✅ TEST:
-- Confirm image file is written
-
----
-
-# Phase 5 – Publishing Results
-
-## 5.1 MQTT Publisher
-- [x] 5.1.1 Publish per-camera runtime topics (retained, ordered):
-  - last_event_id
-  - last_event_ts
-  - result_status
-  - action
-  - subject_type
-  - confidence
-  - description
-- [x] 5.1.2 Identity-free action contract + subject_type contract:
-  - global `policy.actions` allowlist + per-camera override
-  - global `policy.subject_types` allowlist/default
-  - per-camera `prompt_preset` + `ai.prompts.presets` + `default_preset`
-  - enforce invalid `action` and `subject_type` to configured defaults
-  - truncate `description` to 200 chars
-- [x] 5.1.1a Publish HA MQTT Discovery configs:
-  - core entities + per-camera entities
-  - publish on startup
-  - republish when `homeassistant/status = online`
-
-- [x] Publish global:
-  - cost metrics
-  - counters
-  - status
-
-✅ TEST:
-- Run with mocked OpenAI
-- Verify retained topics exist
+Acceptance:
+- [ ] New cameras appear in SQLite automatically.
+- [ ] New cameras are disabled by default.
 
 ---
 
-## 5.2 Error Handling Path
-- [x] Publish safe fallback on:
-  - OpenAI failure (status path reserved and topic-safe fallback structure in place)
-  - Schema failure (status path reserved and topic-safe fallback structure in place)
-  - Snapshot failure
+## Phase 5 – Queue Worker + Backpressure + Degraded State
+- [ ] Introduce bounded intake queue (size 50).
+- [ ] Keep MQTT callback lightweight (parse/normalize/enqueue only).
+- [ ] Add dedicated worker for processing queue items.
+- [ ] Implement drop policy:
+  - [ ] Drop `update` events first when full.
+  - [ ] If still full, drop oldest event (documented choice).
+- [ ] Track drop counters in SQLite and summary API.
+- [ ] Implement degraded status transitions:
+  - [ ] Degrade when queue > 40 for > 30s.
+  - [ ] Recover when queue < 10.
+  - [ ] Publish only existing status topic.
 
-✅ TEST:
-- Simulate each failure type
-
----
-
-# Phase 6 – OpenAI Client
-
-## 6.1 Structured Classification
-- [x] openai_client.py
-  classify(snapshot_bytes, context) -> (result, usage, cost)
-
-- [x] Enforce strict JSON schema validation
-- [x] Extract:
-  - prompt_tokens
-  - completion_tokens
-  - cost
-
-✅ UNIT TEST:
-- Valid JSON → parsed
-- Invalid JSON → rejected safely
-- Missing field → rejected
+Acceptance:
+- [ ] Queue never exceeds 50.
+- [ ] MQTT thread stays responsive under burst load.
+- [ ] Degraded transitions behave as specified.
 
 ---
 
-## 6.2 Retry Policy
-- [x] Retry transient OpenAI failures
-- [x] Do NOT retry schema validation failures
+## Phase 6 – Event Journal + Error Journal
+- [ ] Write one `events` row for each handled event (accepted or rejected).
+- [ ] Write `metrics` row when processing path runs.
+- [ ] Record reject reasons and skipped reasons in DB, not MQTT debug topics.
+- [ ] Record runtime errors in `errors` with component and short detail.
 
-✅ TEST:
-- Simulate retryable exception
-- Confirm max attempts respected
-
-## 6.3 Token Reduction Guard
-- [x] Use `input_image` blocks (not base64 in text)
-- [x] Add preprocessing (resize/compress + optional bbox crop)
-- [x] Default `vision_detail=low`, optional per-camera overrides
-- [x] Add token instrumentation logging (tokens + image dims + bytes + detail)
-- [x] Add runtime token budget guard (`>8000` => low-budget retry then `token_budget_exceeded`)
+Acceptance:
+- [ ] Explainability data exists in SQLite for recent events.
+- [ ] MQTT clutter does not increase.
 
 ---
 
-# Phase 7 – State & Cost Tracking
+## Phase 7 – Smart Update with Perceptual Hash
+- [ ] Implement pHash/dHash helper (`src/pipeline/phash.py` or equivalent).
+- [ ] For `update` events:
+  - [ ] Fetch full-frame snapshot.
+  - [ ] Compute hash and compare against last camera hash.
+  - [ ] If distance <= threshold, skip OpenAI and mark status accordingly.
+- [ ] Persist hash/distance + skip reason in `metrics`.
 
-## 7.1 Atomic State Store
-- [x] load_state()
-- [x] save_state_atomic() (temp + rename)
-
-✅ UNIT TEST:
-- Verify atomic write works
-- Simulate crash mid-write (optional advanced)
-
----
-
-## 7.2 Counters & Resets
-- [x] count_total
-- [x] count_today
-- [x] month2day_total
-- [x] daily_total
-- [x] avg_per_event
-- [x] monthly_by_camera
-
-- [x] Day rollover reset
-- [x] Month rollover reset
-
-✅ UNIT TEST:
-- Simulate date change
-- Verify correct reset behavior
+Acceptance:
+- [ ] Near-identical updates skip OpenAI.
+- [ ] End events still run normal classification.
 
 ---
 
-## 7.3 Budget Guard
-- [x] Block OpenAI calls if over monthly limit
-- [x] Publish status = "budget_blocked"
-- [x] Allow recovery if budget increased
+## Phase 8 – Auth + First-Run Bootstrap
+- [ ] Add session-based auth with roles: `guest`, `admin`.
+- [ ] Secure password hashing (bcrypt/argon2).
+- [ ] First-run bootstrap:
+  - [ ] create first admin via setup route and/or `ADMIN_PASSWORD` env.
+- [ ] Restrict guest vs admin routes and APIs.
 
-✅ TEST:
-- Force cost over limit
-- Confirm OpenAI not called
-- Confirm status updates
-
----
-
-# Phase 8 – Home Assistant MQTT Discovery
-
-## 8.1 Global Entities
-- [x] Status
-- [x] Cost metrics
-- [x] Event counters
-
-✅ TEST:
-- HA creates entities once
-- Restart service → no duplicates
+Acceptance:
+- [ ] Guest cannot access admin pages/APIs.
+- [ ] First admin creation flow is documented and tested.
 
 ---
 
-## 8.2 Per-Camera Entities
-- [x] Enabled toggle
-- [x] Action
-- [x] Subject type
-- [x] Confidence
-- [x] Description
-- [x] Result status
-- [x] Last event id
-- [x] Last event timestamp
-- [x] Monthly Cost
+## Phase 9 – Built-in FastAPI + Jinja UI
+- [ ] Add routes/pages:
+  - [ ] `/` -> `/ui`
+  - [ ] `/ui` guest overview (iframe-safe)
+  - [ ] `/ui/login`, `/ui/logout`
+  - [ ] `/ui/admin`, `/ui/setup`, `/ui/events`, `/ui/events/{id}`, `/ui/errors`
+- [ ] Add template/layout files under `src/ui/templates`.
+- [ ] Add static assets under `src/ui/static`.
 
-✅ TEST:
-- Enable second camera in config
-- Confirm HA auto-creates new entities
+Acceptance:
+- [ ] UI is self-hosted, no external frontend toolchain.
+- [ ] Guest overview has no controls or sensitive details.
 
 ---
 
-## 8.3 Command Topics (HA → Service)
-- [x] Enabled switch
-- [x] Doorbell-only mode
-- [x] High precision mode
-- [x] Monthly budget limit
-- [x] Confidence threshold
-- [x] Process end events switch
-- [x] Process update events switch
-- [x] Updates per event number (1..2)
+## Phase 10 – Setup & Controls (Admin)
+- [ ] Setup page global settings:
+  - [ ] monthly budget
+  - [ ] confidence threshold
+  - [ ] doorbell-only mode
+  - [ ] high precision mode
+  - [ ] default vision detail
+  - [ ] default/update pHash threshold
+- [ ] Setup page camera section from discovered cameras table.
+- [ ] Allow per-camera edits and enable toggles.
+- [ ] Clearly label runtime-only vs persisted changes.
+- [ ] Persist settings to SQLite `kv` (and config only if explicitly supported).
 
-✅ TEST:
-- Toggle in HA
-- Confirm service state updates
-- Confirm MQTT state reflects change
-
----
-
-# Phase 9 – Docker & Deployment
-
-## 9.1 Dockerfile
-- [x] Lightweight Python image
-- [x] Non-root user
-- [x] Proper working directory
-- [x] Healthcheck
+Acceptance:
+- [ ] Admin can fully manage discovered cameras from UI.
+- [ ] Runtime updates apply immediately.
 
 ---
 
-## 9.2 docker-compose.yml
-- [x] Bind mounts:
-  - config/
-  - state/
-  - logs/
-- [x] Environment variables:
-  - OPENAI_API_KEY
-  - MQTT_PASSWORD
-- [x] Restart policy
+## Phase 11 – API Surface
+Guest APIs:
+- [ ] `GET /api/status`
+- [ ] `GET /api/metrics/summary`
+- [ ] `GET /api/cameras/summary`
 
-✅ TEST:
-- docker compose up -d
-- Verify status topic appears
+Admin APIs:
+- [ ] `GET /api/events`
+- [ ] `GET /api/events/{id}`
+- [ ] `GET /api/cameras`
+- [ ] `POST /api/cameras/{camera_key}`
+- [ ] `POST /api/control/{name}`
+- [ ] `GET /api/errors`
 
----
-
-# Phase 10 – Local Simulation Tools
-
-## 10.1 Sample Event Publisher
-- [x] tools/publish_sample_event.py
-  - Publishes canned Frigate event
-
-## 10.2 Offline Pipeline Runner
-- [x] tools/run_pipeline_once.py
-  - Uses mock snapshot + mock OpenAI
-
-✅ TEST:
-- Full pipeline without Frigate or OpenAI
+Acceptance:
+- [ ] Role gates enforced consistently.
+- [ ] Guest API responses are safe for HA iframe use.
 
 ---
 
-# Phase 11 – Testing Infrastructure
+## Phase 12 – Migration Tool (state.json -> SQLite)
+- [ ] Add `tools/migrate_state_json_to_sqlite.py`.
+- [ ] Migrate known counters/metrics/per-camera state into SQLite.
+- [ ] Handle missing/unknown fields gracefully.
+- [ ] Make migration idempotent.
 
-- [x] Setup pytest
-- [x] Unit tests:
-  - policy
-  - event-type control routing (end/update toggles + updates_per_event limit)
-  - state
-  - cost
-  - dedupe
-- [x] Integration tests with mocks:
-  - MQTT
-  - httpx
-  - OpenAI
+Acceptance:
+- [ ] Migration runs safely multiple times.
+- [ ] Post-migration stats visible in DB/UI.
 
 ---
 
-# Phase 12 – Documentation
+## Phase 13 – Release Engineering
+- [ ] Single source of truth version.
+- [ ] Add/update `CHANGELOG.md` with sprint entry.
+- [ ] Add CI workflow (tests + lint if configured).
+- [ ] Confirm Docker build still works.
+- [ ] Update README:
+  - [ ] config include layout
+  - [ ] UI routes and auth bootstrap
+  - [ ] HA iframe URL (`/ui`)
+  - [ ] migration instructions
 
-- [x] Update README run instructions
-- [x] Document config.yaml structure
-- [x] Document MQTT topics
-- [x] Add troubleshooting section
+Acceptance:
+- [ ] CI passes on PR.
+- [ ] Docs match runtime behavior.
 
 ---
 
-# Guiding Principle
-
-No feature is “done” unless:
-- It is testable independently
-- It publishes observable state
-- It fails safely
-- It survives restart
+## Cross-Phase Constraints
+- [ ] No new MQTT debug/explain topics beyond existing topics.
+- [ ] Keep MQTT surface minimal; explainability lives in SQLite/UI.
+- [ ] Preserve existing safe publish behavior for non-processed events (status-only update).
+- [ ] Prefer reliability over feature breadth when tradeoffs appear.
