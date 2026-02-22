@@ -122,8 +122,11 @@ Command topics:
   --------------------- ------------------------------ -------------------- ---------------
   Avg Tokens/Request    `.../tokens/avg_per_request`   mdi:counter          tokens
 
-  Avg Tokens/Day        `.../tokens/avg_per_day`       mdi:calendar-clock   tokens/day
+  Avg Tokens/Day*       `.../tokens/avg_per_day`       mdi:calendar-clock   tokens/day
   -----------------------------------------------------------------------------------------
+
+`*` `avg_per_day` is currently computed as `avg_per_request * count_today`
+(estimated daily total tokens).
 
 ------------------------------------------------------------------------
 

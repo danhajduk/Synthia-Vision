@@ -90,8 +90,10 @@ Per-camera command topic:
     -   Doorbell-style cameras: `mdi:doorbell-video`
     -   General cameras: `mdi:cctv`
 
-Suggested action values (expandable): - `unknown` - `deliver_package` -
-`pickup_package` - `package_left_unattended` - `vehicle_arrival` -
+Suggested action values (expandable): - `waiting` - `unknown` -
+`person_passing_by` - `person_approaching` - `person_at_door` -
+`person_leaving` - `deliver_package` - `pickup_package` -
+`package_left_unattended` - `vehicle_arrival` -
 `vehicle_departure` - `vehicle_detected` - `delivery_vehicle` -
 `loitering` - `suspicious_activity` - `animal_detected` -
 `person_entered` - `person_exited` - `in_bed` - `out_of_bed` -
@@ -153,14 +155,17 @@ Guidance: - Keep it short (\<= 200 chars) - Factual and non-creative
 -   Topic: `.../camera/{camera}/result_status`
 -   Icon: `mdi:shield-alert`
 
-Suggested status values: - `ok` - `snapshot_failed` - `openai_failed` -
+Suggested status values: - `waiting` - `ok` - `snapshot_failed` - `openai_failed` -
 `schema_failed` - `token_budget_exceeded` - `blocked_budget` -
 `invalid_action` - `invalid_subject_type` - `skipped` (policy reject;
 typically not published for suppressed events) - `suppressed`
 (cooldown/dedupe; typically not published)
 
-Recommendation: - Only publish per-camera results for accepted events. -
-Use counters/logs for suppressed/ignored noise instead.
+Current behavior: - Accepted events publish full camera result fields
+(`action`, `subject_type`, `confidence`, `description`). -
+Non-processed events publish only `last_event_id`, `last_event_ts`, and
+`result_status` (`skipped`/`suppressed`), leaving prior action/description
+intact.
 
 ## 6) Last Event ID (Sensor)
 
@@ -215,6 +220,12 @@ When publishing a camera result, publish in this order:
 8.  monthly_by_camera (optional if updated elsewhere)
 
 Reason: - "identity and time" update first, then the interpretation.
+
+For status-only non-processed events, publish this reduced order:
+
+1.  last_event_id
+2.  last_event_ts
+3.  result_status
 
 ------------------------------------------------------------------------
 

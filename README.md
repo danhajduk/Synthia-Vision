@@ -34,6 +34,7 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 - Subscribe to Frigate events topic and log `event_id`, `camera`, `type`
 - Policy decision evaluation is executed for incoming events
 - Policy runtime state is persisted atomically to state JSON
+- Non-processed events publish only `last_event_id`, `last_event_ts`, and `result_status` (no action/subject/confidence/description updates)
 - Runtime event-type controls via HA command topics:
   - process `end` events toggle
   - process `update` events toggle
@@ -127,6 +128,10 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
   - `.../camera/{camera}/confidence` (0-100 integer)
   - `.../camera/{camera}/description`
   - `.../cost/monthly_by_camera/{camera}`
+  - Camera idle defaults at startup:
+    - `result_status=waiting`
+    - `action=waiting`
+    - `description=waiting for event`
 
 ## Configuration
 
@@ -285,6 +290,11 @@ Policy runtime state is persisted in JSON with atomic writes:
 
 Configured via:
 - `service.paths.state_file`
+
+Metric formulas:
+- `metrics.cost_avg_per_event = metrics.cost_month2day_total / metrics.count_total`
+- `metrics.tokens_avg_per_request` is maintained as a running average over processed requests
+- `metrics.tokens_avg_per_day = metrics.tokens_avg_per_request * metrics.count_today` (estimated daily token total)
 
 ## Troubleshooting
 
