@@ -2,7 +2,7 @@
 
 ### Frigate + OpenAI + MQTT + Home Assistant
 
-Generated: 2026-02-21 18:07:19 UTC
+Generated: 2026-02-22 00:00:00 UTC
 
 ------------------------------------------------------------------------
 
@@ -30,7 +30,7 @@ Synthia Vision is:
 
 ## Base Configuration
 
--   Project Folder: \~/Projects/HomeAssistant/synthia_vision/
+-   Project Folder: `/home/dan/Projects/Synthia-Vision`
 
 -   MQTT Namespace: home/synthiavision/
 
@@ -62,13 +62,14 @@ Example:
 ``` json
 {
   "action": "deliver_package",
+  "subject_type": "adult",
   "confidence": 0.87,
   "description": "Person places a small box near the door."
 }
 ```
 
-Required fields: - action (string) - confidence (0..1 float) -
-description (string)
+Required fields: - action (string) - subject_type (string) -
+confidence (0..1 float) - description (string, <= 200 chars)
 
 ------------------------------------------------------------------------
 
@@ -140,28 +141,36 @@ Writes must be atomic.
 
 ## Folder Structure
 
-    synthia_vision/
-    ├── docker/
-    │   ├── Dockerfile
-    │   └── docker-compose.yml
+    Synthia-Vision/
+    ├── Dockerfile
+    ├── docker-compose.yml
     ├── src/
     │   ├── main.py
-    │   ├── mqtt_handler.py
+    │   ├── mqtt/mqtt_client.py
     │   ├── event_router.py
-    │   ├── policy_engine.py
+    │   ├── policy_engine/engine.py
     │   ├── snapshot_manager.py
-    │   ├── openai_client.py
+    │   ├── openai/client.py
     │   ├── state_manager.py
-    │   ├── ha_discovery.py
+    │   ├── ha_discovery/publisher.py
     │   ├── models.py
-    │   └── utils.py
+    │   └── runtime_controls.py
     ├── config/
     │   └── config.yaml
+    ├── Documents/
+    │   ├── core_mqtt.md
+    │   └── camera_mqtt.md
+    ├── tools/
+    │   ├── publish_sample_event.py
+    │   └── run_pipeline_once.py
+    ├── tests/
+    │   └── test_*.py
     ├── state/
-    │   └── state.json
+    │   └── .gitkeep
     ├── logs/
     ├── requirements.txt
-    └── README.md
+    ├── README.md
+    └── TODO.md
 
 ------------------------------------------------------------------------
 
@@ -175,13 +184,13 @@ Writes must be atomic.
 
 ------------------------------------------------------------------------
 
-## MVP Scope
+## Current Scope
 
 -   MQTT listener
--   Policy engine (end-only + person)
+-   Policy engine (`end` + `update` event controls)
 -   Snapshot fetch via Frigate event endpoint
 -   OpenAI structured classifier
--   Token-accurate cost tracking
+-   Token + cost tracking with budget guard
 -   Persistent state
 -   MQTT publishing
 -   HA MQTT Discovery integration

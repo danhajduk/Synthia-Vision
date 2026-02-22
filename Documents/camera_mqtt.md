@@ -15,7 +15,7 @@ noise) - Confidence is displayed as **0--100%** - All runtime topics are
 **retained** - QoS: 1 recommended
 
 Discovery Prefix: `homeassistant`\
-Runtime Prefix: `synthia/synthiavision`
+Runtime Prefix: `home/synthiavision` (default; configurable via `service.mqtt_prefix`)
 
 ------------------------------------------------------------------------
 
@@ -39,7 +39,7 @@ Camera topics use `{camera}` as a placeholder.
 
 Base prefix:
 
-    synthia/synthiavision
+    home/synthiavision
 
 Per-camera state topics:
 
@@ -154,9 +154,10 @@ Guidance: - Keep it short (\<= 200 chars) - Factual and non-creative
 -   Icon: `mdi:shield-alert`
 
 Suggested status values: - `ok` - `snapshot_failed` - `openai_failed` -
-`schema_failed` - `blocked_budget` - `skipped` (policy reject; typically
-not published for suppressed events) - `suppressed` (cooldown/dedupe;
-typically not published)
+`schema_failed` - `token_budget_exceeded` - `blocked_budget` -
+`invalid_action` - `invalid_subject_type` - `skipped` (policy reject;
+typically not published for suppressed events) - `suppressed`
+(cooldown/dedupe; typically not published)
 
 Recommendation: - Only publish per-camera results for accepted events. -
 Use counters/logs for suppressed/ignored noise instead.

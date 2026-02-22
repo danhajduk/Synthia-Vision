@@ -10,7 +10,7 @@ This document defines the **Core MQTT Discovery design** for the Synthia
 Vision device in Home Assistant.
 
 -   Discovery Prefix: `homeassistant`
--   Runtime Prefix: `synthia/synthiavision`
+-   Runtime Prefix: `home/synthiavision` (default; configurable via `service.mqtt_prefix`)
 -   Confidence values displayed as **0--100% everywhere**
 -   All runtime state topics are **retained**
 -   QoS: 1 recommended
@@ -33,12 +33,12 @@ All Core entities share this device block:
 
 Base prefix:
 
-    synthia/synthiavision
+    home/synthiavision
 
 ## Status & Heartbeat
 
--   `synthia/synthiavision/status`
--   `synthia/synthiavision/heartbeat_ts`
+-   `home/synthiavision/status`
+-   `home/synthiavision/heartbeat_ts`
 
 ## Cost
 
@@ -86,7 +86,7 @@ Command topics:
 -   Entity: `sensor.synthia_vision_status`
 -   Topic: `.../status`
 -   Icon: `mdi:brain`
--   States: `enabled | disabled | budget_blocked | error | rate_limited`
+-   States: `starting | enabled | budget_blocked | stopped | unavailable`
 
 ------------------------------------------------------------------------
 

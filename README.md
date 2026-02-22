@@ -92,8 +92,9 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 
 ## Active MQTT Topics (Now)
 
-- Status: `synthia/synthiavision/status`
-- Heartbeat: `synthia/synthiavision/heartbeat_ts`
+- Runtime prefix default: `home/synthiavision` (from `service.mqtt_prefix`)
+- Status: `home/synthiavision/status`
+- Heartbeat: `home/synthiavision/heartbeat_ts`
 - Subscribed input: `frigate/events` (from config)
 - Core control topics:
   - `.../control/enabled` + `.../set`
@@ -288,7 +289,7 @@ Configured via:
 ## Troubleshooting
 
 - `status=budget_blocked`:
-  - Raise `control/monthly_budget/set` or lower model usage settings (`ai.vision_detail`, `ai.image_preprocess.max_side_px`).
+  - Raise `home/synthiavision/control/monthly_budget/set` or lower model usage settings (`ai.vision_detail`, `ai.image_preprocess.max_side_px`).
 - High token usage:
   - Keep `ai.vision_detail=low`, `ai.image_preprocess.max_side_px=512`, and `crop_to_bbox=true`.
   - Check `synthia_vision.ai` logs for `total_tokens`, `detail`, image sizes, and bytes.
