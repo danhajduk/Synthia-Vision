@@ -74,10 +74,14 @@ Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQ
 
 ### OpenAI Client
 - Implemented `src/openai/client.py`:
-  - image + prompt request using structured JSON schema
+  - image + prompt request using Responses API structured JSON schema
+  - image sent via `input_image` content blocks (not text payload)
   - dynamic per-camera action enums and global subject type enums
   - retries transient provider failures (`timeout`, connection, rate limit, API error)
   - no retries for schema/validation errors
+  - preprocessing before encode (JPEG, resize/compress, optional bbox crop)
+  - default vision detail `low` with optional per-camera override
+  - hard token guard (`>8000`) with one low-budget retry before `token_budget_exceeded`
   - extracts prompt/completion/total tokens
   - estimates request cost for supported models and updates runtime cost metrics
 - MQTT publish path now classifies accepted events and publishes:
@@ -142,6 +146,10 @@ Key current settings:
 - `ai.prompts.presets`
 - `ai.openai.retry_attempts`
 - `ai.openai.retry_backoff_s`
+- `ai.vision_detail`
+- `ai.image_preprocess.enabled|max_side_px|jpeg_quality|strip_metadata|crop_to_bbox|bbox_padding`
+- `policy.cameras.<camera>.vision_detail`
+- `policy.cameras.<camera>.max_side_px`
 - `topics.status`
 - `topics.heartbeat_ts`
 - `topics.camera.result_status`

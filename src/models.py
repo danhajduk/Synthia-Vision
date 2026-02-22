@@ -20,6 +20,7 @@ class FrigateEvent:
     start_time: float | None = None
     end_time: float | None = None
     event_ts: float | None = None
+    bbox: tuple[int, int, int, int] | None = None
 
     @classmethod
     def from_mqtt_payload(cls, payload: dict[str, Any]) -> "FrigateEvent":
@@ -47,6 +48,7 @@ class FrigateEvent:
             start_time=_as_float_or_none(event_data.get("start_time")),
             end_time=_as_float_or_none(event_data.get("end_time")),
             event_ts=_as_float_or_none(payload.get("time")),
+            bbox=_as_bbox_or_none(event_data.get("box")),
         )
 
 
@@ -93,3 +95,25 @@ def _as_float_or_none(value: Any) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
     raise ValidationError(f"Expected numeric timestamp, got {type(value).__name__}")
+
+
+def _as_bbox_or_none(value: Any) -> tuple[int, int, int, int] | None:
+    if value is None:
+        return None
+    if isinstance(value, list) and len(value) == 4 and all(
+        isinstance(item, (int, float)) for item in value
+    ):
+        x, y, w, h = (int(value[0]), int(value[1]), int(value[2]), int(value[3]))
+        if w > 0 and h > 0:
+            return x, y, w, h
+        return None
+    if isinstance(value, dict):
+        x = value.get("x")
+        y = value.get("y")
+        w = value.get("width")
+        h = value.get("height")
+        if all(isinstance(item, (int, float)) for item in (x, y, w, h)):
+            x_i, y_i, w_i, h_i = int(x), int(y), int(w), int(h)
+            if w_i > 0 and h_i > 0:
+                return x_i, y_i, w_i, h_i
+    return None

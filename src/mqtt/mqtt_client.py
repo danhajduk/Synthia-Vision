@@ -803,6 +803,7 @@ class MQTTClient:
             classification, usage = self._openai_client.classify(
                 snapshot_bytes=snapshot,
                 camera_name=event.camera,
+                bbox=event.bbox,
             )
         except ValidationError as exc:
             LOGGER.warning(
@@ -842,6 +843,50 @@ class MQTTClient:
                 description="classification failed",
             )
             return
+        if usage.total_tokens > 8000:
+            LOGGER.warning(
+                "Token budget exceeded event_id=%s camera=%s total_tokens=%s detail=%s dims=%sx%s image_bytes=%s; retrying with low-budget mode",
+                event.event_id,
+                event.camera,
+                usage.total_tokens,
+                usage.vision_detail,
+                usage.processed_size[0],
+                usage.processed_size[1],
+                usage.image_bytes,
+            )
+            try:
+                classification, usage = self._openai_client.classify(
+                    snapshot_bytes=snapshot,
+                    camera_name=event.camera,
+                    bbox=event.bbox,
+                    force_low_budget=True,
+                )
+            except (ValidationError, ExternalServiceError) as exc:
+                self._publish_last_error(
+                    f"token_budget_exceeded camera={event.camera} event_id={event.event_id}: {exc}"
+                )
+                self._publish_camera_result(
+                    event=event,
+                    result_status="token_budget_exceeded",
+                    action="unknown",
+                    subject_type="unknown",
+                    confidence_percent="unknown",
+                    description="token budget exceeded",
+                )
+                return
+            if usage.total_tokens > 8000:
+                self._publish_last_error(
+                    f"token_budget_exceeded camera={event.camera} event_id={event.event_id} total_tokens={usage.total_tokens}"
+                )
+                self._publish_camera_result(
+                    event=event,
+                    result_status="token_budget_exceeded",
+                    action="unknown",
+                    subject_type="unknown",
+                    confidence_percent="unknown",
+                    description="token budget exceeded",
+                )
+                return
 
         confidence_percent = max(0, min(100, int(round(classification.confidence * 100.0))))
         self._publish_camera_result(

@@ -129,6 +129,18 @@ class AIConfig:
     per_camera_prompts: dict[str, str] | None = None
     default_prompt_preset: str = "outdoor"
     prompt_presets: dict[str, dict[str, str]] = field(default_factory=dict)
+    vision_detail: str = "low"
+    image_preprocess: "AIImagePreprocessConfig" = field(default_factory=lambda: AIImagePreprocessConfig())
+
+
+@dataclass(slots=True)
+class AIImagePreprocessConfig:
+    enabled: bool = True
+    max_side_px: int = 512
+    jpeg_quality: int = 75
+    strip_metadata: bool = True
+    crop_to_bbox: bool = True
+    bbox_padding: float = 0.2
 
 
 @dataclass(slots=True)
@@ -152,6 +164,8 @@ class PolicyCameraConfig:
     cooldown_seconds: int = 30
     allowed_actions: list[str] = field(default_factory=list)
     prompt_preset: str | None = None
+    vision_detail: str | None = None
+    max_side_px: int | None = None
 
 
 @dataclass(slots=True)
@@ -254,6 +268,10 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
         ai_data.get("structured_output", {}), "ai.structured_output"
     )
     prompts_data = _as_mapping(ai_data.get("prompts", {}), "ai.prompts")
+    image_preprocess_data = _as_mapping(
+        ai_data.get("image_preprocess", {}),
+        "ai.image_preprocess",
+    )
     policy_data = _as_mapping(resolved_data.get("policy", {}), "policy")
     policy_defaults_data = _as_mapping(policy_data.get("defaults", {}), "policy.defaults")
     policy_actions_data = _as_mapping(policy_data.get("actions", {}), "policy.actions")
@@ -390,6 +408,15 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
             prompt_presets=_build_prompt_presets(
                 _as_mapping(prompts_data.get("presets", {}), "ai.prompts.presets")
             ),
+            vision_detail=str(ai_data.get("vision_detail", "low")).lower(),
+            image_preprocess=AIImagePreprocessConfig(
+                enabled=_as_bool(image_preprocess_data.get("enabled", True)),
+                max_side_px=int(image_preprocess_data.get("max_side_px", 512)),
+                jpeg_quality=int(image_preprocess_data.get("jpeg_quality", 75)),
+                strip_metadata=_as_bool(image_preprocess_data.get("strip_metadata", True)),
+                crop_to_bbox=_as_bool(image_preprocess_data.get("crop_to_bbox", True)),
+                bbox_padding=float(image_preprocess_data.get("bbox_padding", 0.2)),
+            ),
         ),
         policy=PolicyConfig(
             defaults=PolicyDefaultsConfig(
@@ -499,6 +526,8 @@ def _build_camera_policy_map(data: dict[str, Any]) -> dict[str, PolicyCameraConf
             confidence_threshold=float(raw_value.get("confidence_threshold", 0.75)),
             cooldown_seconds=int(raw_value.get("cooldown_s", 30)),
             prompt_preset=_optional_str(raw_value.get("prompt_preset")),
+            vision_detail=_optional_str(raw_value.get("vision_detail")),
+            max_side_px=_optional_int(raw_value.get("max_side_px")),
             allowed_actions=_as_string_list(
                 actions_data.get("allowed", []),
                 f"policy.cameras.{camera_name}.actions.allowed",
@@ -612,6 +641,14 @@ def _validate_config(config: ServiceConfig) -> None:
         )
     if config.openai.retry_attempts < 1:
         raise ConfigError("ai.openai.retry_attempts must be >= 1")
+    if config.ai.vision_detail not in {"low", "high", "auto"}:
+        raise ConfigError("ai.vision_detail must be one of: low, high, auto")
+    if config.ai.image_preprocess.max_side_px < 128:
+        raise ConfigError("ai.image_preprocess.max_side_px must be >= 128")
+    if config.ai.image_preprocess.jpeg_quality < 40 or config.ai.image_preprocess.jpeg_quality > 95:
+        raise ConfigError("ai.image_preprocess.jpeg_quality must be between 40 and 95")
+    if config.ai.image_preprocess.bbox_padding < 0 or config.ai.image_preprocess.bbox_padding > 1:
+        raise ConfigError("ai.image_preprocess.bbox_padding must be between 0 and 1")
     if config.policy.actions.default_action not in set(config.policy.actions.allowed):
         raise ConfigError("policy.actions.default_action must be included in policy.actions.allowed")
     if config.policy.subject_types.default not in set(config.policy.subject_types.allowed):
@@ -634,6 +671,12 @@ def _validate_config(config: ServiceConfig) -> None:
                 raise ConfigError(
                     f"policy.cameras.{camera_name}.prompt_preset must exist in ai.prompts.presets"
                 )
+        if camera_policy.vision_detail and camera_policy.vision_detail not in {"low", "high", "auto"}:
+            raise ConfigError(
+                f"policy.cameras.{camera_name}.vision_detail must be one of: low, high, auto"
+            )
+        if camera_policy.max_side_px is not None and camera_policy.max_side_px < 128:
+            raise ConfigError(f"policy.cameras.{camera_name}.max_side_px must be >= 128")
         if camera_policy.allowed_actions:
             invalid_actions = [
                 action for action in camera_policy.allowed_actions if action not in allowed_action_set
@@ -709,6 +752,16 @@ def _optional_float(value: Any) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
     raise ConfigError("Expected optional numeric value")
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    raise ConfigError("Expected optional integer value")
 
 
 def _validate_threshold(value: float) -> None:

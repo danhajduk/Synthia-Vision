@@ -1,10 +1,11 @@
-"""OpenAI image classification client with strict schema validation."""
+"""OpenAI image classification client with token-aware preprocessing."""
 
 from __future__ import annotations
 
 import base64
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -26,6 +27,7 @@ except ModuleNotFoundError:  # pragma: no cover - depends on runtime environment
     class RateLimitError(APIError):
         pass
 
+from src.ai import preprocess_image_bytes
 from src.config import ServiceConfig
 from src.errors import ExternalServiceError, ValidationError
 from src.models import OpenAIClassification
@@ -37,6 +39,7 @@ from src.openai.policy_helpers import (
 )
 
 LOGGER = logging.getLogger("synthia_vision.ai")
+_BASE64_HEURISTIC = re.compile(r"[A-Za-z0-9+/=]{1024,}")
 
 
 @dataclass(slots=True)
@@ -46,6 +49,11 @@ class OpenAIUsage:
     total_tokens: int
     cost_usd: float
     model: str
+    image_bytes: int
+    original_size: tuple[int, int]
+    processed_size: tuple[int, int]
+    vision_detail: str
+    cropped_to_bbox: bool
 
 
 class OpenAIClient:
@@ -68,6 +76,8 @@ class OpenAIClient:
         *,
         snapshot_bytes: bytes,
         camera_name: str,
+        bbox: tuple[int, int, int, int] | None = None,
+        force_low_budget: bool = False,
     ) -> tuple[OpenAIClassification, OpenAIUsage]:
         allowed_actions = resolve_allowed_actions(camera_name, self._config)
         allowed_subject_types = resolve_subject_types(self._config)
@@ -79,10 +89,26 @@ class OpenAIClient:
             allowed_subject_types=allowed_subject_types,
             config=self._config,
         )
-        response_format = self._build_response_format(allowed_actions, allowed_subject_types)
-        messages = self._build_messages(system_prompt, user_prompt, snapshot_bytes)
+        _guard_prompt_text(system_prompt)
+        _guard_prompt_text(user_prompt)
 
-        response = self._request_with_retry(messages=messages, response_format=response_format)
+        processed = preprocess_image_bytes(
+            snapshot_bytes,
+            config=self._config,
+            camera_name=camera_name,
+            bbox=bbox,
+            force_low_budget=force_low_budget,
+        )
+        detail = self._resolve_vision_detail(camera_name, force_low_budget=force_low_budget)
+        request_payload = self._build_request_payload(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            image_bytes=processed.image_bytes,
+            allowed_actions=allowed_actions,
+            allowed_subject_types=allowed_subject_types,
+            detail=detail,
+        )
+        response = self._request_with_retry(payload=request_payload)
         payload_text = self._extract_text_response(response)
         payload_dict = self._parse_json_payload(payload_text)
         classification = OpenAIClassification.from_dict(payload_dict)
@@ -99,36 +125,47 @@ class OpenAIClient:
             total_tokens=usage.total_tokens,
             cost_usd=cost_usd,
             model=self._openai_cfg.model,
+            image_bytes=len(processed.image_bytes),
+            original_size=processed.original_size,
+            processed_size=processed.processed_size,
+            vision_detail=detail,
+            cropped_to_bbox=processed.cropped_to_bbox,
         )
         LOGGER.info(
-            "OpenAI classification success camera=%s action=%s subject_type=%s confidence=%.3f prompt_tokens=%s completion_tokens=%s cost_usd=%.6f",
+            "OpenAI classification success camera=%s action=%s subject_type=%s confidence=%.3f prompt_tokens=%s completion_tokens=%s total_tokens=%s cost_usd=%.6f image_bytes=%s original_size=%sx%s processed_size=%sx%s detail=%s cropped=%s",
             camera_name,
             classification.action,
             classification.subject_type,
             classification.confidence,
             usage_with_cost.prompt_tokens,
             usage_with_cost.completion_tokens,
+            usage_with_cost.total_tokens,
             usage_with_cost.cost_usd,
+            usage_with_cost.image_bytes,
+            usage_with_cost.original_size[0],
+            usage_with_cost.original_size[1],
+            usage_with_cost.processed_size[0],
+            usage_with_cost.processed_size[1],
+            usage_with_cost.vision_detail,
+            usage_with_cost.cropped_to_bbox,
         )
         return classification, usage_with_cost
 
-    def _request_with_retry(
-        self,
-        *,
-        messages: list[dict[str, Any]],
-        response_format: dict[str, Any],
-    ) -> Any:
+    def _resolve_vision_detail(self, camera_name: str, *, force_low_budget: bool) -> str:
+        if force_low_budget:
+            return "low"
+        camera_cfg = self._config.policy.cameras.get(camera_name)
+        if camera_cfg is not None and camera_cfg.vision_detail:
+            return camera_cfg.vision_detail
+        return self._config.ai.vision_detail
+
+    def _request_with_retry(self, *, payload: dict[str, Any]) -> Any:
         attempts = max(1, int(getattr(self._openai_cfg, "retry_attempts", 3)))
         backoffs = list(getattr(self._openai_cfg, "retry_backoff_seconds", [0.5, 1.0, 2.0]))
 
         for attempt_idx in range(attempts):
             try:
-                return self._client.chat.completions.create(
-                    model=self._openai_cfg.model,
-                    messages=messages,
-                    response_format=response_format,
-                    max_tokens=int(self._openai_cfg.max_output_tokens),
-                )
+                return self._client.responses.create(**payload)
             except (APITimeoutError, APIConnectionError, RateLimitError, APIError) as exc:
                 if attempt_idx >= attempts - 1:
                     raise ExternalServiceError(f"OpenAI request failed after retries: {exc}") from exc
@@ -151,10 +188,7 @@ class OpenAIClient:
         allowed_subject_types: list[str],
     ) -> dict[str, Any]:
         base_schema = dict(self._config.ai.schema or {})
-        if base_schema:
-            schema_props = dict(base_schema.get("properties", {}))
-        else:
-            schema_props = {}
+        schema_props = dict(base_schema.get("properties", {})) if base_schema else {}
         schema_props["action"] = {"type": "string", "enum": allowed_actions}
         schema_props["subject_type"] = {"type": "string", "enum": allowed_subject_types}
 
@@ -170,44 +204,62 @@ class OpenAIClient:
         }
         return {
             "type": "json_schema",
-            "json_schema": {
-                "name": self._config.ai.schema_name,
-                "strict": True,
-                "schema": schema,
+            "name": self._config.ai.schema_name,
+            "strict": True,
+            "schema": schema,
+        }
+
+    def _build_request_payload(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        image_bytes: bytes,
+        allowed_actions: list[str],
+        allowed_subject_types: list[str],
+        detail: str,
+    ) -> dict[str, Any]:
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        image_data_url = f"data:image/jpeg;base64,{encoded}"
+        return {
+            "model": self._openai_cfg.model,
+            "max_output_tokens": int(self._openai_cfg.max_output_tokens),
+            "input": [
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": system_prompt}],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": user_prompt},
+                        {"type": "input_image", "image_url": image_data_url, "detail": detail},
+                    ],
+                },
+            ],
+            "text": {
+                "format": self._build_response_format(allowed_actions, allowed_subject_types),
             },
         }
 
-    def _build_messages(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        snapshot_bytes: bytes,
-    ) -> list[dict[str, Any]]:
-        encoded = base64.b64encode(snapshot_bytes).decode("ascii")
-        image_data_url = f"data:image/jpeg;base64,{encoded}"
-        return [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": user_prompt},
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ],
-            },
-        ]
-
     def _extract_text_response(self, response: Any) -> str:
-        choices = getattr(response, "choices", None)
-        if not choices:
-            raise ValidationError("OpenAI response missing choices")
-        first_choice = choices[0]
-        message = getattr(first_choice, "message", None)
-        if message is None:
-            raise ValidationError("OpenAI response missing message")
-        content = getattr(message, "content", None)
-        if not isinstance(content, str) or not content.strip():
-            raise ValidationError("OpenAI response missing text content")
-        return content
+        output_text = getattr(response, "output_text", None)
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text
+
+        output = getattr(response, "output", None)
+        if isinstance(output, list):
+            for item in output:
+                content = getattr(item, "content", None)
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    block_type = getattr(block, "type", None)
+                    if block_type in {"output_text", "text"}:
+                        text = getattr(block, "text", None)
+                        if isinstance(text, str) and text.strip():
+                            return text
+        raise ValidationError("OpenAI response missing text content")
 
     def _parse_json_payload(self, payload_text: str) -> dict[str, Any]:
         try:
@@ -219,6 +271,16 @@ class OpenAIClient:
         return decoded
 
 
+def _guard_prompt_text(text: str) -> None:
+    lowered = text.lower()
+    if "data:image" in lowered:
+        LOGGER.error("Blocked request: image data URL detected in text content")
+        raise ValidationError("Image data URL must not be placed in text content")
+    if len(text) > 3000 and _BASE64_HEURISTIC.search(text):
+        LOGGER.error("Blocked request: base64-like payload detected in text content")
+        raise ValidationError("Base64-like payload must not be placed in text content")
+
+
 def _extract_usage(response: Any) -> OpenAIUsage:
     usage = getattr(response, "usage", None)
     if usage is None:
@@ -228,16 +290,30 @@ def _extract_usage(response: Any) -> OpenAIUsage:
             total_tokens=0,
             cost_usd=0.0,
             model="unknown",
+            image_bytes=0,
+            original_size=(0, 0),
+            processed_size=(0, 0),
+            vision_detail="unknown",
+            cropped_to_bbox=False,
         )
-    prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-    completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-    total_tokens = int(getattr(usage, "total_tokens", prompt_tokens + completion_tokens) or 0)
+    prompt_tokens = int(getattr(usage, "input_tokens", getattr(usage, "prompt_tokens", 0)) or 0)
+    completion_tokens = int(
+        getattr(usage, "output_tokens", getattr(usage, "completion_tokens", 0)) or 0
+    )
+    total_tokens = int(
+        getattr(usage, "total_tokens", prompt_tokens + completion_tokens) or 0
+    )
     return OpenAIUsage(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
         cost_usd=0.0,
         model="unknown",
+        image_bytes=0,
+        original_size=(0, 0),
+        processed_size=(0, 0),
+        vision_detail="unknown",
+        cropped_to_bbox=False,
     )
 
 

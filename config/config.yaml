@@ -46,6 +46,14 @@ frigate:
 
 ai:
   provider: "openai"
+  vision_detail: "low"                    # low | high | auto
+  image_preprocess:
+    enabled: true
+    max_side_px: 512
+    jpeg_quality: 75
+    strip_metadata: true
+    crop_to_bbox: true
+    bbox_padding: 0.2
   openai:
     api_key: "${OPENAI_API_KEY}"
     model: "gpt-4o-mini"                   # pick your preferred vision-capable model
@@ -104,11 +112,7 @@ ai:
 
   prompts:
     default_preset: "outdoor"
-    system: >
-      You are Synthia Vision. Classify a home camera snapshot.
-      Do NOT identify people.
-      Return ONLY valid JSON matching the provided schema.
-      Keep the description short and factual.
+    system: "Classify one home camera image. Return JSON only. No identity guesses."
     presets:
       outdoor:
         system: |
@@ -127,9 +131,9 @@ ai:
           If unclear, action="unknown" and subject_type="unknown".
       indoor:
         system: |
-          You are Synthia Vision. Classify a single indoor snapshot for home automation.
-          Privacy rules: do NOT identify people; do NOT infer relationships; avoid sensitive attribute guesses.
-          Return ONLY valid JSON matching the schema. No extra text.
+          Classify one indoor snapshot for home automation.
+          Do not identify people or infer relationships.
+          Return only valid JSON matching the schema.
         user: |
           Camera: {camera_name}
           Context: Indoor common area.
@@ -164,9 +168,9 @@ ai:
           If unclear, action="unknown", subject_type="unknown".
       security:
         system: |
-          You are Synthia Vision. Classify a home security snapshot with safety focus.
-          Do NOT identify people. Use suspicious_activity only with clear evidence.
-          Return ONLY valid JSON matching schema. No extra text.
+          Classify one home security snapshot with safety focus.
+          Do not identify people.
+          Return only valid JSON matching the schema.
         user: |
           Camera: {camera_name}
           Context: Home security.
@@ -238,6 +242,9 @@ policy:
       labels: ["person"]
       confidence_threshold: 0.60
       cooldown_s: 30
+      # Optional per-camera overrides for rare cases:
+      # vision_detail: "high"
+      # max_side_px: 768
       actions:
         # Optional: allow/deny actions per camera
         allowed: ["unknown", "deliver_package", "pickup_package", "package_left_unattended", "loitering", "suspicious_activity", "vehicle_detected", "delivery_vehicle", "animal_detected"]
@@ -253,7 +260,7 @@ modes:
   # These are HA-controlled toggles that modify behavior
   doorbell_only_mode:
     enabled: true
-    allowed_cameras: ["doorbell"]  # could also block specific cameras instead of allow-listing
+    allowed_cameras: ["doorbell","livingroom"]  # could also block specific cameras instead of allow-listing
 
   high_precision_mode:
     enabled: false

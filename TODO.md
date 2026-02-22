@@ -180,6 +180,13 @@ No step should require the entire pipeline to be complete.
 - Simulate retryable exception
 - Confirm max attempts respected
 
+## 6.3 Token Reduction Guard
+- [x] Use `input_image` blocks (not base64 in text)
+- [x] Add preprocessing (resize/compress + optional bbox crop)
+- [x] Default `vision_detail=low`, optional per-camera overrides
+- [x] Add token instrumentation logging (tokens + image dims + bytes + detail)
+- [x] Add runtime token budget guard (`>8000` => low-budget retry then `token_budget_exceeded`)
+
 ---
 
 # Phase 7 – State & Cost Tracking
