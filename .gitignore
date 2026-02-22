@@ -51,3 +51,6 @@ config/*.secret.yaml
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local planning notes
+Documents/Next_task.txt
