@@ -326,6 +326,9 @@ SQLite bootstrap:
   - `events`: one row per handled event (accepted or rejected) with latest result fields
   - `metrics`: processing-path rows for OpenAI usage or skip reasons
   - `errors`: runtime component errors with short detail + optional event/camera linkage
+- Phase 8 bootstrap (in progress):
+  - if `ADMIN_PASSWORD` is set and `users` is empty, startup creates one `admin` user (default username `admin`, override `ADMIN_USERNAME`)
+  - bootstrap is one-time; when users already exist no new admin is created
 
 Camera runtime source of truth:
 - Discovered cameras are persisted in SQLite `cameras`.

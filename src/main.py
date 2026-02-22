@@ -15,6 +15,7 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import load_settings
+from src.auth import FirstRunBootstrap
 from src.db import DatabaseBootstrap
 from src.errors import SynthiaVisionError
 from src.logging_utils import configure_logging
@@ -121,13 +122,22 @@ async def _main_async() -> int:
     LOGGER.info("Loaded configuration from config file and environment")
 
     db_bootstrap = DatabaseBootstrap(db_path=config.paths.db_file)
+    auth_bootstrap = FirstRunBootstrap(db_path=config.paths.db_file)
 
     async def _init_db() -> None:
         await asyncio.to_thread(db_bootstrap.initialize)
 
+    async def _bootstrap_admin_user() -> None:
+        await asyncio.to_thread(auth_bootstrap.create_admin_from_env_if_needed)
+
     mqtt_client = MQTTClient(config)
     dependencies = AppDependencies(
-        startup_hooks=[_init_db, mqtt_client.startup_connect, mqtt_client.startup_ready],
+        startup_hooks=[
+            _init_db,
+            _bootstrap_admin_user,
+            mqtt_client.startup_connect,
+            mqtt_client.startup_ready,
+        ],
         shutdown_hooks=[mqtt_client.shutdown],
     )
     app = SynthiaVisionApp(dependencies=dependencies)

@@ -168,7 +168,7 @@ Acceptance:
 - [ ] Add session-based auth with roles: `guest`, `admin`.
 - [ ] Secure password hashing (bcrypt/argon2).
 - [ ] First-run behavior:
-- [ ] If users table empty and `ADMIN_PASSWORD` is set, create admin on startup (one-time).
+- [x] If users table empty and `ADMIN_PASSWORD` is set, create admin on startup (one-time).
 - [ ] Else allow `/ui/setup/first-run` only from localhost OR only with `FIRST_RUN_TOKEN`.
 - [ ] After first admin exists, disable first-run path.
 - [ ] Restrict guest vs admin routes and APIs.
