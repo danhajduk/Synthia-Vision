@@ -121,6 +121,36 @@ class OpenAIConfig:
 
 
 @dataclass(slots=True)
+class AISetupOpenAIConfig:
+    model: str = "gpt-4o-mini"
+    max_output_tokens: int = 350
+    timeout_seconds: int = 30
+
+
+@dataclass(slots=True)
+class AISetupStructuredOutputConfig:
+    mode: str = "json_schema"
+    schema_name: str = "camera_setup_context_v1"
+    schema: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class AISetupPromptsConfig:
+    system: str = ""
+    user: str = ""
+    privacy_rules: str = ""
+
+
+@dataclass(slots=True)
+class AISetupConfig:
+    openai: AISetupOpenAIConfig = field(default_factory=lambda: AISetupOpenAIConfig())
+    structured_output: AISetupStructuredOutputConfig = field(
+        default_factory=lambda: AISetupStructuredOutputConfig()
+    )
+    prompts: AISetupPromptsConfig = field(default_factory=lambda: AISetupPromptsConfig())
+
+
+@dataclass(slots=True)
 class AIConfig:
     provider: str = "openai"
     openai: OpenAIConfig | None = None
@@ -135,6 +165,7 @@ class AIConfig:
     prompt_presets: dict[str, dict[str, str]] = field(default_factory=dict)
     vision_detail: str = "low"
     image_preprocess: "AIImagePreprocessConfig" = field(default_factory=lambda: AIImagePreprocessConfig())
+    setup: AISetupConfig = field(default_factory=lambda: AISetupConfig())
 
 
 @dataclass(slots=True)
@@ -273,6 +304,13 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
         ai_data.get("structured_output", {}), "ai.structured_output"
     )
     prompts_data = _as_mapping(ai_data.get("prompts", {}), "ai.prompts")
+    setup_data = _as_mapping(ai_data.get("setup", {}), "ai.setup")
+    setup_openai_data = _as_mapping(setup_data.get("openai", {}), "ai.setup.openai")
+    setup_structured_output_data = _as_mapping(
+        setup_data.get("structured_output", {}),
+        "ai.setup.structured_output",
+    )
+    setup_prompts_data = _as_mapping(setup_data.get("prompts", {}), "ai.setup.prompts")
     image_preprocess_data = _as_mapping(
         ai_data.get("image_preprocess", {}),
         "ai.image_preprocess",
@@ -424,6 +462,31 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 max_side_px=int(image_preprocess_data.get("max_side_px", 512)),
                 jpeg_quality=int(image_preprocess_data.get("jpeg_quality", 75)),
                 strip_metadata=_as_bool(image_preprocess_data.get("strip_metadata", True)),
+            ),
+            setup=AISetupConfig(
+                openai=AISetupOpenAIConfig(
+                    model=str(setup_openai_data.get("model", "gpt-4o-mini")),
+                    max_output_tokens=int(setup_openai_data.get("max_output_tokens", 350)),
+                    timeout_seconds=int(setup_openai_data.get("timeout_s", 30)),
+                ),
+                structured_output=AISetupStructuredOutputConfig(
+                    mode=str(setup_structured_output_data.get("mode", "json_schema")),
+                    schema_name=str(
+                        setup_structured_output_data.get(
+                            "schema_name",
+                            "camera_setup_context_v1",
+                        )
+                    ),
+                    schema=_as_mapping(
+                        setup_structured_output_data.get("schema", {}),
+                        "ai.setup.structured_output.schema",
+                    ),
+                ),
+                prompts=AISetupPromptsConfig(
+                    system=str(setup_prompts_data.get("system", "")),
+                    user=str(setup_prompts_data.get("user", "")),
+                    privacy_rules=str(setup_prompts_data.get("privacy_rules", "")),
+                ),
             ),
         ),
         policy=PolicyConfig(
@@ -716,6 +779,10 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("ai.image_preprocess.max_side_px must be >= 128")
     if config.ai.image_preprocess.jpeg_quality < 40 or config.ai.image_preprocess.jpeg_quality > 95:
         raise ConfigError("ai.image_preprocess.jpeg_quality must be between 40 and 95")
+    if config.ai.setup.structured_output.mode != "json_schema":
+        raise ConfigError("ai.setup.structured_output.mode must be json_schema")
+    if not config.ai.setup.structured_output.schema:
+        raise ConfigError("ai.setup.structured_output.schema must not be empty")
     if config.policy.actions.default_action not in set(config.policy.actions.allowed):
         raise ConfigError("policy.actions.default_action must be included in policy.actions.allowed")
     if config.policy.subject_types.default not in set(config.policy.subject_types.allowed):
@@ -733,11 +800,6 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("ai.prompts.default_preset must exist in ai.prompts.presets")
     allowed_action_set = set(config.policy.actions.allowed)
     for camera_name, camera_policy in config.policy.cameras.items():
-        if camera_policy.prompt_preset and config.ai.prompt_presets:
-            if camera_policy.prompt_preset not in set(config.ai.prompt_presets.keys()):
-                raise ConfigError(
-                    f"policy.cameras.{camera_name}.prompt_preset must exist in ai.prompts.presets"
-                )
         if camera_policy.vision_detail and camera_policy.vision_detail not in {"low", "high", "auto"}:
             raise ConfigError(
                 f"policy.cameras.{camera_name}.vision_detail must be one of: low, high, auto"

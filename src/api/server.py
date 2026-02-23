@@ -1070,38 +1070,54 @@ def create_guest_api_app(config: ServiceConfig):
         except ModuleNotFoundError as exc:
             raise HTTPException(status_code=503, detail="openai package unavailable") from exc
 
-        client = OpenAI(api_key=config.openai.api_key, timeout=float(config.openai.timeout_seconds))
+        setup_cfg = config.ai.setup
+        if setup_cfg.structured_output.mode != "json_schema":
+            raise HTTPException(status_code=500, detail="ai.setup.structured_output.mode must be json_schema")
+        client = OpenAI(
+            api_key=config.openai.api_key,
+            timeout=float(setup_cfg.openai.timeout_seconds),
+        )
         encoded = base64.b64encode(snapshot_bytes).decode("ascii")
         image_data_url = f"data:image/jpeg;base64,{encoded}"
-        system_prompt = (
-            "You generate privacy-safe camera setup context JSON for home automation."
-            " Never include identifying details."
+        setup_format = dict(setup_cfg.structured_output.schema or {})
+        schema_type = str(setup_format.get("type", "") or "").strip()
+        strict = bool(
+            (
+                (setup_format.get("json_schema") or {})
+                .get("strict", False)
+            )
         )
-        user_prompt = (
-            "Analyze the snapshot and produce structured setup context.\n"
-            "Privacy rules: no identifying details, no brands, no colors, no readable text,"
-            " no license plates, no facial or personal descriptors.\n"
-            f"environment={req.environment}\n"
-            f"purpose={req.purpose}\n"
-            f"view_type={req.view_type}\n"
-            f"mounting_location={req.mounting_location or ''}\n"
-            f"view_notes={req.view_notes or ''}\n"
-            f"delivery_focus={','.join(req.delivery_focus)}\n"
-            "Return only strict JSON for schema camera_setup_context_v1."
+        if schema_type != "json_schema" or not strict:
+            raise HTTPException(
+                status_code=500,
+                detail="ai.setup.structured_output.schema must be json_schema with strict=true",
+            )
+        privacy_rules = str(setup_cfg.prompts.privacy_rules or "")
+        system_prompt = str(setup_cfg.prompts.system or "").format(
+            privacy_rules=privacy_rules,
+        )
+        user_prompt = str(setup_cfg.prompts.user or "").format(
+            camera_name=camera_key,
+            environment=req.environment,
+            purpose=req.purpose,
+            view_type=req.view_type,
+            mounting_location=req.mounting_location or "",
+            view_notes=req.view_notes or "",
+            delivery_focus=",".join(req.delivery_focus),
         )
         AI_LOGGER.info(
             "setup_context_openai_request_start camera=%s view_id=%s model=%s timeout_s=%s",
             camera_key,
             view_id,
-            config.openai.model,
-            config.openai.timeout_seconds,
+            setup_cfg.openai.model,
+            setup_cfg.openai.timeout_seconds,
         )
         try:
             response = await asyncio.wait_for(
                 asyncio.to_thread(
                     client.responses.create,
-                    model=config.openai.model,
-                    max_output_tokens=int(config.openai.max_output_tokens),
+                    model=setup_cfg.openai.model,
+                    max_output_tokens=int(setup_cfg.openai.max_output_tokens),
                     input=[
                         {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
                         {
@@ -1112,9 +1128,9 @@ def create_guest_api_app(config: ServiceConfig):
                             ],
                         },
                     ],
-                    text={"format": _camera_setup_context_schema()},
+                    text={"format": setup_format},
                 ),
-                timeout=float(config.openai.timeout_seconds) + 10.0,
+                timeout=float(setup_cfg.openai.timeout_seconds) + 10.0,
             )
         except Exception as exc:
             AI_LOGGER.exception(
@@ -1158,6 +1174,13 @@ def create_guest_api_app(config: ServiceConfig):
         try:
             generated = CameraSetupGenerateResponse(**decoded).model_dump()
         except Exception as exc:
+            AI_LOGGER.error(
+                "setup_context_validation_failed camera=%s view_id=%s error=%s payload=%s",
+                camera_key,
+                view_id,
+                exc,
+                decoded,
+            )
             raise HTTPException(status_code=502, detail=f"openai response schema mismatch: {exc}") from exc
 
         try:
