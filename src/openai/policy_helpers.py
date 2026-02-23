@@ -40,11 +40,6 @@ def resolve_preset(
         return purpose
     if "general" in templates:
         return "general"
-    camera_cfg = config.policy.cameras.get(camera)
-    if camera_cfg is not None and camera_cfg.prompt_preset:
-        preset = str(camera_cfg.prompt_preset)
-        if preset in templates:
-            return preset
     return config.ai.default_prompt_preset
 
 
@@ -83,6 +78,17 @@ def render_prompts(
     }
     if context_fields:
         format_args.update(context_fields)
+    camera_cfg = config.policy.cameras.get(camera_name)
+    security_overlay = ""
+    if (
+        camera_cfg is not None
+        and camera_cfg.security_capable
+        and camera_cfg.security_mode
+        and purpose != "child_room"
+    ):
+        security_overlay = str(config.ai.security_overlay_template or "")
+    format_args["security_overlay"] = security_overlay
+
     system_prompt = system_template.format(**format_args)
     user_prompt = user_template.format(**format_args)
     # Always inject setup context so classification sees configured camera intent.
@@ -99,28 +105,6 @@ def render_prompts(
         "Return ONLY valid JSON for synthia_vision_event: action, subject_type, confidence, description.\n"
         "Description: one short generic sentence, max 200 chars.\n"
     )
-    camera_cfg = config.policy.cameras.get(camera_name)
-    if (
-        camera_cfg is not None
-        and camera_cfg.security_capable
-        and camera_cfg.security_mode
-        and purpose != "child_room"
-    ):
-        overlay_lines = [
-            "Security overlay mode: conservative safety-focused interpretation only.",
-            "Do not infer intent without clear visual evidence.",
-            "Use suspicious_activity ONLY when clear tampering or forced-entry posture is visible.",
-            "Use loitering ONLY when clear lingering near a relevant area is visible.",
-        ]
-        if purpose in {"doorbell", "garage"}:
-            overlay_lines.append(
-                "Prioritize entry/threshold-related actions for this camera when clearly supported."
-            )
-        if purpose == "driveway":
-            overlay_lines.append(
-                "Prioritize vehicle_arrival/vehicle_departure when vehicle motion context is clear."
-            )
-        user_prompt = f"{user_prompt.rstrip()}\n" + "\n".join(overlay_lines) + "\n"
     return system_prompt, user_prompt
 
 

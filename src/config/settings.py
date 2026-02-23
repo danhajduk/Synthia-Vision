@@ -128,6 +128,8 @@ class AIConfig:
     schema_name: str = "synthia_vision_event"
     schema: dict[str, Any] | None = None
     system_prompt: str = ""
+    privacy_rules: str = ""
+    security_overlay_template: str = ""
     per_camera_prompts: dict[str, str] | None = None
     default_prompt_preset: str = "outdoor"
     prompt_presets: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -406,6 +408,8 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 "ai.structured_output.schema",
             ),
             system_prompt=str(prompts_data.get("system", "")),
+            privacy_rules=str(prompts_data.get("privacy_rules", "")),
+            security_overlay_template=str(prompts_data.get("security_overlay_template", "")),
             per_camera_prompts=_as_mapping(
                 prompts_data.get("per_camera", {}),
                 "ai.prompts.per_camera",
