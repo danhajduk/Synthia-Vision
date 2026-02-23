@@ -1,5 +1,6 @@
 frigate:
   api_base_url: "http://10.0.0.100:5000"
+  stats_poll_s: 30
   snapshot:
     source: "event"
     endpoint_template: "/api/events/{event_id}/snapshot.jpg"

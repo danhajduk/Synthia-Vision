@@ -108,6 +108,7 @@ class FrigateSnapshotConfig:
 class FrigateConfig:
     base_url: str
     snapshot: FrigateSnapshotConfig
+    stats_poll_seconds: int = 30
 
 
 @dataclass(slots=True)
@@ -409,6 +410,7 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
         ),
         frigate=FrigateConfig(
             base_url=_required_str(frigate_data.get("api_base_url"), "frigate.api_base_url"),
+            stats_poll_seconds=int(frigate_data.get("stats_poll_s", 30)),
             snapshot=FrigateSnapshotConfig(
                 source=str(frigate_snapshot_data.get("source", "event")),
                 endpoint_template=str(
@@ -724,6 +726,8 @@ def _apply_env_overrides(config: ServiceConfig) -> None:
     if "MQTT_HEARTBEAT_SECONDS" in os.environ:
         config.mqtt.heartbeat_interval_seconds = int(os.environ["MQTT_HEARTBEAT_SECONDS"])
     config.frigate.base_url = os.getenv("FRIGATE_BASE_URL", config.frigate.base_url)
+    if "FRIGATE_STATS_POLL_S" in os.environ:
+        config.frigate.stats_poll_seconds = int(os.environ["FRIGATE_STATS_POLL_S"])
     config.openai.model = os.getenv("OPENAI_MODEL", config.openai.model)
     config.app.log_level = os.getenv("SYNTHIA_LOG_LEVEL", config.app.log_level)
     config.logging.level = config.app.log_level
@@ -766,6 +770,8 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("budget.monthly_limit must be >= 0")
     if config.mqtt.qos not in (0, 1, 2):
         raise ConfigError("mqtt.publish.qos must be 0, 1, or 2")
+    if config.frigate.stats_poll_seconds < 5:
+        raise ConfigError("frigate.stats_poll_s must be >= 5")
 
     if not config.openai.api_key:
         raise ConfigError(
