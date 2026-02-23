@@ -45,6 +45,11 @@
         return;
       }
       const cameraKey = card.getAttribute('data-camera-key');
+      img.style.opacity = '0.9';
+      img.addEventListener('load', function onLoad() {
+        img.style.opacity = '1';
+        img.removeEventListener('load', onLoad);
+      });
       img.src = '/api/cameras/' + encodeURIComponent(cameraKey) + '/preview.jpg?ts=' + String(nowTs());
     }
 
@@ -106,6 +111,47 @@
     window.addEventListener('beforeunload', function () {
       cards.forEach(clearTimer);
       observer.disconnect();
+    });
+  }
+
+  function initGuestTimestamps() {
+    const nodes = Array.from(document.querySelectorAll('[data-last-seen]'));
+    if (!nodes.length) {
+      return;
+    }
+
+    function pad2(value) {
+      return String(value).padStart(2, '0');
+    }
+
+    function formatLastSeen(raw) {
+      const value = String(raw || '').trim();
+      if (!value) {
+        return '—';
+      }
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        return '—';
+      }
+      const now = new Date();
+      const isToday =
+        parsed.getFullYear() === now.getFullYear() &&
+        parsed.getMonth() === now.getMonth() &&
+        parsed.getDate() === now.getDate();
+      if (isToday) {
+        return pad2(parsed.getHours()) + ':' + pad2(parsed.getMinutes());
+      }
+      return (
+        parsed.getFullYear() +
+        '-' + pad2(parsed.getMonth() + 1) +
+        '-' + pad2(parsed.getDate()) +
+        ' ' + pad2(parsed.getHours()) +
+        ':' + pad2(parsed.getMinutes())
+      );
+    }
+
+    nodes.forEach((node) => {
+      node.textContent = formatLastSeen(node.getAttribute('data-last-seen'));
     });
   }
 
@@ -317,6 +363,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    initGuestTimestamps();
     initGuestPreview();
     initSetupPage();
   });

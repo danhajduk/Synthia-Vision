@@ -75,22 +75,24 @@
           {% for camera in cameras %}
           <div class="card cam-card {% if not camera.enabled %}is-disabled{% endif %}" data-camera-card data-camera-key="{{ camera.camera_key }}" data-camera-enabled="{{ '1' if camera.enabled else '0' }}" data-preview-enabled="{{ '1' if camera.guest_preview_enabled else '0' }}">
             <div class="cam-head">
-              <div class="cam-top">
-                <p class="cam-title">{{ camera.display_name or camera.camera_key }}</p>
-                {% if camera.status == 'disabled' %}
-                  <span class="pill"><span class="dot bad"></span> Disabled</span>
-                {% elif camera.status == 'degraded' %}
-                  <span class="pill"><span class="dot warn"></span> Degraded</span>
-                {% else %}
-                  <span class="pill"><span class="dot"></span> OK</span>
-                {% endif %}
-              </div>
-              <div class="cam-sub">Enabled: <b>{% if camera.enabled %}Yes{% else %}No{% endif %}</b> • Last seen: <span class="mono">{{ camera.last_seen_ts or '—' }}</span></div>
+              <div class="cam-name">{{ camera.display_name or camera.camera_key }}</div>
+              {% if camera.status == 'disabled' %}
+                <div class="pill pill-bad"><span class="dot bad"></span> Disabled</div>
+              {% elif camera.status == 'degraded' %}
+                <div class="pill pill-warn"><span class="dot warn"></span> Degraded</div>
+              {% else %}
+                <div class="pill pill-ok"><span class="dot"></span> OK</div>
+              {% endif %}
+            </div>
+            <div class="cam-meta">
+              <span class="meta-item">Enabled: <b>{% if camera.enabled %}Yes{% else %}No{% endif %}</b></span>
+              <span class="meta-sep">•</span>
+              <span class="meta-item">Last seen: <span class="mono" data-last-seen="{{ camera.last_seen_ts or '' }}">—</span></span>
             </div>
             <div class="thumb">
               {% if preview.enabled and camera.guest_preview_enabled %}
               <img
-                class="preview-img"
+                class="thumb-img"
                 data-preview-img
                 alt="Preview {{ camera.display_name or camera.camera_key }}"
                 src="/api/cameras/{{ camera.camera_key }}/preview.jpg?ts={{ generated_at }}"
@@ -99,7 +101,7 @@
               <span class="preview-disabled-label">Preview disabled</span>
               {% endif %}
             </div>
-            <div class="cam-body">
+            <div class="cam-foot">
               <div class="cam-kv">
                 <div class="key">Last</div><div class="value">{{ camera.last_action_confidence or '—' }}</div>
                 <div class="key">MTD</div><div class="value">{{ camera.mtd_cost or '—' }}</div>

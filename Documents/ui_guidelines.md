@@ -82,7 +82,7 @@ Each camera card:
 - Title: `display_name`
 - Header layout:
   - first line: camera title left, status pill right
-  - second line: compact meta text (`Enabled: Yes/No`, optional last seen)
+  - second line: `Enabled: Yes/No • Last seen: ...`
 - Thumbnail placeholder area (optional; can be blank or last snapshot if safe)
 - Key/value:
   - Last action + confidence (if available)
@@ -107,6 +107,11 @@ Guest preview behavior:
   - if multiple are visible and max is 1, pick first visible card in DOM order
 - Add small scheduling jitter (±300ms) to avoid synchronized spikes.
 - Avoid large centered "Preview off" text in cards; if preview is disabled, keep area subtle and optional small corner label only.
+- Timestamp formatting rule:
+  - today: `HH:MM`
+  - older dates: `YYYY-MM-DD HH:MM`
+  - missing/invalid: `—`
+  - use browser local timezone when formatting in JS.
 
 ---
 
