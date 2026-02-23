@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import os
 import time
 from dataclasses import dataclass, field
@@ -33,7 +35,12 @@ from src.db import (
 )
 from src.auth import FirstRunBootstrap, SessionManager, UserStore
 from src.snapshot_manager import SnapshotManager
-from src.api.camera_setup_models import CameraProfile, CameraView
+from src.api.camera_setup_models import (
+    CameraProfile,
+    CameraView,
+    CameraSetupGenerateRequest,
+    CameraSetupGenerateResponse,
+)
 from src.auth.session import (
     SESSION_COOKIE_HTTPONLY,
     SESSION_COOKIE_NAME,
@@ -133,6 +140,66 @@ def create_guest_api_app(config: ServiceConfig):
     def _safe_token(value: str) -> str:
         cleaned = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(value))
         return cleaned.strip("_") or "value"
+
+    def _camera_setup_context_schema() -> dict[str, Any]:
+        return {
+            "type": "json_schema",
+            "name": "camera_setup_context_v1",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "schema_version",
+                    "environment",
+                    "purpose",
+                    "view_type",
+                    "context_summary",
+                    "expected_activity",
+                    "zones",
+                    "focus_notes",
+                    "delivery_focus",
+                    "privacy_mode",
+                ],
+                "properties": {
+                    "schema_version": {"type": "integer", "enum": [1]},
+                    "environment": {"type": "string", "enum": ["indoor", "outdoor"]},
+                    "purpose": {"type": "string", "minLength": 2, "maxLength": 40},
+                    "view_type": {"type": "string", "enum": ["fixed", "wide", "ptz"]},
+                    "context_summary": {"type": "string", "minLength": 10, "maxLength": 220},
+                    "expected_activity": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 10,
+                        "items": {"type": "string", "minLength": 3, "maxLength": 60},
+                    },
+                    "zones": {
+                        "type": "array",
+                        "maxItems": 6,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["zone_id", "label", "notes"],
+                            "properties": {
+                                "zone_id": {"type": "string", "minLength": 2, "maxLength": 40},
+                                "label": {"type": "string", "minLength": 2, "maxLength": 50},
+                                "notes": {"type": "string", "minLength": 5, "maxLength": 220},
+                            },
+                        },
+                    },
+                    "focus_notes": {"type": "string", "minLength": 5, "maxLength": 260},
+                    "delivery_focus": {
+                        "type": "array",
+                        "maxItems": 3,
+                        "items": {"type": "string", "enum": ["package", "food", "grocery"]},
+                    },
+                    "privacy_mode": {
+                        "type": "string",
+                        "enum": ["no_identifying_details"],
+                    },
+                },
+            },
+        }
 
     def _get_effective_settings() -> tuple[dict[str, str], dict[str, str]]:
         persisted = admin_store.get_kv_many(ADMIN_SETTING_KEYS)
@@ -824,6 +891,140 @@ def create_guest_api_app(config: ServiceConfig):
             "snapshot_path": str(path),
             "snapshot_bytes": len(image),
             "view": CameraView(**saved).model_dump(),
+        }
+
+    @app.post("/api/admin/cameras/{camera_key}/views/{view_id}/setup/generate_context")
+    async def api_admin_camera_view_generate_context(
+        camera_key: str,
+        view_id: str,
+        payload: dict,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        try:
+            req = CameraSetupGenerateRequest(**(payload if isinstance(payload, dict) else {}))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        view = db_get_camera_view(config.paths.db_file, camera_key, view_id) or {}
+
+        snapshot_bytes: bytes | None = None
+        snapshot_path = str(view.get("setup_snapshot_path") or "").strip()
+        if snapshot_path:
+            path_obj = Path(snapshot_path)
+            if path_obj.exists() and path_obj.is_file():
+                try:
+                    snapshot_bytes = path_obj.read_bytes()
+                except OSError:
+                    snapshot_bytes = None
+        if snapshot_bytes is None:
+            if snapshot_manager is None:
+                raise HTTPException(status_code=503, detail="snapshot manager unavailable")
+            try:
+                snapshot_bytes = snapshot_manager.fetch_camera_preview(camera_key, timeout_seconds=2.0)
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"snapshot fetch failed: {exc}") from exc
+
+        try:
+            from openai import OpenAI
+        except ModuleNotFoundError as exc:
+            raise HTTPException(status_code=503, detail="openai package unavailable") from exc
+
+        client = OpenAI(api_key=config.openai.api_key, timeout=float(config.openai.timeout_seconds))
+        encoded = base64.b64encode(snapshot_bytes).decode("ascii")
+        image_data_url = f"data:image/jpeg;base64,{encoded}"
+        system_prompt = (
+            "You generate privacy-safe camera setup context JSON for home automation."
+            " Never include identifying details."
+        )
+        user_prompt = (
+            "Analyze the snapshot and produce structured setup context.\n"
+            "Privacy rules: no identifying details, no brands, no colors, no readable text,"
+            " no license plates, no facial or personal descriptors.\n"
+            f"environment={req.environment}\n"
+            f"purpose={req.purpose}\n"
+            f"view_type={req.view_type}\n"
+            f"mounting_location={req.mounting_location or ''}\n"
+            f"view_notes={req.view_notes or ''}\n"
+            f"delivery_focus={','.join(req.delivery_focus)}\n"
+            "Return only strict JSON for schema camera_setup_context_v1."
+        )
+        try:
+            response = client.responses.create(
+                model=config.openai.model,
+                max_output_tokens=int(config.openai.max_output_tokens),
+                input=[
+                    {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": user_prompt},
+                            {"type": "input_image", "image_url": image_data_url, "detail": "high"},
+                        ],
+                    },
+                ],
+                text={"format": _camera_setup_context_schema()},
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"openai request failed: {exc}") from exc
+
+        output_text = getattr(response, "output_text", None)
+        if not isinstance(output_text, str) or not output_text.strip():
+            raise HTTPException(status_code=502, detail="openai response missing output_text")
+        try:
+            decoded = json.loads(output_text)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"openai response invalid json: {exc}") from exc
+        if not isinstance(decoded, dict):
+            raise HTTPException(status_code=502, detail="openai response json must be object")
+        decoded["environment"] = req.environment
+        decoded["purpose"] = req.purpose
+        decoded["view_type"] = req.view_type
+        decoded["delivery_focus"] = list(req.delivery_focus)
+        decoded["privacy_mode"] = "no_identifying_details"
+        decoded["schema_version"] = 1
+
+        try:
+            generated = CameraSetupGenerateResponse(**decoded).model_dump()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"openai response schema mismatch: {exc}") from exc
+
+        profile_saved = db_upsert_camera_profile(
+            config.paths.db_file,
+            camera_key,
+            {
+                "environment": req.environment,
+                "purpose": req.purpose,
+                "view_type": req.view_type,
+                "mounting_location": req.mounting_location,
+                "view_notes": req.view_notes,
+                "delivery_focus": list(req.delivery_focus),
+                "privacy_mode": "no_identifying_details",
+                "setup_completed": True,
+                "default_view_id": view_id,
+            },
+        )
+        saved_view = db_upsert_camera_view(
+            config.paths.db_file,
+            camera_key,
+            view_id,
+            {
+                "label": str(view.get("label") or view_id),
+                "ha_preset_id": view.get("ha_preset_id"),
+                "setup_snapshot_path": snapshot_path or view.get("setup_snapshot_path"),
+                "context_summary": generated.get("context_summary"),
+                "expected_activity": generated.get("expected_activity", []),
+                "zones": generated.get("zones", []),
+                "focus_notes": generated.get("focus_notes"),
+            },
+        )
+        return {
+            "ok": True,
+            "camera_key": camera_key,
+            "view_id": view_id,
+            "profile": CameraProfile(**profile_saved).model_dump(),
+            "view": CameraView(**saved_view).model_dump(),
+            "generated": generated,
         }
 
     @app.post("/api/admin/cameras/{camera_key}/apply")
