@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass, field
@@ -38,6 +39,7 @@ from src.snapshot_manager import SnapshotManager
 from src.api.camera_setup_models import (
     CameraProfile,
     CameraView,
+    CameraViewUpsertRequest,
     CameraSetupGenerateRequest,
     CameraSetupGenerateResponse,
 )
@@ -48,6 +50,9 @@ from src.auth.session import (
     SESSION_COOKIE_SECURE,
     SESSION_TTL_SECONDS,
 )
+
+LOGGER = logging.getLogger("synthia_vision.api")
+AI_LOGGER = logging.getLogger("synthia_vision.ai")
 
 
 def create_guest_api_app(config: ServiceConfig):
@@ -78,11 +83,22 @@ def create_guest_api_app(config: ServiceConfig):
         # is intentionally omitted.
         snapshot_manager = None
     preview_cache: dict[str, tuple[float, bytes]] = {}
+    setup_snapshot_dir_cache: Path | None = None
     runtime_overrides: dict[str, Any] = {}
     runtime_camera_overrides: dict[str, dict[str, Any]] = {}
     session_secret = os.getenv("SYNTHIA_SESSION_SECRET", f"{config.service.slug}-dev-secret")
     session_manager = SessionManager(secret=session_secret, ttl_seconds=SESSION_TTL_SECONDS)
     app = FastAPI(title="Synthia Vision API", version="0.1.0")
+    PURPOSE_OPTIONS = [
+        "doorbell_entry",
+        "perimeter_security",
+        "driveway",
+        "backyard",
+        "garage",
+        "indoor_general",
+        "child_room",
+        "other",
+    ]
 
     ADMIN_SETTING_KEYS = [
         "budget.monthly_limit_usd",
@@ -141,6 +157,30 @@ def create_guest_api_app(config: ServiceConfig):
         cleaned = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(value))
         return cleaned.strip("_") or "value"
 
+    def _resolve_setup_snapshot_dir() -> Path:
+        nonlocal setup_snapshot_dir_cache
+        if setup_snapshot_dir_cache is not None:
+            return setup_snapshot_dir_cache
+        preferred = config.paths.snapshots_dir / "setup"
+        fallback = Path("/tmp/synthia_vision/setup")
+        for idx, candidate in enumerate((preferred, fallback)):
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
+                probe = candidate / ".write_probe"
+                probe.write_bytes(b"ok")
+                probe.unlink(missing_ok=True)
+                setup_snapshot_dir_cache = candidate
+                if idx == 1:
+                    LOGGER.warning(
+                        "Using fallback setup snapshot dir path=%s preferred=%s",
+                        candidate,
+                        preferred,
+                    )
+                return setup_snapshot_dir_cache
+            except OSError as exc:
+                LOGGER.warning("Setup snapshot dir not writable path=%s error=%s", candidate, exc)
+        raise OSError("no writable setup snapshot directory available")
+
     def _camera_setup_context_schema() -> dict[str, Any]:
         return {
             "type": "json_schema",
@@ -164,7 +204,7 @@ def create_guest_api_app(config: ServiceConfig):
                 "properties": {
                     "schema_version": {"type": "integer", "enum": [1]},
                     "environment": {"type": "string", "enum": ["indoor", "outdoor"]},
-                    "purpose": {"type": "string", "minLength": 2, "maxLength": 40},
+                    "purpose": {"type": "string", "enum": PURPOSE_OPTIONS},
                     "view_type": {"type": "string", "enum": ["fixed", "wide", "ptz"]},
                     "context_summary": {"type": "string", "minLength": 10, "maxLength": 220},
                     "expected_activity": {
@@ -811,6 +851,33 @@ def create_guest_api_app(config: ServiceConfig):
         _require_admin(session_token)
         normalized = payload if isinstance(payload, dict) else {}
         merged = {"camera_key": camera_key, **normalized}
+        # Enforce fixed privacy mode and system-managed completion state.
+        merged["privacy_mode"] = "no_identifying_details"
+        required_fields_present = bool(
+            merged.get("environment")
+            and merged.get("purpose")
+            and merged.get("view_type")
+            and str(merged.get("mounting_location") or "").strip()
+        )
+        if not required_fields_present:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "environment, purpose, view_type, and mounting_location are required for camera profile"
+                ),
+            )
+        merged["setup_completed"] = True
+        # delivery_focus only applies for doorbell profiles.
+        if merged.get("purpose") != "doorbell_entry":
+            merged["delivery_focus"] = []
+        default_view_id = str(merged.get("default_view_id") or "").strip()
+        if default_view_id:
+            existing_view = db_get_camera_view(config.paths.db_file, camera_key, default_view_id)
+            if existing_view is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"default_view_id '{default_view_id}' does not exist for camera '{camera_key}'",
+                )
         try:
             validated = CameraProfile(**merged).model_dump()
         except Exception as exc:
@@ -839,12 +906,18 @@ def create_guest_api_app(config: ServiceConfig):
         session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     ):
         _require_admin(session_token)
+        if len(str(view_id or "").strip()) > 40:
+            raise HTTPException(status_code=400, detail="view_id must be 40 characters or fewer")
         normalized = payload if isinstance(payload, dict) else {}
+        try:
+            view_payload = CameraViewUpsertRequest(**normalized).model_dump()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         saved = db_upsert_camera_view(
             config.paths.db_file,
             camera_key,
             view_id,
-            normalized,
+            view_payload,
         )
         return CameraView(**saved).model_dump()
 
@@ -861,8 +934,10 @@ def create_guest_api_app(config: ServiceConfig):
             image = snapshot_manager.fetch_camera_preview(camera_key, timeout_seconds=2.0)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"snapshot fetch failed: {exc}") from exc
-        setup_dir = config.paths.snapshots_dir / "setup"
-        setup_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            setup_dir = _resolve_setup_snapshot_dir()
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"no writable setup snapshot path: {exc}") from exc
         now_epoch = int(time.time())
         filename = f"{_safe_token(camera_key)}_{_safe_token(view_id)}_{now_epoch}.jpg"
         path = setup_dir / filename
@@ -901,29 +976,91 @@ def create_guest_api_app(config: ServiceConfig):
         session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     ):
         _require_admin(session_token)
+        LOGGER.info("Setup context generation requested camera=%s view_id=%s", camera_key, view_id)
+        started_at = time.monotonic()
         try:
             req = CameraSetupGenerateRequest(**(payload if isinstance(payload, dict) else {}))
         except Exception as exc:
+            LOGGER.warning(
+                "Setup context request validation failed camera=%s view_id=%s error=%s payload=%s",
+                camera_key,
+                view_id,
+                exc,
+                payload,
+            )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if req.purpose != "doorbell_entry":
+            req.delivery_focus = []
 
-        view = db_get_camera_view(config.paths.db_file, camera_key, view_id) or {}
+        LOGGER.info("Setup context loading view row camera=%s view_id=%s", camera_key, view_id)
+        try:
+            view = await asyncio.wait_for(
+                asyncio.to_thread(db_get_camera_view, config.paths.db_file, camera_key, view_id),
+                timeout=3.0,
+            )
+        except TimeoutError as exc:
+            LOGGER.exception(
+                "Setup context view load timed out camera=%s view_id=%s",
+                camera_key,
+                view_id,
+            )
+            raise HTTPException(status_code=504, detail="timeout loading camera view from db") from exc
+        view = view or {}
+        LOGGER.info("Setup context view loaded camera=%s view_id=%s", camera_key, view_id)
 
         snapshot_bytes: bytes | None = None
         snapshot_path = str(view.get("setup_snapshot_path") or "").strip()
+        if snapshot_path:
+            LOGGER.info(
+                "Setup context attempting existing snapshot camera=%s view_id=%s path=%s",
+                camera_key,
+                view_id,
+                snapshot_path,
+            )
         if snapshot_path:
             path_obj = Path(snapshot_path)
             if path_obj.exists() and path_obj.is_file():
                 try:
                     snapshot_bytes = path_obj.read_bytes()
+                    LOGGER.info(
+                        "Setup context loaded existing snapshot camera=%s view_id=%s bytes=%s",
+                        camera_key,
+                        view_id,
+                        len(snapshot_bytes),
+                    )
                 except OSError:
                     snapshot_bytes = None
         if snapshot_bytes is None:
             if snapshot_manager is None:
                 raise HTTPException(status_code=503, detail="snapshot manager unavailable")
             try:
-                snapshot_bytes = snapshot_manager.fetch_camera_preview(camera_key, timeout_seconds=2.0)
+                LOGGER.info(
+                    "Setup context fetching live snapshot camera=%s view_id=%s timeout_s=3.0",
+                    camera_key,
+                    view_id,
+                )
+                snapshot_bytes = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        snapshot_manager.fetch_camera_preview,
+                        camera_key,
+                        timeout_seconds=2.0,
+                    ),
+                    timeout=3.0,
+                )
             except Exception as exc:
+                LOGGER.exception(
+                    "Setup context snapshot fetch failed camera=%s view_id=%s error=%s",
+                    camera_key,
+                    view_id,
+                    exc,
+                )
                 raise HTTPException(status_code=502, detail=f"snapshot fetch failed: {exc}") from exc
+        LOGGER.info(
+            "Setup context snapshot ready camera=%s view_id=%s bytes=%s",
+            camera_key,
+            view_id,
+            len(snapshot_bytes),
+        )
 
         try:
             from openai import OpenAI
@@ -949,24 +1086,55 @@ def create_guest_api_app(config: ServiceConfig):
             f"delivery_focus={','.join(req.delivery_focus)}\n"
             "Return only strict JSON for schema camera_setup_context_v1."
         )
+        AI_LOGGER.info(
+            "setup_context_openai_request_start camera=%s view_id=%s model=%s timeout_s=%s",
+            camera_key,
+            view_id,
+            config.openai.model,
+            config.openai.timeout_seconds,
+        )
         try:
-            response = client.responses.create(
-                model=config.openai.model,
-                max_output_tokens=int(config.openai.max_output_tokens),
-                input=[
-                    {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": user_prompt},
-                            {"type": "input_image", "image_url": image_data_url, "detail": "high"},
-                        ],
-                    },
-                ],
-                text={"format": _camera_setup_context_schema()},
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.responses.create,
+                    model=config.openai.model,
+                    max_output_tokens=int(config.openai.max_output_tokens),
+                    input=[
+                        {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": user_prompt},
+                                {"type": "input_image", "image_url": image_data_url, "detail": "high"},
+                            ],
+                        },
+                    ],
+                    text={"format": _camera_setup_context_schema()},
+                ),
+                timeout=float(config.openai.timeout_seconds) + 10.0,
             )
         except Exception as exc:
+            AI_LOGGER.exception(
+                "setup_context_openai_request_failed camera=%s view_id=%s error=%s",
+                camera_key,
+                view_id,
+                exc,
+            )
             raise HTTPException(status_code=502, detail=f"openai request failed: {exc}") from exc
+        usage = getattr(response, "usage", None)
+        prompt_tokens = int(getattr(usage, "input_tokens", getattr(usage, "prompt_tokens", 0)) or 0)
+        completion_tokens = int(
+            getattr(usage, "output_tokens", getattr(usage, "completion_tokens", 0)) or 0
+        )
+        total_tokens = int(getattr(usage, "total_tokens", prompt_tokens + completion_tokens) or 0)
+        AI_LOGGER.info(
+            "setup_context_openai_request_done camera=%s view_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s",
+            camera_key,
+            view_id,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        )
 
         output_text = getattr(response, "output_text", None)
         if not isinstance(output_text, str) or not output_text.strip():
@@ -989,34 +1157,57 @@ def create_guest_api_app(config: ServiceConfig):
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"openai response schema mismatch: {exc}") from exc
 
-        profile_saved = db_upsert_camera_profile(
-            config.paths.db_file,
-            camera_key,
-            {
-                "environment": req.environment,
-                "purpose": req.purpose,
-                "view_type": req.view_type,
-                "mounting_location": req.mounting_location,
-                "view_notes": req.view_notes,
-                "delivery_focus": list(req.delivery_focus),
-                "privacy_mode": "no_identifying_details",
-                "setup_completed": True,
-                "default_view_id": view_id,
-            },
-        )
-        saved_view = db_upsert_camera_view(
-            config.paths.db_file,
+        try:
+            profile_saved = await asyncio.wait_for(
+                asyncio.to_thread(
+                    db_upsert_camera_profile,
+                    config.paths.db_file,
+                    camera_key,
+                    {
+                        "environment": req.environment,
+                        "purpose": req.purpose,
+                        "view_type": req.view_type,
+                        "mounting_location": req.mounting_location,
+                        "view_notes": req.view_notes,
+                        "delivery_focus": list(req.delivery_focus),
+                        "privacy_mode": "no_identifying_details",
+                        "setup_completed": True,
+                        "default_view_id": view_id,
+                    },
+                ),
+                timeout=3.0,
+            )
+            saved_view = await asyncio.wait_for(
+                asyncio.to_thread(
+                    db_upsert_camera_view,
+                    config.paths.db_file,
+                    camera_key,
+                    view_id,
+                    {
+                        "label": str(view.get("label") or view_id),
+                        "ha_preset_id": view.get("ha_preset_id"),
+                        "setup_snapshot_path": snapshot_path or view.get("setup_snapshot_path"),
+                        "context_summary": generated.get("context_summary"),
+                        "expected_activity": generated.get("expected_activity", []),
+                        "zones": generated.get("zones", []),
+                        "focus_notes": generated.get("focus_notes"),
+                    },
+                ),
+                timeout=3.0,
+            )
+        except TimeoutError as exc:
+            LOGGER.exception(
+                "Setup context db upsert timed out camera=%s view_id=%s",
+                camera_key,
+                view_id,
+            )
+            raise HTTPException(status_code=504, detail="timeout persisting setup context to db") from exc
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        LOGGER.info(
+            "Setup context generation completed camera=%s view_id=%s elapsed_ms=%s",
             camera_key,
             view_id,
-            {
-                "label": str(view.get("label") or view_id),
-                "ha_preset_id": view.get("ha_preset_id"),
-                "setup_snapshot_path": snapshot_path or view.get("setup_snapshot_path"),
-                "context_summary": generated.get("context_summary"),
-                "expected_activity": generated.get("expected_activity", []),
-                "zones": generated.get("zones", []),
-                "focus_notes": generated.get("focus_notes"),
-            },
+            elapsed_ms,
         )
         return {
             "ok": True,

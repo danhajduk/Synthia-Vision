@@ -461,27 +461,89 @@
     }
 
     function wizardDeliveryFocusFromInput() {
-      const raw = String(qs('wizard-profile-delivery-focus').value || '').trim();
-      if (!raw) {
+      if (qs('wizard-profile-purpose').value !== 'doorbell_entry') {
         return [];
       }
-      return raw
-        .split(',')
-        .map((item) => item.trim())
-        .filter((item) => ['package', 'food', 'grocery'].indexOf(item) >= 0);
+      return ['package', 'food', 'grocery'].filter((key) => {
+        const node = qs('wizard-delivery-focus-' + key);
+        return Boolean(node && node.checked);
+      });
+    }
+
+    function wizardSetDeliveryFocus(values) {
+      const current = Array.isArray(values) ? values : [];
+      ['package', 'food', 'grocery'].forEach((key) => {
+        const node = qs('wizard-delivery-focus-' + key);
+        if (!node) {
+          return;
+        }
+        node.checked = current.indexOf(key) >= 0;
+      });
+    }
+
+    function wizardSyncDeliveryFocusVisibility() {
+      const wrap = qs('wizard-delivery-focus-wrap');
+      if (!wrap) {
+        return;
+      }
+      const enabled = qs('wizard-profile-purpose').value === 'doorbell_entry';
+      wrap.style.display = enabled ? '' : 'none';
+      if (!enabled) {
+        wizardSetDeliveryFocus([]);
+      }
+    }
+
+    function wizardRefreshDefaultViewOptions(items, fallbackValue) {
+      const select = qs('wizard-profile-default-view-id');
+      if (!select) {
+        return;
+      }
+      const selectedValue = String(select.value || fallbackValue || '').trim();
+      select.innerHTML = '';
+      const base = document.createElement('option');
+      base.value = '';
+      base.textContent = 'default (auto)';
+      select.appendChild(base);
+      (items || []).forEach((item) => {
+        const viewId = String(item.view_id || '').trim();
+        if (!viewId) {
+          return;
+        }
+        const opt = document.createElement('option');
+        opt.value = viewId;
+        opt.textContent = viewId;
+        select.appendChild(opt);
+      });
+      select.value = selectedValue;
     }
 
     function wizardProfilePayload() {
       return {
         environment: qs('wizard-profile-environment').value || null,
-        purpose: String(qs('wizard-profile-purpose').value || '').trim() || null,
+        purpose: qs('wizard-profile-purpose').value || null,
         view_type: qs('wizard-profile-view-type').value || null,
         mounting_location: String(qs('wizard-profile-mounting-location').value || '').trim() || null,
         view_notes: String(qs('wizard-profile-view-notes').value || '').trim() || null,
         delivery_focus: wizardDeliveryFocusFromInput(),
         default_view_id: String(qs('wizard-profile-default-view-id').value || '').trim() || null,
-        setup_completed: true,
       };
+    }
+
+    function wizardProfileMissingRequired() {
+      const missing = [];
+      if (!qs('wizard-profile-environment').value) {
+        missing.push('environment');
+      }
+      if (!qs('wizard-profile-purpose').value) {
+        missing.push('purpose');
+      }
+      if (!qs('wizard-profile-view-type').value) {
+        missing.push('view_type');
+      }
+      if (!String(qs('wizard-profile-mounting-location').value || '').trim()) {
+        missing.push('mounting_location');
+      }
+      return missing;
     }
 
     function wizardViewPayload() {
@@ -515,8 +577,11 @@
       qs('wizard-profile-view-type').value = profile.view_type || '';
       qs('wizard-profile-mounting-location').value = profile.mounting_location || '';
       qs('wizard-profile-view-notes').value = profile.view_notes || '';
-      qs('wizard-profile-delivery-focus').value = (profile.delivery_focus || []).join(',');
+      wizardSetDeliveryFocus(profile.delivery_focus || []);
       qs('wizard-profile-default-view-id').value = profile.default_view_id || '';
+      qs('wizard-profile-privacy-mode').textContent = profile.privacy_mode || 'no_identifying_details';
+      qs('wizard-profile-setup-completed').textContent = profile.setup_completed ? 'Completed' : 'Incomplete';
+      wizardSyncDeliveryFocusVisibility();
     }
 
     function applyWizardView(view) {
@@ -549,6 +614,12 @@
       const select = qs('wizard-camera');
       const resp = await fetch('/api/admin/cameras', { credentials: 'same-origin' });
       if (!resp.ok) {
+        const meta = qs('wizard-camera-meta');
+        if (meta) {
+          meta.textContent = resp.status === 401
+            ? 'Admin session expired. Please log in again.'
+            : 'Failed loading cameras for setup.';
+        }
         return;
       }
       const data = await resp.json();
@@ -587,7 +658,7 @@
         ' • env=' + (profile.environment || '—') +
         ' • purpose=' + (profile.purpose || '—');
       if (!wizardState.viewId) {
-        wizardState.viewId = profile.default_view_id || 'main';
+        wizardState.viewId = profile.default_view_id || 'default';
       }
       qs('wizard-view-id').value = wizardState.viewId;
     }
@@ -604,8 +675,9 @@
       }
       const data = await resp.json();
       const items = data.items || [];
+      wizardRefreshDefaultViewOptions(items, wizardState.profile && wizardState.profile.default_view_id);
       if (!wizardState.viewId) {
-        wizardState.viewId = items.length ? items[0].view_id : 'main';
+        wizardState.viewId = items.length ? items[0].view_id : 'default';
         qs('wizard-view-id').value = wizardState.viewId;
       }
       const view = items.find((item) => item.view_id === wizardState.viewId);
@@ -619,7 +691,7 @@
       if (!wizardState.cameraKey) {
         return;
       }
-      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
       const resp = await fetch(
         '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views',
         { credentials: 'same-origin' }
@@ -629,6 +701,7 @@
       }
       const data = await resp.json();
       const items = data.items || [];
+      wizardRefreshDefaultViewOptions(items, qs('wizard-profile-default-view-id').value);
       const view = items.find((item) => item.view_id === wizardState.viewId);
       if (view) {
         wizardState.currentView = view;
@@ -644,7 +717,7 @@
       if (!wizardState.cameraKey) {
         return;
       }
-      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
       const payload = wizardViewPayload();
       const resp = await fetch(
         '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' + encodeURIComponent(wizardState.viewId),
@@ -663,6 +736,7 @@
       wizardState.currentView = view;
       applyWizardView(view);
       qs('wizard-view-meta').textContent = 'Saved view: ' + wizardState.viewId;
+      await wizardLoadViews();
     }
 
     async function wizardRefreshPreview() {
@@ -677,7 +751,7 @@
       if (!wizardState.cameraKey) {
         return;
       }
-      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
       const resp = await fetch(
         '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' +
           encodeURIComponent(wizardState.viewId) + '/setup/snapshot',
@@ -687,7 +761,16 @@
         }
       );
       if (!resp.ok) {
-        qs('wizard-snapshot-path').textContent = 'Failed capturing setup snapshot.';
+        let detail = '';
+        try {
+          const payload = await resp.json();
+          detail = payload && payload.detail ? String(payload.detail) : '';
+        } catch (err) {
+          detail = '';
+        }
+        qs('wizard-snapshot-path').textContent = detail
+          ? 'Failed capturing setup snapshot: ' + detail
+          : 'Failed capturing setup snapshot.';
         return;
       }
       const data = await resp.json();
@@ -701,48 +784,94 @@
 
     async function wizardGenerateContext() {
       if (!wizardState.cameraKey) {
+        qs('wizard-save-status').textContent = 'No camera selected. Reload setup or log in again.';
         return;
       }
-      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      const generateBtn = qs('wizard-generate-context');
+      const statusEl = qs('wizard-save-status');
+      if (generateBtn) {
+        generateBtn.disabled = true;
+        generateBtn.textContent = 'Generating...';
+      }
+      if (statusEl) {
+        statusEl.textContent = 'Generating context...';
+      }
+      const missing = wizardProfileMissingRequired();
+      if (missing.length) {
+        if (statusEl) {
+          statusEl.textContent = 'Missing required profile fields: ' + missing.join(', ');
+        }
+        if (generateBtn) {
+          generateBtn.disabled = false;
+          generateBtn.textContent = 'Generate context';
+        }
+        return;
+      }
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
       const payload = {
         environment: qs('wizard-profile-environment').value || 'outdoor',
-        purpose: String(qs('wizard-profile-purpose').value || '').trim() || 'doorbell_entry',
+        purpose: qs('wizard-profile-purpose').value || 'indoor_general',
         view_type: qs('wizard-profile-view-type').value || 'fixed',
-        mounting_location: String(qs('wizard-profile-mounting-location').value || '').trim() || null,
+        mounting_location: String(qs('wizard-profile-mounting-location').value || '').trim(),
         view_notes: String(qs('wizard-profile-view-notes').value || '').trim() || null,
         delivery_focus: wizardDeliveryFocusFromInput(),
       };
-      const resp = await fetch(
-        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' +
-          encodeURIComponent(wizardState.viewId) + '/setup/generate_context',
-        {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
+      try {
+        const resp = await fetch(
+          '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' +
+            encodeURIComponent(wizardState.viewId) + '/setup/generate_context',
+          {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload),
+          }
+        );
+        if (!resp.ok) {
+          let detail = '';
+          try {
+            const payload = await resp.json();
+            detail = payload && payload.detail ? String(payload.detail) : '';
+          } catch (err) {
+            detail = '';
+          }
+          qs('wizard-save-status').textContent = detail
+            ? ('Context generation failed: ' + detail)
+            : 'Context generation failed.';
+          return;
         }
-      );
-      if (!resp.ok) {
-        qs('wizard-save-status').textContent = 'Context generation failed.';
-        return;
+        const data = await resp.json();
+        if (data.profile) {
+          wizardState.profile = data.profile;
+          applyWizardProfile(data.profile);
+        }
+        if (data.view) {
+          wizardState.currentView = data.view;
+          applyWizardView(data.view);
+        }
+        qs('wizard-save-status').textContent = 'Context generated.';
+      } catch (err) {
+        qs('wizard-save-status').textContent =
+          'Context generation failed: ' + (err && err.message ? err.message : 'network error');
+      } finally {
+        if (generateBtn) {
+          generateBtn.disabled = false;
+          generateBtn.textContent = 'Generate context';
+        }
       }
-      const data = await resp.json();
-      if (data.profile) {
-        wizardState.profile = data.profile;
-        applyWizardProfile(data.profile);
-      }
-      if (data.view) {
-        wizardState.currentView = data.view;
-        applyWizardView(data.view);
-      }
-      qs('wizard-save-status').textContent = 'Context generated.';
     }
 
     async function wizardSaveAll() {
       if (!wizardState.cameraKey) {
         return;
       }
-      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      const missing = wizardProfileMissingRequired();
+      if (missing.length) {
+        qs('wizard-save-status').textContent =
+          'Missing required profile fields: ' + missing.join(', ');
+        return;
+      }
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
       const profileResp = await fetch(
         '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/profile',
         {
@@ -914,6 +1043,9 @@
         e.preventDefault();
         await wizardSaveView();
       });
+      qs('wizard-profile-purpose').addEventListener('change', function () {
+        wizardSyncDeliveryFocusVisibility();
+      });
       qs('wizard-refresh-preview').addEventListener('click', async function (e) {
         e.preventDefault();
         await wizardRefreshPreview();
@@ -930,6 +1062,7 @@
         e.preventDefault();
         await wizardSaveAll();
       });
+      wizardSyncDeliveryFocusVisibility();
       setWizardStep(1);
       wizardLoadCameras();
     }

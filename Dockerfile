@@ -14,7 +14,8 @@ COPY Documents/schema.sql /app/Documents/schema.sql
 
 RUN addgroup --system synthia && adduser --system --ingroup synthia synthia \
     && mkdir -p /app/state /app/logs \
-    && chown -R synthia:synthia /app
+    && chown -R synthia:synthia /app \
+    && chmod -R 0777 /app/state /app/logs
 
 USER synthia
 

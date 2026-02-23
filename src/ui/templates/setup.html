@@ -55,7 +55,18 @@
                   <option value="indoor">indoor</option>
                   <option value="outdoor">outdoor</option>
                 </select>
-                <label class="field-label">Purpose</label><input class="field" id="wizard-profile-purpose" />
+                <label class="field-label">Purpose</label>
+                <select class="field" id="wizard-profile-purpose">
+                  <option value="">—</option>
+                  <option value="doorbell_entry">doorbell_entry</option>
+                  <option value="perimeter_security">perimeter_security</option>
+                  <option value="driveway">driveway</option>
+                  <option value="backyard">backyard</option>
+                  <option value="garage">garage</option>
+                  <option value="indoor_general">indoor_general</option>
+                  <option value="child_room">child_room</option>
+                  <option value="other">other</option>
+                </select>
                 <label class="field-label">View type</label>
                 <select class="field" id="wizard-profile-view-type">
                   <option value="">—</option>
@@ -63,18 +74,27 @@
                   <option value="wide">wide</option>
                   <option value="ptz">ptz</option>
                 </select>
-                <label class="field-label">Mounting location</label><input class="field" id="wizard-profile-mounting-location" />
-                <label class="field-label">View notes</label><input class="field" id="wizard-profile-view-notes" />
+                <label class="field-label">Mounting location</label><input class="field" id="wizard-profile-mounting-location" maxlength="200" />
+                <label class="field-label">View notes</label><textarea class="field wizard-textarea" id="wizard-profile-view-notes" maxlength="500"></textarea>
                 <label class="field-label">Delivery focus</label>
-                <input class="field" id="wizard-profile-delivery-focus" placeholder="package,food,grocery" />
-                <label class="field-label">Default view id</label><input class="field" id="wizard-profile-default-view-id" />
+                <div id="wizard-delivery-focus-wrap" class="toggle-group">
+                  <label class="toggle"><input type="checkbox" id="wizard-delivery-focus-package" value="package" /><span>package</span></label>
+                  <label class="toggle"><input type="checkbox" id="wizard-delivery-focus-food" value="food" /><span>food</span></label>
+                  <label class="toggle"><input type="checkbox" id="wizard-delivery-focus-grocery" value="grocery" /><span>grocery</span></label>
+                </div>
+                <label class="field-label">Default view id</label>
+                <select class="field" id="wizard-profile-default-view-id">
+                  <option value="">default (auto)</option>
+                </select>
+                <label class="field-label">Privacy mode</label><div class="sub" id="wizard-profile-privacy-mode">no_identifying_details</div>
+                <label class="field-label">Setup status</label><div class="sub" id="wizard-profile-setup-completed">Incomplete</div>
               </div>
             </div>
             <div class="setup-panel" data-step-panel="4">
               <div class="form-grid">
-                <label class="field-label">View ID</label><input class="field" id="wizard-view-id" />
-                <label class="field-label">View label</label><input class="field" id="wizard-view-label" />
-                <label class="field-label">HA preset id</label><input class="field" id="wizard-view-ha-preset-id" />
+                <label class="field-label">View ID</label><input class="field" id="wizard-view-id" maxlength="40" />
+                <label class="field-label">View label</label><input class="field" id="wizard-view-label" maxlength="60" />
+                <label class="field-label">HA preset id</label><input class="field" id="wizard-view-ha-preset-id" maxlength="80" />
               </div>
               <div class="row" style="margin-top:10px;">
                 <button class="btn" id="wizard-view-load">Load View</button>
@@ -95,10 +115,10 @@
                 <button class="btn primary" id="wizard-generate-context">Generate context</button>
               </div>
               <div class="sub">Privacy mode: no identifying details.</div>
-              <textarea class="field wizard-textarea" id="wizard-context-summary" placeholder="context_summary"></textarea>
-              <textarea class="field wizard-textarea" id="wizard-context-activity" placeholder="expected_activity (comma separated)"></textarea>
-              <textarea class="field wizard-textarea" id="wizard-context-zones" placeholder="zones JSON"></textarea>
-              <textarea class="field wizard-textarea" id="wizard-context-focus-notes" placeholder="focus_notes"></textarea>
+              <textarea class="field wizard-textarea" id="wizard-context-summary" placeholder="context_summary" readonly></textarea>
+              <textarea class="field wizard-textarea" id="wizard-context-activity" placeholder="expected_activity (comma separated)" readonly></textarea>
+              <textarea class="field wizard-textarea" id="wizard-context-zones" placeholder="zones JSON" readonly></textarea>
+              <textarea class="field wizard-textarea" id="wizard-context-focus-notes" placeholder="focus_notes" readonly></textarea>
             </div>
             <div class="setup-panel" data-step-panel="7">
               <div class="sub">Save profile + view context to SQLite.</div>
