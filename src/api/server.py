@@ -240,6 +240,36 @@ def create_guest_api_app(config: ServiceConfig):
             },
         }
 
+    def _normalize_openai_json_schema_format(
+        raw_format: dict[str, Any],
+        *,
+        fallback_name: str,
+    ) -> dict[str, Any]:
+        schema_type = str(raw_format.get("type", "") or "").strip()
+        if schema_type != "json_schema":
+            raise ValueError("type must be json_schema")
+        nested = raw_format.get("json_schema")
+        if isinstance(nested, dict):
+            name = str(nested.get("name") or raw_format.get("name") or fallback_name).strip()
+            strict = bool(nested.get("strict", raw_format.get("strict", False)))
+            schema = nested.get("schema", raw_format.get("schema"))
+        else:
+            name = str(raw_format.get("name") or fallback_name).strip()
+            strict = bool(raw_format.get("strict", False))
+            schema = raw_format.get("schema")
+        if not name:
+            raise ValueError("name is required")
+        if strict is not True:
+            raise ValueError("strict must be true")
+        if not isinstance(schema, dict) or not schema:
+            raise ValueError("schema must be a non-empty object")
+        return {
+            "type": "json_schema",
+            "name": name,
+            "strict": True,
+            "schema": schema,
+        }
+
     def _get_effective_settings() -> tuple[dict[str, str], dict[str, str]]:
         persisted = admin_store.get_kv_many(ADMIN_SETTING_KEYS)
         merged = dict(persisted)
@@ -1079,19 +1109,17 @@ def create_guest_api_app(config: ServiceConfig):
         )
         encoded = base64.b64encode(snapshot_bytes).decode("ascii")
         image_data_url = f"data:image/jpeg;base64,{encoded}"
-        setup_format = dict(setup_cfg.structured_output.schema or {})
-        schema_type = str(setup_format.get("type", "") or "").strip()
-        strict = bool(
-            (
-                (setup_format.get("json_schema") or {})
-                .get("strict", False)
+        raw_setup_format = dict(setup_cfg.structured_output.schema or {})
+        try:
+            setup_format = _normalize_openai_json_schema_format(
+                raw_setup_format,
+                fallback_name=setup_cfg.structured_output.schema_name,
             )
-        )
-        if schema_type != "json_schema" or not strict:
+        except ValueError as exc:
             raise HTTPException(
                 status_code=500,
-                detail="ai.setup.structured_output.schema must be json_schema with strict=true",
-            )
+                detail=f"ai.setup.structured_output.schema invalid: {exc}",
+            ) from exc
         privacy_rules = str(setup_cfg.prompts.privacy_rules or "")
         system_prompt = str(setup_cfg.prompts.system or "").format(
             privacy_rules=privacy_rules,

@@ -41,7 +41,7 @@ policy:
     min_score: 0.0
     min_duration_s: 0.0
     require_zones: []
-    confidence_threshold: 0.75
+    confidence_threshold: 0.50
 
   cameras:
     doorbell:

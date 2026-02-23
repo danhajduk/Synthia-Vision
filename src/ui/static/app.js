@@ -72,10 +72,13 @@
   }
 
   function initGuestPreview() {
-    const cfg = window.SYNTHIA_PREVIEW_CONFIG;
-    if (!cfg || !cfg.enabled) {
-      return;
-    }
+    const cfgRaw = window.SYNTHIA_PREVIEW_CONFIG || {};
+    const cfg = {
+      enabled: Boolean(cfgRaw.enabled),
+      enabledIntervalS: Number(cfgRaw.enabledIntervalS) || 2,
+      disabledIntervalS: Number(cfgRaw.disabledIntervalS) || 60,
+      maxActive: Number(cfgRaw.maxActive) || 1,
+    };
     const cards = Array.from(document.querySelectorAll('[data-camera-card]'));
     if (!cards.length) {
       return;
@@ -93,9 +96,6 @@
       return cards.filter((card) => {
         const s = state.get(card);
         if (!s || !s.visible) {
-          return false;
-        }
-        if (card.getAttribute('data-preview-enabled') !== '1') {
           return false;
         }
         return true;
@@ -162,7 +162,7 @@
     function refreshCard(card) {
       const img = card.querySelector('[data-preview-img]');
       refreshCardData(card);
-      if (!img) {
+      if (!img || !cfg.enabled || card.getAttribute('data-preview-enabled') !== '1') {
         return;
       }
       const cameraKey = card.getAttribute('data-camera-key');
