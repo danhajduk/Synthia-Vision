@@ -80,7 +80,9 @@ Responsive behavior:
 
 Each camera card:
 - Title: `display_name`
-- Meta: enabled yes/no + status badge (OK/Degraded/Disabled)
+- Header layout:
+  - first line: camera title left, status pill right
+  - second line: compact meta text (`Enabled: Yes/No`, optional last seen)
 - Thumbnail placeholder area (optional; can be blank or last snapshot if safe)
 - Key/value:
   - Last action + confidence (if available)
@@ -104,6 +106,7 @@ Guest preview behavior:
   - maximum active refreshers: `ui.preview_max_active` (default 1)
   - if multiple are visible and max is 1, pick first visible card in DOM order
 - Add small scheduling jitter (±300ms) to avoid synchronized spikes.
+- Avoid large centered "Preview off" text in cards; if preview is disabled, keep area subtle and optional small corner label only.
 
 ---
 
