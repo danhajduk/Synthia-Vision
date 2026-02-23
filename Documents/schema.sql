@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS cameras (
   process_update_events INTEGER,
   updates_per_event INTEGER,
   guest_preview_enabled INTEGER NOT NULL DEFAULT 0,
+  environment TEXT,
+  purpose TEXT,
+  view_type TEXT,
+  mounting_location TEXT,
+  view_notes TEXT,
+  delivery_focus_json TEXT,
+  privacy_mode TEXT NOT NULL DEFAULT 'no_identifying_details',
+  setup_completed INTEGER NOT NULL DEFAULT 0,
+  default_view_id TEXT,
 
   vision_detail TEXT CHECK (vision_detail IN ('low','high')),
   phash_threshold INTEGER,
@@ -58,6 +67,28 @@ CREATE TABLE IF NOT EXISTS cameras (
 
 CREATE INDEX IF NOT EXISTS idx_cameras_last_seen ON cameras(last_seen_ts);
 CREATE INDEX IF NOT EXISTS idx_cameras_enabled ON cameras(enabled);
+
+-- =========================
+-- camera_views
+-- =========================
+CREATE TABLE IF NOT EXISTS camera_views (
+  id INTEGER PRIMARY KEY,
+  camera_key TEXT NOT NULL,
+  view_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  ha_preset_id TEXT,
+  setup_snapshot_path TEXT,
+  context_summary TEXT,
+  expected_activity_json TEXT,
+  zones_json TEXT,
+  focus_notes TEXT,
+  created_ts INTEGER NOT NULL,
+  updated_ts INTEGER NOT NULL,
+  UNIQUE(camera_key, view_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_camera_views_camera_key ON camera_views(camera_key);
+CREATE INDEX IF NOT EXISTS idx_camera_views_camera_ha_preset ON camera_views(camera_key, ha_preset_id);
 
 -- =========================
 -- events
