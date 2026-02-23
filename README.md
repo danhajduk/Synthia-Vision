@@ -157,6 +157,16 @@ Runtime:
 - Card metadata (`enabled/status/last seen/last action/MTD`) refreshes with the same cadence as preview for active cards.
 - No MQTT topics were added for preview; snapshot preview is HTTP-only.
 
+## Guest KPI Polling
+
+- Guest top KPI cards poll every `2s`:
+  - `GET /api/status`
+  - `GET /api/metrics/summary`
+- Heartbeat is rendered in browser local time as:
+  - `MM/DD/YYYY HH:MM:SS`
+- Cost values in guest UI are rendered with 4 decimals:
+  - `$0.0000`
+
 ## HA Embedded Mode
 
 - When `/ui` is rendered in an HA iframe:
@@ -184,6 +194,7 @@ Admin UI pages (require admin session):
 Implementation paths:
 - templates: `src/ui/templates`
 - static assets: `src/ui/static`
+- runtime contract reference: `Documents/current_runtime_contract.md`
 
 ## Active MQTT Topics (Now)
 

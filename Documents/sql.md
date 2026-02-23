@@ -197,7 +197,7 @@ Seed these keys during DB initialization **if missing**. All timestamps are ISO8
 
 ### Schema / setup
 - `db.schema_version` = `1`
-- `setup.completed` = `0`  (set to `1` after first admin is created and setup page applied)
+- `setup.completed` = `0`  (set to `1` when an admin user exists; synchronized at startup)
 - `service.status` = `starting`
 
 ### Runtime / pipeline knobs (persisted defaults)

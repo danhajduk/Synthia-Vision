@@ -24,7 +24,8 @@ The mock is intentionally static. Live updates will be added later via polling/S
 - Guest view is **read-only**:
   - shows system stats + camera summaries
   - no controls/toggles
-  - no sensitive data (no tokens, no raw prompts, no user list)
+  - no raw prompts, no user list
+  - token totals may be shown as KPI telemetry
 - Embedded mode behavior for HA iframe:
   - hide guest header/top bar
   - hide guest footer
@@ -81,7 +82,7 @@ Responsive behavior:
 ### Row 3 (Cameras)
 - Section header: **Cameras**
 - Right side hint (optional): "Guest view: summaries only (no controls)"
-- Grid of camera cards (3 columns desktop, 2 medium, 1 small)
+- Grid of camera cards uses responsive auto-fit/min width logic in CSS; card count per row is viewport-dependent.
 
 Each camera card:
 - Title: `display_name`
@@ -177,8 +178,8 @@ Guest `/ui` template needs:
   - health label + badge
   - heartbeat_ts or uptime
   - queue_depth + queue_max + drops_today
-  - cost_today + cost_mtd
-  - ai_calls_today + avg_cost_per_event
+  - cost_today + cost_mtd + avg_cost_per_event
+  - ai_calls_today + tokens_today_total + avg_tokens_per_event
 - `cameras[]` list:
   - `camera_key`
   - `display_name`
