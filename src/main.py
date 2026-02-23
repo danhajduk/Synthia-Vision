@@ -18,7 +18,7 @@ from src.config import load_settings
 from src.auth import FirstRunBootstrap
 from src.db import DatabaseBootstrap
 from src.errors import SynthiaVisionError
-from src.frigate import FrigateClient, sync_discovered_cameras_from_config
+from src.frigate import FrigateClient, FrigateHealthPoller, sync_discovered_cameras_from_config
 from src.logging_utils import configure_logging
 from src.mqtt import MQTTClient
 
@@ -172,15 +172,17 @@ async def _main_async() -> int:
             LOGGER.warning("Frigate discovery sync failed on startup error=%s", exc)
 
     mqtt_client = MQTTClient(config)
+    frigate_health_poller = FrigateHealthPoller(config)
     startup_hooks: list[LifecycleHook] = [
         _init_db,
         _bootstrap_admin_user,
         _sync_setup_flag,
         _sync_frigate_cameras,
+        frigate_health_poller.start,
         mqtt_client.startup_connect,
         mqtt_client.startup_ready,
     ]
-    shutdown_hooks: list[LifecycleHook] = [mqtt_client.shutdown]
+    shutdown_hooks: list[LifecycleHook] = [frigate_health_poller.stop, mqtt_client.shutdown]
     if api_server is not None:
         startup_hooks.append(api_server.start)
         shutdown_hooks.insert(0, api_server.stop)

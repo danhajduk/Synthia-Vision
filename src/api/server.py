@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import os
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -477,6 +478,42 @@ def create_guest_api_app(config: ServiceConfig):
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
+    def _get_frigate_health_payload() -> dict[str, Any]:
+        kv = admin_store.get_kv_many(
+            [
+                "frigate.health.status",
+                "frigate.health.last_ok_at",
+                "frigate.health.updated_at",
+            ]
+        )
+        with sqlite3.connect(str(config.paths.db_file), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            rows = conn.execute(
+                """
+                SELECT camera_key, health_status, health_detail, health_updated_ts
+                FROM cameras
+                ORDER BY camera_key ASC
+                """
+            ).fetchall()
+        cameras = [
+            {
+                "camera_id": str(row["camera_key"]),
+                "status": str(row["health_status"] or "unknown"),
+                "detail": str(row["health_detail"] or ""),
+                "updated_at": str(row["health_updated_ts"] or ""),
+            }
+            for row in rows
+        ]
+        return {
+            "frigate": {
+                "status": str(kv.get("frigate.health.status", "unknown")),
+                "last_ok_at": str(kv.get("frigate.health.last_ok_at", "")),
+                "updated_at": str(kv.get("frigate.health.updated_at", "")),
+            },
+            "cameras": cameras,
+        }
+
     def _set_session_cookie(response: Response, *, username: str, role: str) -> None:
         token = session_manager.create_token(username=username, role=role)
         response.set_cookie(
@@ -686,6 +723,10 @@ def create_guest_api_app(config: ServiceConfig):
     @app.get("/api/cameras/summary")
     async def api_cameras_summary():
         return summary_store.get_guest_cameras_payload()
+
+    @app.get("/api/frigate/health")
+    async def api_frigate_health():
+        return _get_frigate_health_payload()
 
     @app.get("/api/cameras/{camera_key}/card")
     async def api_camera_card(camera_key: str):

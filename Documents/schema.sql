@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS cameras (
   record_enabled INTEGER NOT NULL DEFAULT 0,
   detect_stream_name TEXT,
   record_stream_name TEXT,
+  health_status TEXT,
+  health_detail TEXT,
+  health_updated_ts TEXT,
 
   vision_detail TEXT CHECK (vision_detail IN ('low','high')),
   phash_threshold INTEGER,

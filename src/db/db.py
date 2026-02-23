@@ -143,6 +143,9 @@ class DatabaseBootstrap:
                 "record_enabled INTEGER NOT NULL DEFAULT 0",
                 "detect_stream_name TEXT",
                 "record_stream_name TEXT",
+                "health_status TEXT",
+                "health_detail TEXT",
+                "health_updated_ts TEXT",
             )
             for column_def in camera_column_additions:
                 column_name = column_def.split(" ", 1)[0]
