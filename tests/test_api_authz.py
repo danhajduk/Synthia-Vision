@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import os
+import json
 import sqlite3
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 try:
     from fastapi.testclient import TestClient
@@ -15,7 +19,11 @@ except ModuleNotFoundError:  # pragma: no cover - local env dependency gap
     TestClient = None  # type: ignore[assignment]
 
 from src.api.server import create_guest_api_app
-from src.db import CameraStore, DatabaseBootstrap
+from src.db import (
+    CameraStore,
+    DatabaseBootstrap,
+    db_upsert_camera_view,
+)
 from src.auth.user_store import UserStore
 
 
@@ -235,6 +243,91 @@ class APIAuthzTests(unittest.TestCase):
                 ).fetchone()
             self.assertIsNotNone(kv_value)
             self.assertEqual(str(kv_value[0]), "1")
+
+    def test_generate_context_endpoint_saves_profile_and_view(self) -> None:
+        if TestClient is None:
+            self.skipTest("fastapi not installed")
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            snapshot_path = Path(td) / "setup.jpg"
+            snapshot_path.write_bytes(b"fake-image-bytes")
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            CameraStore(db_path).upsert_discovered_camera("doorbell")
+            db_upsert_camera_view(
+                db_path,
+                "doorbell",
+                "main",
+                {
+                    "label": "Main",
+                    "setup_snapshot_path": str(snapshot_path),
+                },
+            )
+            UserStore(db_path).create_user(username="admin", password="supersecurepass", role="admin")
+            config = SimpleNamespace(
+                paths=SimpleNamespace(db_file=db_path),
+                service=SimpleNamespace(slug="synthia_vision"),
+                openai=SimpleNamespace(
+                    api_key="test-key",
+                    timeout_seconds=5,
+                    max_output_tokens=200,
+                    model="gpt-4o-mini",
+                ),
+            )
+            app = create_guest_api_app(config)
+            client = TestClient(app)
+            login = client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "supersecurepass"},
+            )
+            self.assertEqual(login.status_code, 200)
+
+            class _FakeResponses:
+                def create(self, **_kwargs):
+                    payload = {
+                        "schema_version": 1,
+                        "environment": "outdoor",
+                        "purpose": "doorbell_entry",
+                        "view_type": "fixed",
+                        "context_summary": "Entry and approach path coverage.",
+                        "expected_activity": [
+                            "approaching_entry",
+                            "passing_by",
+                            "delivery_dropoff",
+                        ],
+                        "zones": [],
+                        "focus_notes": "Focus on doorway interactions.",
+                        "delivery_focus": ["package"],
+                        "privacy_mode": "no_identifying_details",
+                    }
+                    return SimpleNamespace(output_text=json.dumps(payload))
+
+            class _FakeOpenAI:
+                def __init__(self, *args, **kwargs):
+                    _ = args, kwargs
+                    self.responses = _FakeResponses()
+
+            fake_openai = types.ModuleType("openai")
+            fake_openai.OpenAI = _FakeOpenAI
+
+            with patch.dict(sys.modules, {"openai": fake_openai}):
+                response = client.post(
+                    "/api/admin/cameras/doorbell/views/main/setup/generate_context",
+                    json={
+                        "environment": "outdoor",
+                        "purpose": "doorbell_entry",
+                        "view_type": "fixed",
+                        "mounting_location": "front_porch",
+                        "view_notes": "entry view",
+                        "delivery_focus": ["package"],
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data.get("ok"))
+            self.assertEqual(data["profile"]["setup_completed"], True)
+            self.assertEqual(data["view"]["view_id"], "main")
+            self.assertIn("approaching_entry", data["view"]["expected_activity"])
 
 
 if __name__ == "__main__":

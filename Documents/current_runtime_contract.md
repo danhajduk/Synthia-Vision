@@ -66,6 +66,12 @@ Admin (session required):
 - `GET /api/admin/cameras`
 - `POST /api/admin/cameras/{camera_key}/apply`
 - `POST /api/admin/cameras/{camera_key}/save`
+- `GET /api/admin/cameras/{camera_key}/profile`
+- `PUT /api/admin/cameras/{camera_key}/profile`
+- `GET /api/admin/cameras/{camera_key}/views`
+- `PUT /api/admin/cameras/{camera_key}/views/{view_id}`
+- `POST /api/admin/cameras/{camera_key}/views/{view_id}/setup/snapshot`
+- `POST /api/admin/cameras/{camera_key}/views/{view_id}/setup/generate_context`
 
 Auth/setup:
 - `POST /api/auth/login`
@@ -91,3 +97,16 @@ Service status (`service.status`):
 
 Per-camera `result_status` examples:
 - `waiting`, `processing`, `ok`, `unchanged`, `snapshot_failed`, `schema_failed`, `openai_failed`, `token_budget_exceeded`, `blocked_budget`, `skipped`, `suppressed`
+
+## Camera setup context
+
+Camera profile fields are persisted in `cameras`:
+- `environment`, `purpose`, `view_type`, `mounting_location`, `view_notes`
+- `delivery_focus_json`, `privacy_mode`, `setup_completed`, `default_view_id`
+
+Per-view setup context is persisted in `camera_views`:
+- `camera_key`, `view_id`, `label`, `ha_preset_id`, `setup_snapshot_path`
+- `context_summary`, `expected_activity_json`, `zones_json`, `focus_notes`
+
+Runtime prompt builder uses these context fields when available:
+- `environment`, `purpose`, `view_type`, `context_summary`, `focus_notes`, `typical_activities`
