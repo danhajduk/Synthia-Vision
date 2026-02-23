@@ -133,6 +133,16 @@ class DatabaseBootstrap:
                 "privacy_mode TEXT NOT NULL DEFAULT 'no_identifying_details'",
                 "setup_completed INTEGER NOT NULL DEFAULT 0",
                 "default_view_id TEXT",
+                "frigate_camera_id TEXT",
+                "detect_width INTEGER",
+                "detect_height INTEGER",
+                "detect_fps REAL",
+                "audio_enabled INTEGER NOT NULL DEFAULT 0",
+                "tracked_objects_json TEXT",
+                "snapshots_enabled INTEGER NOT NULL DEFAULT 0",
+                "record_enabled INTEGER NOT NULL DEFAULT 0",
+                "detect_stream_name TEXT",
+                "record_stream_name TEXT",
             )
             for column_def in camera_column_additions:
                 column_name = column_def.split(" ", 1)[0]

@@ -18,6 +18,7 @@ from src.config import load_settings
 from src.auth import FirstRunBootstrap
 from src.db import DatabaseBootstrap
 from src.errors import SynthiaVisionError
+from src.frigate import FrigateClient, sync_discovered_cameras_from_config
 from src.logging_utils import configure_logging
 from src.mqtt import MQTTClient
 
@@ -142,11 +143,40 @@ async def _main_async() -> int:
     async def _sync_setup_flag() -> None:
         await asyncio.to_thread(auth_bootstrap.sync_setup_completed_flag)
 
+    async def _sync_frigate_cameras() -> None:
+        def _run_sync() -> None:
+            client = FrigateClient(config)
+            payload = client.get_config()
+            summary = sync_discovered_cameras_from_config(
+                db_path=config.paths.db_file,
+                frigate_config_payload=payload,
+            )
+            LOGGER.info(
+                "Frigate discovery sync complete cameras=%s ids=%s",
+                int(summary.get("count", 0)),
+                summary.get("camera_ids", []),
+            )
+            for item in summary.get("items", []):
+                LOGGER.info(
+                    "Frigate camera summary camera=%s enabled=%s detect_fps=%s has_detect_stream=%s has_record_stream=%s",
+                    item.get("camera_id"),
+                    item.get("enabled"),
+                    item.get("detect_fps"),
+                    item.get("has_detect_stream"),
+                    item.get("has_record_stream"),
+                )
+
+        try:
+            await asyncio.to_thread(_run_sync)
+        except Exception as exc:
+            LOGGER.warning("Frigate discovery sync failed on startup error=%s", exc)
+
     mqtt_client = MQTTClient(config)
     startup_hooks: list[LifecycleHook] = [
         _init_db,
         _bootstrap_admin_user,
         _sync_setup_flag,
+        _sync_frigate_cameras,
         mqtt_client.startup_connect,
         mqtt_client.startup_ready,
     ]
