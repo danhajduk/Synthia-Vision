@@ -1,3 +1,4 @@
+# config/config.d/30-ai.yaml
 ai:
   provider: "openai"
   vision_detail: "low"
@@ -6,14 +7,16 @@ ai:
     max_side_px: 512
     jpeg_quality: 75
     strip_metadata: true
+
   openai:
     api_key: "${OPENAI_API_KEY}"
     model: "gpt-4o-mini"
     timeout_s: 20
-    max_output_tokens: 200
+    max_output_tokens: 220
     retry_attempts: 3
     retry_backoff_s: [0.5, 1.0, 2.0]
 
+  # Default structured output used for EVENT CLASSIFICATION calls
   structured_output:
     mode: "json_schema"
     schema_name: "synthia_vision_event"
@@ -64,210 +67,394 @@ ai:
           minLength: 1
           maxLength: 200
 
+  # PROMPTS
   prompts:
+    # NOTE:
+    # - Camera "purpose" is now environment-agnostic:
+    #     general, doorbell, perimeter_security, driveway, backyard, garage, child_room
+    # - Camera "environment" is separate: indoor|outdoor
+    #
+    # - Runtime should choose preset primarily by camera purpose, fallback to "general".
+    # - Runtime may optionally apply a SECURITY OVERLAY when:
+    #     security_capable == true AND security_mode == true AND purpose != child_room
+    #
+    # Template variables expected:
+    #   {camera_name}
+    #   {environment}            -> indoor|outdoor
+    #   {purpose}                -> purpose token
+    #   {view_context_summary}   -> per-view/camera setup context summary (may be empty)
+    #   {focus_notes}            -> per-view setup focus notes (may be empty)
+    #   {expected_activity}      -> optional list rendered as string (may be empty)
+    #   {delivery_focus}         -> optional list string (doorbell)
+    #   {allowed_actions}
+    #   {allowed_subject_types}
+    #   {security_overlay}       -> injected text block or empty string
+
     default_preset: "general"
-    system: "Classify one home camera image. Return JSON only. No identity guesses."
+
+    privacy_rules: &privacy_rules |
+      PRIVACY RULES (STRICT):
+      - Do NOT identify people. No names, no relationships, no "looks like".
+      - Do NOT describe faces, hair, body features, clothing, colors, brands/logos.
+      - Do NOT include readable text (license plates, addresses, unit numbers, signs).
+      - Do NOT guess gender, race/ethnicity, or age beyond adult/child/unknown.
+      - Keep description generic and non-identifying.
+
+    # Optional overlay guidance to inject when security_mode is enabled.
+    # Runtime should set {security_overlay} to this block or "".
+    security_overlay_template: &security_overlay |
+      SECURITY MODE OVERLAY:
+      - Be more attentive to entry/threshold and unusual proximity, but do NOT infer intent from one frame.
+      - Use "loitering" ONLY when lingering is clearly evident near a relevant area.
+      - Use "suspicious_activity" ONLY with clear evidence of tampering/forced-entry posture/tools.
+      - Keep description generic and non-identifying.
+
+    # SYSTEM prompt for classification (shared across presets)
+    system: &classify_system |
+      You are Synthia Vision. Classify ONE home camera snapshot for automation.
+      Return ONLY valid JSON matching the schema. No extra text.
+      <<PRIVACY>>
+      {privacy_rules}
+
     presets:
+      # ------------------------------------------------------------
+      # GENERAL (works for both indoor and outdoor via {environment})
+      # ------------------------------------------------------------
       general:
-        system: |
-          You are Synthia Vision. Classify a single home camera snapshot for automation.
-          Do NOT identify people. Do NOT guess names, relationships, or personal traits.
-          Return ONLY valid JSON matching the schema. No extra text.
+        system: *classify_system
         user: |
           Camera: {camera_name}
           Environment: {environment}
-          Purpose: {purpose}
+          Purpose: general
+          View context: {view_context_summary}
+          Focus notes: {focus_notes}
+          Typical activity: {expected_activity}
+
           Choose action ONLY from allowed_actions.
           Choose subject_type ONLY from allowed_subject_types.
           Confidence: 0..1.
-          Description: 1 short factual sentence (<= 200 chars). No identity/relationship guesses.
+          Description: 1 short factual sentence (<= 200 chars), generic and non-identifying.
+
+          General guidance:
+          - If {environment} == indoor:
+              Prefer "room_occupied" when people are present and no other action fits.
+              Use "person_entered"/"person_exited" only when clearly visible.
+          - If {environment} == outdoor:
+              Prefer "person_passing_by" for movement across the view without stopping at an entry.
+              Prefer "person_approaching" when moving toward an entry area.
+              Prefer "person_at_door" when stopped at/near the threshold.
+              Prefer "person_leaving" when moving away after being near the entry.
+
+          Subject typing:
+          - Use subject_type="adult" or "child" only when clearly distinguishable; otherwise "unknown".
+          - If no person/animal/vehicle is present, subject_type="none".
+          - If an animal/pet is the main subject, use "animal" or "pet"; choose "pet" only when clearly domestic.
+          - If a vehicle is the main subject, use subject_type="vehicle".
+
+          {security_overlay}
+
           allowed_actions: {allowed_actions}
           allowed_subject_types: {allowed_subject_types}
           If unclear, action="unknown" and subject_type="unknown".
+
+      # ------------------------------------------------------------
+      # DOORBELL (entry-focused; may be shared corridor or private)
+      # View context should describe whether this is shared hallway.
+      # ------------------------------------------------------------
       doorbell:
-        system: |
-          You are Synthia Vision. Classify a single doorbell/entry snapshot for home automation.
-          Do NOT identify people. Do NOT guess names, relationships, or personal traits.
-          Return ONLY valid JSON matching the schema. No extra text.
+        system: *classify_system
         user: |
           Camera: {camera_name}
           Environment: {environment}
-          Purpose: {purpose}
+          Purpose: doorbell
+          View context: {view_context_summary}
+          Focus notes: {focus_notes}
+          Delivery focus: {delivery_focus}
+          Typical activity: {expected_activity}
+
           Choose action ONLY from allowed_actions.
           Choose subject_type ONLY from allowed_subject_types.
           Confidence: 0..1.
-          Description: 1 short factual sentence (<= 200 chars). No identity/relationship guesses.
-          Prefer action "person_passing_by" when a person is moving past the entrance without stopping.
-          Prefer action "person_approaching" when a person is moving toward the entrance.
-          Prefer action "person_at_door" when a person is stopped near the door/threshold.
-          Prefer action "person_leaving" when a person is moving away after being near the door.
-          Use "deliver_package" or "pickup_package" only when package handling is clearly visible.
+          Description: 1 short generic sentence (<= 200 chars), non-identifying.
+
+          Doorbell guidance:
+          - Prioritize activity directed at THIS door/threshold.
+          - Prefer "person_at_door" when a person is stopped at the threshold.
+          - Prefer "person_approaching" when clearly moving toward the door.
+          - Prefer "person_passing_by" when moving past without stopping.
+          - Prefer "person_leaving" when moving away after being near the door.
+          - Use "deliver_package" or "pickup_package" ONLY when handling/dropoff is clearly visible.
+          - Treat food/grocery drop-offs as deliveries when {delivery_focus} includes them, but still require clear dropoff/handling.
+
+          Corridor/shared-entry nuance:
+          - If view context indicates a shared hallway/corridor, passing-by is common and should stay "person_passing_by" unless clearly at THIS door.
+
+          {security_overlay}
+
           allowed_actions: {allowed_actions}
           allowed_subject_types: {allowed_subject_types}
           If unclear, action="unknown" and subject_type="unknown".
+
+      # ------------------------------------------------------------
+      # PERIMETER SECURITY (outdoor edges; conservative on intent)
+      # ------------------------------------------------------------
       perimeter_security:
-        system: |
-          Classify one perimeter security snapshot for home automation.
-          Do not identify people. Return only valid JSON matching the schema.
+        system: *classify_system
         user: |
           Camera: {camera_name}
           Environment: {environment}
-          Purpose: {purpose}
-          Choose action ONLY from allowed_actions.
-          Choose subject_type ONLY from allowed_subject_types.
-          Confidence 0..1.
-          Description <= 200 chars, factual.
-          allowed_actions: {allowed_actions}
-          allowed_subject_types: {allowed_subject_types}
-          If unclear, action="unknown", subject_type="unknown".
-      driveway:
-        system: |
-          Classify one driveway snapshot for home automation.
-          Do not identify people. Return only valid JSON matching the schema.
-        user: |
-          Camera: {camera_name}
-          Environment: {environment}
-          Purpose: {purpose}
-          Choose action ONLY from allowed_actions.
-          Choose subject_type ONLY from allowed_subject_types.
-          Confidence 0..1.
-          Description <= 200 chars, factual.
-          Prefer vehicle_arrival/vehicle_departure when vehicle motion context is clear.
-          allowed_actions: {allowed_actions}
-          allowed_subject_types: {allowed_subject_types}
-          If unclear, action="unknown", subject_type="unknown".
-      backyard:
-        system: |
-          Classify one backyard snapshot for home automation.
-          Do not identify people. Return only valid JSON matching the schema.
-        user: |
-          Camera: {camera_name}
-          Environment: {environment}
-          Purpose: {purpose}
-          Choose action ONLY from allowed_actions.
-          Choose subject_type ONLY from allowed_subject_types.
-          Confidence 0..1.
-          Description <= 200 chars, factual.
-          allowed_actions: {allowed_actions}
-          allowed_subject_types: {allowed_subject_types}
-          If unclear, action="unknown", subject_type="unknown".
-      garage:
-        system: |
-          Classify one garage snapshot for home automation.
-          Do not identify people. Return only valid JSON matching the schema.
-        user: |
-          Camera: {camera_name}
-          Environment: {environment}
-          Purpose: {purpose}
-          Choose action ONLY from allowed_actions.
-          Choose subject_type ONLY from allowed_subject_types.
-          Confidence 0..1.
-          Description <= 200 chars, factual.
-          Emphasize entry/threshold actions when clearly supported.
-          allowed_actions: {allowed_actions}
-          allowed_subject_types: {allowed_subject_types}
-          If unclear, action="unknown", subject_type="unknown".
-      child_room:
-        system: |
-          You are Synthia Vision. Classify a child-room snapshot for safety/awareness automations.
-          Do NOT identify people. Be conservative.
-          Return ONLY valid JSON matching the schema. No extra text.
-        user: |
-          Camera: {camera_name}
-          Environment: {environment}
-          Purpose: {purpose}
-          Choose action ONLY from allowed_actions.
-          Choose subject_type ONLY from allowed_subject_types.
-          Confidence 0..1.
-          Description <= 200 chars, factual.
-          allowed_actions: {allowed_actions}
-          allowed_subject_types: {allowed_subject_types}
-          If unclear, action="unknown", subject_type="unknown".
-      outdoor:
-        system: |
-          You are Synthia Vision. Classify a single outdoor security snapshot for home automation.
-          Do NOT identify people. Do NOT guess names, relationships, or personal traits.
-          Return ONLY valid JSON matching the schema. No extra text.
-        user: |
-          Camera: {camera_name}
-          Context: Outdoor home area (porch/driveway/yard).
+          Purpose: perimeter_security
+          View context: {view_context_summary}
+          Focus notes: {focus_notes}
+          Typical activity: {expected_activity}
+
           Choose action ONLY from allowed_actions.
           Choose subject_type ONLY from allowed_subject_types.
           Confidence: 0..1.
-          Description: 1 short factual sentence (<= 200 chars). No identity/relationship guesses.
-          Prefer action "person_passing_by" when a person is moving past the entrance without stopping.
-          Prefer action "person_approaching" when a person is moving toward the entrance.
-          Prefer action "person_at_door" when a person is stopped near the door/threshold.
-          Prefer action "person_leaving" when a person is moving away after being near the door.
-          Use "deliver_package" or "pickup_package" only when package handling is clearly visible.
-          Use "loitering" only when lingering/standing is clearly evident; do not infer from one frame.
-          Use "suspicious_activity" only with clear evidence (e.g., tampering or forced-entry posture).
+          Description: 1 short generic sentence (<= 200 chars), non-identifying.
+
+          Security perimeter guidance:
+          - Be conservative. Do NOT infer suspicious intent from one frame.
+          - Prefer basic motion states (passing_by / approaching / at_door) over "loitering".
+          - Use "loitering" ONLY when lingering is clearly evident.
+          - Use "suspicious_activity" ONLY with clear evidence of tampering/forced-entry posture/tools.
+
+          {security_overlay}
+
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If uncertain, action="unknown" and subject_type="unknown".
+
+      # ------------------------------------------------------------
+      # DRIVEWAY (vehicle-centric)
+      # ------------------------------------------------------------
+      driveway:
+        system: *classify_system
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: driveway
+          View context: {view_context_summary}
+          Focus notes: {focus_notes}
+          Typical activity: {expected_activity}
+
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence: 0..1.
+          Description: 1 short generic sentence (<= 200 chars), non-identifying.
+
+          Driveway guidance:
+          - Prefer vehicle_arrival when a vehicle is arriving or newly present.
+          - Prefer vehicle_departure when a vehicle is leaving.
+          - Use vehicle_detected when a vehicle is present but arrival/departure is unclear.
+          - Use delivery_vehicle ONLY when clearly a delivery-style stop is evident (still no brands/logos).
+
+          {security_overlay}
+
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If uncertain, action="unknown" and subject_type="unknown".
+
+      # ------------------------------------------------------------
+      # BACKYARD (animals + casual movement)
+      # ------------------------------------------------------------
+      backyard:
+        system: *classify_system
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: backyard
+          View context: {view_context_summary}
+          Focus notes: {focus_notes}
+          Typical activity: {expected_activity}
+
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence: 0..1.
+          Description: 1 short generic sentence (<= 200 chars), non-identifying.
+
+          Backyard guidance:
+          - animal_detected is common; choose subject_type pet vs animal carefully (pet only when clearly domestic).
+          - People may be casual; prefer person_passing_by / person_entered / person_exited when appropriate.
+          - Avoid suspicious_activity unless clear tampering is visible.
+
+          {security_overlay}
+
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If uncertain, action="unknown" and subject_type="unknown".
+
+      # ------------------------------------------------------------
+      # GARAGE (often indoor-like; entry events matter)
+      # ------------------------------------------------------------
+      garage:
+        system: *classify_system
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: garage
+          View context: {view_context_summary}
+          Focus notes: {focus_notes}
+          Typical activity: {expected_activity}
+
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence: 0..1.
+          Description: 1 short generic sentence (<= 200 chars), non-identifying.
+
+          Garage guidance:
+          - If people are present and no other action fits, use room_occupied (especially if {environment}==indoor).
+          - Prefer person_entered/person_exited when doorway entry/exit is clearly visible.
+          - Vehicle actions may apply if a vehicle is clearly the main subject.
+
+          {security_overlay}
+
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If uncertain, action="unknown" and subject_type="unknown".
+
+      # ------------------------------------------------------------
+      # CHILD ROOM (no security overlay; prioritize bed state)
+      # ------------------------------------------------------------
+      child_room:
+        system: *classify_system
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: child_room
+          View context: {view_context_summary}
+          Focus notes: {focus_notes}
+          Typical activity: {expected_activity}
+
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence: 0..1.
+          Description: 1 short generic sentence (<= 200 chars), non-identifying.
+
+          Child-room guidance:
+          - Prefer "in_bed" or "out_of_bed" when bed state is clearly visible.
+          - Be conservative: if bed state is unclear, do NOT guess; use action="unknown".
+          - Avoid "suspicious_activity" unless unmistakable safety concern is visible.
+
           allowed_actions: {allowed_actions}
           allowed_subject_types: {allowed_subject_types}
           If unclear, action="unknown" and subject_type="unknown".
-      indoor:
-        system: |
-          Classify one indoor snapshot for home automation.
-          Do not identify people or infer relationships.
-          Return only valid JSON matching the schema.
-        user: |
-          Camera: {camera_name}
-          Context: Indoor common area.
-          Choose action ONLY from allowed_actions.
-          Choose subject_type ONLY from allowed_subject_types.
-          Confidence 0..1.
-          Description <= 200 chars, factual.
-          Prefer action "room_occupied" for normal indoor presence (people visible) when no other action fits.
-          Use action "unknown" only when you cannot confidently classify anything, including room_occupied.
-          Choose subject_type="adult" or "child" only when clearly distinguishable.
-          If a person is visible but you cannot tell adult vs child, use subject_type="unknown".
-          If no person/animal/vehicle is present, use subject_type="none".
-          If a vehicle is the main subject, use subject_type="vehicle".
-          If an animal/pet is the main subject, use subject_type="animal" or "pet"; choose "pet" only when clearly domestic.
-          allowed_actions: {allowed_actions}
-          allowed_subject_types: {allowed_subject_types}
-          If unclear, action="unknown", subject_type="unknown".
-      kids_bedroom:
-        system: |
-          You are Synthia Vision. Classify a kids bedroom snapshot for safety/awareness automations.
-          Do NOT identify people. Be conservative. Prefer in_bed/out_of_bed.
-          Return ONLY valid JSON matching the schema. No extra text.
-        user: |
-          Camera: {camera_name}
-          Context: Kids bedroom.
-          Choose action ONLY from allowed_actions (prefer in_bed/out_of_bed).
-          Choose subject_type ONLY from allowed_subject_types.
-          Confidence 0..1.
-          Description <= 200 chars, factual.
-          allowed_actions: {allowed_actions}
-          allowed_subject_types: {allowed_subject_types}
-          If unclear, action="unknown", subject_type="unknown".
-      security:
-        system: |
-          Classify one home security snapshot with safety focus.
-          Do not identify people.
-          Return only valid JSON matching the schema.
-        user: |
-          Camera: {camera_name}
-          Context: Home security.
-          Choose action ONLY from allowed_actions.
-          Choose subject_type ONLY from allowed_subject_types.
-          Confidence 0..1.
-          Description <= 200 chars, factual.
-          Prefer action "person_passing_by" when a person is moving past the entrance without stopping.
-          Prefer action "person_approaching" when a person is moving toward the entrance.
-          Prefer action "person_at_door" when a person is stopped near the door/threshold.
-          Prefer action "person_leaving" when a person is moving away after being near the door.
-          Use "deliver_package" or "pickup_package" only when package handling is clearly visible.
-          Use "loitering" only when lingering/standing is clearly evident; do not infer from one frame.
-          Use suspicious_activity only with clear evidence.
-          Do not identify people, infer relationships, or include names.
-          Choose subject_type="adult" or "child" only when clearly distinguishable.
-          If a person is visible but you cannot tell adult vs child, use subject_type="unknown".
-          If no person/animal/vehicle is present, use subject_type="none".
-          If a vehicle is the main subject, use subject_type="vehicle".
-          If an animal/pet is the main subject, use subject_type="animal" or "pet"; choose "pet" only when clearly domestic.
-          allowed_actions: {allowed_actions}
-          allowed_subject_types: {allowed_subject_types}
-          If uncertain, action="unknown", subject_type="unknown".
+
+    # Optional explicit per-camera mapping: camera_key -> preset
     per_camera: {}
+
+  # SETUP CONTEXT GENERATION (used by setup wizard only)
+  setup:
+    openai:
+      # Can be same model; keep output tokens a bit higher for setup
+      model: "gpt-4o-mini"
+      max_output_tokens: 350
+      timeout_s: 30
+
+    structured_output:
+      mode: "json_schema"
+      schema_name: "camera_setup_context_v1"
+      schema:
+        type: json_schema
+        json_schema:
+          name: camera_setup_context_v1
+          strict: true
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+              - schema_version
+              - environment
+              - purpose
+              - view_type
+              - context_summary
+              - expected_activity
+              - zones
+              - focus_notes
+              - delivery_focus
+              - privacy_mode
+            properties:
+              schema_version:
+                type: integer
+                enum: [1]
+              environment:
+                type: string
+                enum: ["indoor", "outdoor"]
+              purpose:
+                type: string
+                minLength: 2
+                maxLength: 40
+              view_type:
+                type: string
+                enum: ["fixed", "wide", "ptz"]
+              context_summary:
+                type: string
+                minLength: 10
+                maxLength: 220
+              expected_activity:
+                type: array
+                minItems: 3
+                maxItems: 10
+                items:
+                  type: string
+                  minLength: 3
+                  maxLength: 60
+              zones:
+                type: array
+                maxItems: 6
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: ["zone_id", "label", "notes"]
+                  properties:
+                    zone_id:
+                      type: string
+                      minLength: 2
+                      maxLength: 40
+                    label:
+                      type: string
+                      minLength: 2
+                      maxLength: 50
+                    notes:
+                      type: string
+                      minLength: 5
+                      maxLength: 220
+              focus_notes:
+                type: string
+                minLength: 5
+                maxLength: 260
+              delivery_focus:
+                type: array
+                maxItems: 3
+                items:
+                  type: string
+                  enum: ["package", "food", "grocery"]
+              privacy_mode:
+                type: string
+                enum: ["no_identifying_details"]
+
+    prompts:
+      privacy_rules: *privacy_rules
+      system: |
+        You are Synthia Vision. You generate camera setup context for automation.
+        Return ONLY valid JSON matching the setup schema. No extra text.
+        {privacy_rules}
+      user: |
+        Camera: {camera_name}
+        Environment: {environment}
+        Purpose: {purpose}
+        View type: {view_type}
+        Mounting location: {mounting_location}
+        View notes: {view_notes}
+        Delivery focus: {delivery_focus}
+
+        Task:
+        - Generate a bland, non-identifying context_summary describing viewpoint/coverage.
+        - Provide 3–10 expected_activity tokens/phrases typical for this view.
+        - Optionally provide up to 6 text-only zones (zone_id/label/notes) if helpful.
+        - Provide short focus_notes about what matters for automation.
+
+        HARD PRIVACY CONSTRAINTS:
+        - No descriptions of people, no clothing/colors/brands, no readable text (plates/addresses/unit numbers/signs).
+        - Do not mention specific objects uniquely; describe areas and movement patterns.
+        - If uncertain, keep output generic.
