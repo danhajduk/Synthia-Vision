@@ -394,6 +394,15 @@
       'ui.preview_max_active',
     ];
 
+    const wizard = document.getElementById('camera-setup-wizard');
+    const wizardState = {
+      cameraKey: '',
+      viewId: '',
+      profile: null,
+      currentView: null,
+      currentStep: 1,
+    };
+
     function fieldValue(id) {
       const input = document.getElementById(id);
       if (!input) {
@@ -445,6 +454,312 @@
         setFieldValue('setting-' + key, values[key] ?? '');
       });
       setUnsavedIndicator(Boolean(data.unsaved_changes));
+    }
+
+    function qs(id) {
+      return document.getElementById(id);
+    }
+
+    function wizardDeliveryFocusFromInput() {
+      const raw = String(qs('wizard-profile-delivery-focus').value || '').trim();
+      if (!raw) {
+        return [];
+      }
+      return raw
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => ['package', 'food', 'grocery'].indexOf(item) >= 0);
+    }
+
+    function wizardProfilePayload() {
+      return {
+        environment: qs('wizard-profile-environment').value || null,
+        purpose: String(qs('wizard-profile-purpose').value || '').trim() || null,
+        view_type: qs('wizard-profile-view-type').value || null,
+        mounting_location: String(qs('wizard-profile-mounting-location').value || '').trim() || null,
+        view_notes: String(qs('wizard-profile-view-notes').value || '').trim() || null,
+        delivery_focus: wizardDeliveryFocusFromInput(),
+        default_view_id: String(qs('wizard-profile-default-view-id').value || '').trim() || null,
+        setup_completed: true,
+      };
+    }
+
+    function wizardViewPayload() {
+      return {
+        label: String(qs('wizard-view-label').value || '').trim() || wizardState.viewId,
+        ha_preset_id: String(qs('wizard-view-ha-preset-id').value || '').trim() || null,
+        context_summary: String(qs('wizard-context-summary').value || '').trim() || null,
+        expected_activity: String(qs('wizard-context-activity').value || '')
+          .split(',')
+          .map((item) => item.trim())
+          .filter((item) => Boolean(item)),
+        zones: (function () {
+          const raw = String(qs('wizard-context-zones').value || '').trim();
+          if (!raw) {
+            return [];
+          }
+          try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch (err) {
+            return [];
+          }
+        })(),
+        focus_notes: String(qs('wizard-context-focus-notes').value || '').trim() || null,
+      };
+    }
+
+    function applyWizardProfile(profile) {
+      qs('wizard-profile-environment').value = profile.environment || '';
+      qs('wizard-profile-purpose').value = profile.purpose || '';
+      qs('wizard-profile-view-type').value = profile.view_type || '';
+      qs('wizard-profile-mounting-location').value = profile.mounting_location || '';
+      qs('wizard-profile-view-notes').value = profile.view_notes || '';
+      qs('wizard-profile-delivery-focus').value = (profile.delivery_focus || []).join(',');
+      qs('wizard-profile-default-view-id').value = profile.default_view_id || '';
+    }
+
+    function applyWizardView(view) {
+      qs('wizard-view-id').value = view.view_id || '';
+      qs('wizard-view-label').value = view.label || '';
+      qs('wizard-view-ha-preset-id').value = view.ha_preset_id || '';
+      qs('wizard-snapshot-path').textContent = view.setup_snapshot_path
+        ? 'Snapshot: ' + view.setup_snapshot_path
+        : 'No setup snapshot captured yet.';
+      qs('wizard-context-summary').value = view.context_summary || '';
+      qs('wizard-context-activity').value = (view.expected_activity || []).join(',');
+      qs('wizard-context-zones').value = JSON.stringify(view.zones || [], null, 2);
+      qs('wizard-context-focus-notes').value = view.focus_notes || '';
+      qs('wizard-view-meta').textContent = 'Loaded view: ' + (view.view_id || '—');
+    }
+
+    function setWizardStep(step) {
+      wizardState.currentStep = step;
+      Array.from(wizard.querySelectorAll('[data-step-panel]')).forEach((panel) => {
+        const panelStep = Number(panel.getAttribute('data-step-panel') || '0');
+        panel.classList.toggle('is-active', panelStep === step);
+      });
+      Array.from(wizard.querySelectorAll('[data-step-btn]')).forEach((button) => {
+        const buttonStep = Number(button.getAttribute('data-step-btn') || '0');
+        button.classList.toggle('primary', buttonStep === step);
+      });
+    }
+
+    async function wizardLoadCameras() {
+      const select = qs('wizard-camera');
+      const resp = await fetch('/api/admin/cameras', { credentials: 'same-origin' });
+      if (!resp.ok) {
+        return;
+      }
+      const data = await resp.json();
+      const items = data.items || [];
+      select.innerHTML = '';
+      items.forEach((camera) => {
+        const option = document.createElement('option');
+        option.value = camera.camera_key;
+        option.textContent = (camera.display_name || camera.camera_key) + ' (' + camera.camera_key + ')';
+        select.appendChild(option);
+      });
+      if (!wizardState.cameraKey && items.length) {
+        wizardState.cameraKey = items[0].camera_key;
+      }
+      select.value = wizardState.cameraKey || (items[0] ? items[0].camera_key : '');
+      await wizardLoadProfile();
+      await wizardLoadViews();
+      await wizardRefreshPreview();
+    }
+
+    async function wizardLoadProfile() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      const resp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/profile', {
+        credentials: 'same-origin',
+      });
+      if (!resp.ok) {
+        return;
+      }
+      const profile = await resp.json();
+      wizardState.profile = profile;
+      applyWizardProfile(profile);
+      qs('wizard-camera-meta').textContent =
+        'Camera: ' + wizardState.cameraKey +
+        ' • env=' + (profile.environment || '—') +
+        ' • purpose=' + (profile.purpose || '—');
+      if (!wizardState.viewId) {
+        wizardState.viewId = profile.default_view_id || 'main';
+      }
+      qs('wizard-view-id').value = wizardState.viewId;
+    }
+
+    async function wizardLoadViews() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      const resp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views', {
+        credentials: 'same-origin',
+      });
+      if (!resp.ok) {
+        return;
+      }
+      const data = await resp.json();
+      const items = data.items || [];
+      if (!wizardState.viewId) {
+        wizardState.viewId = items.length ? items[0].view_id : 'main';
+        qs('wizard-view-id').value = wizardState.viewId;
+      }
+      const view = items.find((item) => item.view_id === wizardState.viewId);
+      if (view) {
+        wizardState.currentView = view;
+        applyWizardView(view);
+      }
+    }
+
+    async function wizardLoadViewById() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      const resp = await fetch(
+        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views',
+        { credentials: 'same-origin' }
+      );
+      if (!resp.ok) {
+        return;
+      }
+      const data = await resp.json();
+      const items = data.items || [];
+      const view = items.find((item) => item.view_id === wizardState.viewId);
+      if (view) {
+        wizardState.currentView = view;
+        applyWizardView(view);
+      } else {
+        qs('wizard-view-label').value = wizardState.viewId;
+        qs('wizard-view-ha-preset-id').value = '';
+        qs('wizard-view-meta').textContent = 'View not found. New view will be created on save.';
+      }
+    }
+
+    async function wizardSaveView() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      const payload = wizardViewPayload();
+      const resp = await fetch(
+        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' + encodeURIComponent(wizardState.viewId),
+        {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
+      if (!resp.ok) {
+        qs('wizard-view-meta').textContent = 'Failed to save view.';
+        return;
+      }
+      const view = await resp.json();
+      wizardState.currentView = view;
+      applyWizardView(view);
+      qs('wizard-view-meta').textContent = 'Saved view: ' + wizardState.viewId;
+    }
+
+    async function wizardRefreshPreview() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      const img = qs('wizard-preview-image');
+      img.src = '/api/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/preview.jpg?ts=' + String(nowTs());
+    }
+
+    async function wizardCaptureSnapshot() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      const resp = await fetch(
+        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' +
+          encodeURIComponent(wizardState.viewId) + '/setup/snapshot',
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+        }
+      );
+      if (!resp.ok) {
+        qs('wizard-snapshot-path').textContent = 'Failed capturing setup snapshot.';
+        return;
+      }
+      const data = await resp.json();
+      qs('wizard-snapshot-path').textContent = 'Snapshot: ' + (data.snapshot_path || 'saved');
+      if (data.view) {
+        wizardState.currentView = data.view;
+        applyWizardView(data.view);
+      }
+      await wizardRefreshPreview();
+    }
+
+    async function wizardGenerateContext() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      const payload = {
+        environment: qs('wizard-profile-environment').value || 'outdoor',
+        purpose: String(qs('wizard-profile-purpose').value || '').trim() || 'doorbell_entry',
+        view_type: qs('wizard-profile-view-type').value || 'fixed',
+        mounting_location: String(qs('wizard-profile-mounting-location').value || '').trim() || null,
+        view_notes: String(qs('wizard-profile-view-notes').value || '').trim() || null,
+        delivery_focus: wizardDeliveryFocusFromInput(),
+      };
+      const resp = await fetch(
+        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' +
+          encodeURIComponent(wizardState.viewId) + '/setup/generate_context',
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
+      if (!resp.ok) {
+        qs('wizard-save-status').textContent = 'Context generation failed.';
+        return;
+      }
+      const data = await resp.json();
+      if (data.profile) {
+        wizardState.profile = data.profile;
+        applyWizardProfile(data.profile);
+      }
+      if (data.view) {
+        wizardState.currentView = data.view;
+        applyWizardView(data.view);
+      }
+      qs('wizard-save-status').textContent = 'Context generated.';
+    }
+
+    async function wizardSaveAll() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'main';
+      const profileResp = await fetch(
+        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/profile',
+        {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(wizardProfilePayload()),
+        }
+      );
+      if (!profileResp.ok) {
+        qs('wizard-save-status').textContent = 'Profile save failed.';
+        return;
+      }
+      await wizardSaveView();
+      const profile = await profileResp.json();
+      wizardState.profile = profile;
+      qs('wizard-save-status').textContent = 'Setup saved.';
     }
 
     function cameraCard(camera) {
@@ -575,6 +890,49 @@
         setUnsavedIndicator(Boolean(data.unsaved_changes));
       }
     });
+
+    if (wizard) {
+      Array.from(wizard.querySelectorAll('[data-step-btn]')).forEach((button) => {
+        button.addEventListener('click', function (e) {
+          e.preventDefault();
+          const step = Number(button.getAttribute('data-step-btn') || '1');
+          setWizardStep(step);
+        });
+      });
+      qs('wizard-camera').addEventListener('change', async function () {
+        wizardState.cameraKey = qs('wizard-camera').value;
+        wizardState.viewId = '';
+        await wizardLoadProfile();
+        await wizardLoadViews();
+        await wizardRefreshPreview();
+      });
+      qs('wizard-view-load').addEventListener('click', async function (e) {
+        e.preventDefault();
+        await wizardLoadViewById();
+      });
+      qs('wizard-view-save').addEventListener('click', async function (e) {
+        e.preventDefault();
+        await wizardSaveView();
+      });
+      qs('wizard-refresh-preview').addEventListener('click', async function (e) {
+        e.preventDefault();
+        await wizardRefreshPreview();
+      });
+      qs('wizard-capture-snapshot').addEventListener('click', async function (e) {
+        e.preventDefault();
+        await wizardCaptureSnapshot();
+      });
+      qs('wizard-generate-context').addEventListener('click', async function (e) {
+        e.preventDefault();
+        await wizardGenerateContext();
+      });
+      qs('wizard-save-all').addEventListener('click', async function (e) {
+        e.preventDefault();
+        await wizardSaveAll();
+      });
+      setWizardStep(1);
+      wizardLoadCameras();
+    }
 
     loadSettings();
     loadCameras();
