@@ -98,6 +98,13 @@ class OpenAIClient:
         )
         _guard_prompt_text(system_prompt)
         _guard_prompt_text(user_prompt)
+        LOGGER.debug(
+            "Rendered prompts camera=%s preset=%s system_prompt=%r user_prompt=%r",
+            camera_name,
+            preset,
+            system_prompt,
+            user_prompt,
+        )
 
         processed = preprocess_image_bytes(
             snapshot_bytes,
