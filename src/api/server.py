@@ -273,11 +273,11 @@ def create_guest_api_app(config: ServiceConfig):
         preview_enabled_global = _to_bool(settings.get("ui.preview_enabled", "1"), True)
         preview_enabled_interval_s = max(
             1,
-            _to_int(settings.get("ui.preview_enabled_interval_s", "5"), 5),
+            _to_int(settings.get("ui.preview_enabled_interval_s", "2"), 2),
         )
         preview_disabled_interval_s = max(
             1,
-            _to_int(settings.get("ui.preview_disabled_interval_s", "600"), 600),
+            _to_int(settings.get("ui.preview_disabled_interval_s", "60"), 60),
         )
         preview_max_active = max(1, _to_int(settings.get("ui.preview_max_active", "1"), 1))
         cameras = [
@@ -527,6 +527,24 @@ def create_guest_api_app(config: ServiceConfig):
     @app.get("/api/cameras/summary")
     async def api_cameras_summary():
         return summary_store.get_guest_cameras_payload()
+
+    @app.get("/api/cameras/{camera_key}/card")
+    async def api_camera_card(camera_key: str):
+        service_status = str(summary_store.get_status_summary().get("service_status", "unknown")).lower()
+        cards = summary_store.get_guest_camera_cards(service_status=service_status)
+        for camera in cards:
+            if str(camera.get("camera_key", "")) != camera_key:
+                continue
+            return {
+                "camera_key": str(camera.get("camera_key", "")),
+                "display_name": str(camera.get("display_name", "—")),
+                "enabled": bool(camera.get("enabled", False)),
+                "status": str(camera.get("status", "disabled")),
+                "last_seen_ts": str(camera.get("last_seen_ts", "")),
+                "last_action_confidence": _camera_last_label(camera),
+                "mtd_cost": _format_money(camera.get("mtd_cost", 0.0)),
+            }
+        raise HTTPException(status_code=404, detail="camera not found")
 
     @app.get("/api/cameras/{camera_key}/preview.jpg")
     async def api_camera_preview(camera_key: str):

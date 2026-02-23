@@ -25,6 +25,10 @@ The mock is intentionally static. Live updates will be added later via polling/S
   - shows system stats + camera summaries
   - no controls/toggles
   - no sensitive data (no tokens, no raw prompts, no user list)
+- Embedded mode behavior for HA iframe:
+  - hide guest header/top bar
+  - hide guest footer
+  - show only a small floating `Admin` link to `/ui/login` (open in new tab)
 
 ### Admin view
 - Can be full UI (may use nav/side menu) because it's not embedded in HA.
@@ -97,8 +101,8 @@ Guest preview behavior:
   - global `kv ui.preview_enabled=1`
   - camera `cameras.guest_preview_enabled=1`
 - Refresh cadence:
-  - enabled cameras: `ui.preview_enabled_interval_s` (default 5s)
-  - disabled cameras: `ui.preview_disabled_interval_s` (default 600s / 10m)
+  - enabled cameras: `ui.preview_enabled_interval_s` (default 2s)
+  - disabled cameras: `ui.preview_disabled_interval_s` (default 60s / 1m)
 - Visibility guard:
   - refresh only while camera card is visible in viewport
   - stop refresh when card leaves viewport

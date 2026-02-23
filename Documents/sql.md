@@ -230,8 +230,8 @@ These are the settings your **admin Setup page** should edit (persisted in `kv`)
 - `policy.smart_update.phash_threshold_update` = `6`
 - `ui.subtitle` = `OpenAI-powered camera events`
 - `ui.preview_enabled` = `1`
-- `ui.preview_enabled_interval_s` = `5`
-- `ui.preview_disabled_interval_s` = `600`
+- `ui.preview_enabled_interval_s` = `2`
+- `ui.preview_disabled_interval_s` = `60`
 - `ui.preview_max_active` = `1`
 
 ### Budget keys

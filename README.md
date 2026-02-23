@@ -109,6 +109,7 @@ Guest endpoints are now exposed by the built-in API server:
 - `GET /api/status`
 - `GET /api/metrics/summary`
 - `GET /api/cameras/summary`
+- `GET /api/cameras/{camera_key}/card`
 - `GET /api/cameras/{camera_key}/preview.jpg`
 
 Admin endpoints currently available:
@@ -149,11 +150,20 @@ Runtime:
   - `kv ui.preview_enabled=1`
   - `cameras.guest_preview_enabled=1`
 - Defaults:
-  - enabled camera refresh: every `5s` (`ui.preview_enabled_interval_s`)
-  - disabled camera refresh: every `600s` / `10m` (`ui.preview_disabled_interval_s`)
+  - enabled camera refresh: every `2s` (`ui.preview_enabled_interval_s`)
+  - disabled camera refresh: every `60s` / `1m` (`ui.preview_disabled_interval_s`)
   - max active refreshers: `1` (`ui.preview_max_active`)
 - Preview refreshes only while card is visible in viewport, with small timing jitter.
+- Card metadata (`enabled/status/last seen/last action/MTD`) refreshes with the same cadence as preview for active cards.
 - No MQTT topics were added for preview; snapshot preview is HTTP-only.
+
+## HA Embedded Mode
+
+- When `/ui` is rendered in an HA iframe:
+  - guest top bar is hidden
+  - guest footer is hidden
+  - a small floating `Admin` link is shown (opens `/ui/login` in a new tab)
+- Standalone `/ui` keeps the full guest layout.
 
 ## UI Routes (FastAPI + Jinja)
 

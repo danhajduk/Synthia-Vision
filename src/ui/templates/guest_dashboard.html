@@ -12,10 +12,24 @@
       disabledIntervalS: {{ preview.disabled_interval_s }},
       maxActive: {{ preview.max_active }},
     };
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var embeddedFlag = params.has('embed') || params.has('embedded') || params.get('ha_embed') === '1';
+      var inFrame = false;
+      try {
+        inFrame = window.self !== window.top;
+      } catch (err) {
+        inFrame = true;
+      }
+      if (embeddedFlag || inFrame) {
+        document.documentElement.classList.add('is-embedded-early');
+      }
+    })();
   </script>
 </head>
 <body>
   <div class="container">
+    <a href="/ui/login" class="embed-login" target="_blank" rel="noopener">Admin</a>
     <main class="main">
       <div class="topbar">
         <div class="brand">
@@ -32,19 +46,19 @@
           <div class="card">
             <div class="row">
               <h3>Health</h3>
-              <span class="pill"><span class="dot {% if kpis.health_label == 'Degraded' %}warn{% elif kpis.health_label in ['Disabled', 'Budget Blocked'] %}bad{% endif %}"></span> {{ kpis.health_badge or 'Unknown' }}</span>
+              <span class="pill" data-kpi-health-badge><span class="dot {% if kpis.health_label == 'Degraded' %}warn{% elif kpis.health_label in ['Disabled', 'Budget Blocked'] %}bad{% endif %}" data-kpi-health-dot></span> <span data-kpi-health-badge-text>{{ kpis.health_badge or 'Unknown' }}</span></span>
             </div>
-            <div class="big">{{ kpis.health_label or 'Unknown' }}</div>
-            <div class="sub">Heartbeat: <span class="mono">{{ kpis.heartbeat_ts or '—' }}</span></div>
+            <div class="big" data-kpi-health-label>{{ kpis.health_label or 'Unknown' }}</div>
+            <div class="sub">Heartbeat: <span class="mono" data-kpi-heartbeat>{{ kpis.heartbeat_ts or '—' }}</span></div>
           </div>
 
           <div class="card">
             <div class="row">
               <h3>Queue</h3>
-              <span class="pill"><span class="dot warn"></span> {{ kpis.queue_depth }} / {{ kpis.queue_max }}</span>
+              <span class="pill"><span class="dot warn"></span> <span data-kpi-queue-ratio>{{ kpis.queue_depth }} / {{ kpis.queue_max }}</span></span>
             </div>
-            <div class="big">{{ kpis.queue_depth }}</div>
-            <div class="sub">Drops today: <span class="mono">{{ kpis.drops_today }}</span></div>
+            <div class="big" data-kpi-queue-depth>{{ kpis.queue_depth }}</div>
+            <div class="sub">Drops today: <span class="mono" data-kpi-drops>{{ kpis.drops_today }}</span></div>
           </div>
 
           <div class="card">
@@ -52,8 +66,8 @@
               <h3>Cost Today</h3>
               <span class="pill"><span class="dot"></span> OK</span>
             </div>
-            <div class="big">{{ kpis.cost_today or '—' }}</div>
-            <div class="sub">Month-to-date: <span class="mono">{{ kpis.cost_mtd or '—' }}</span></div>
+            <div class="big" data-kpi-cost-today>{{ kpis.cost_today or '—' }}</div>
+            <div class="sub">Month-to-date: <span class="mono" data-kpi-cost-mtd>{{ kpis.cost_mtd or '—' }}</span></div>
           </div>
 
           <div class="card">
@@ -61,8 +75,8 @@
               <h3>AI Calls</h3>
               <span class="pill"><span class="dot"></span> Today</span>
             </div>
-            <div class="big">{{ kpis.ai_calls_today }}</div>
-            <div class="sub">Avg/event: <span class="mono">{{ kpis.avg_cost_per_event or '—' }}</span></div>
+            <div class="big" data-kpi-ai-calls>{{ kpis.ai_calls_today }}</div>
+            <div class="sub">Avg/event: <span class="mono" data-kpi-avg-event>{{ kpis.avg_cost_per_event or '—' }}</span></div>
           </div>
         </div>
 
@@ -77,15 +91,15 @@
             <div class="cam-head">
               <div class="cam-name">{{ camera.display_name or camera.camera_key }}</div>
               {% if camera.status == 'disabled' %}
-                <div class="pill pill-bad"><span class="dot bad"></span> Disabled</div>
+                <div class="pill pill-bad" data-status-pill><span class="dot bad" data-status-dot></span> <span data-status-text>Disabled</span></div>
               {% elif camera.status == 'degraded' %}
-                <div class="pill pill-warn"><span class="dot warn"></span> Degraded</div>
+                <div class="pill pill-warn" data-status-pill><span class="dot warn" data-status-dot></span> <span data-status-text>Degraded</span></div>
               {% else %}
-                <div class="pill pill-ok"><span class="dot"></span> OK</div>
+                <div class="pill pill-ok" data-status-pill><span class="dot" data-status-dot></span> <span data-status-text>OK</span></div>
               {% endif %}
             </div>
             <div class="cam-meta">
-              <span class="meta-item">Enabled: <b>{% if camera.enabled %}Yes{% else %}No{% endif %}</b></span>
+              <span class="meta-item">Enabled: <b data-enabled-value>{% if camera.enabled %}Yes{% else %}No{% endif %}</b></span>
               <span class="meta-sep">•</span>
               <span class="meta-item">Last seen: <span class="mono" data-last-seen="{{ camera.last_seen_ts or '' }}">—</span></span>
             </div>
@@ -103,8 +117,8 @@
             </div>
             <div class="cam-foot">
               <div class="cam-kv">
-                <div class="key">Last</div><div class="value">{{ camera.last_action_confidence or '—' }}</div>
-                <div class="key">MTD</div><div class="value">{{ camera.mtd_cost or '—' }}</div>
+                <div class="key">Last</div><div class="value" data-last-action>{{ camera.last_action_confidence or '—' }}</div>
+                <div class="key">MTD</div><div class="value" data-mtd-cost>{{ camera.mtd_cost or '—' }}</div>
               </div>
             </div>
           </div>

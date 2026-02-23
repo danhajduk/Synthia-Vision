@@ -48,6 +48,7 @@ a {
 }
 
 .main {
+  position: relative;
   background: rgba(255, 255, 255, 0.03);
   border: none;
   border-radius: 22px;
@@ -55,8 +56,43 @@ a {
   overflow: hidden;
 }
 
+html:not(.is-embedded-early) body:not(.is-embedded) .embed-login {
+  display: none;
+}
+
+.embed-login {
+  position: fixed;
+  top: 10px;
+  left: 16px;
+  font-size: 12px;
+  color: rgba(233, 238, 252, 0.55);
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 120ms ease-in-out;
+  z-index: 2;
+}
+
+.embed-login:hover {
+  opacity: 1;
+}
+
+html.is-embedded-early .topbar,
+body.is-embedded .topbar {
+  display: none;
+}
+
+html.is-embedded-early .footer,
+body.is-embedded .footer {
+  display: none;
+}
+
 .content {
   padding: 16px 18px 18px;
+}
+
+html.is-embedded-early .content,
+body.is-embedded .content {
+  padding-top: 8px;
 }
 
 .grid {

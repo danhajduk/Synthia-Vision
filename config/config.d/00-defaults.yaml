@@ -1,2 +1,7 @@
 # Base defaults anchor file. Keep broad defaults here only.
-{}
+ui:
+  subtitle: "OpenAI-powered camera events"
+  preview_enabled: true
+  preview_enabled_interval_s: 2
+  preview_disabled_interval_s: 60
+  preview_max_active: 1

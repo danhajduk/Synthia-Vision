@@ -44,8 +44,8 @@ SEED_KV_KEYS: tuple[tuple[str, str], ...] = (
     ("policy.smart_update.phash_threshold_update", "6"),
     ("ui.subtitle", "OpenAI-powered camera events"),
     ("ui.preview_enabled", "1"),
-    ("ui.preview_enabled_interval_s", "5"),
-    ("ui.preview_disabled_interval_s", "600"),
+    ("ui.preview_enabled_interval_s", "2"),
+    ("ui.preview_disabled_interval_s", "60"),
     ("ui.preview_max_active", "1"),
     ("budget.behavior", "block_openai"),
     ("budget.month_cost_usd", "0.00"),
@@ -123,6 +123,25 @@ class DatabaseBootstrap:
             if "guest_preview_enabled" not in column_names:
                 cur.execute(
                     "ALTER TABLE cameras ADD COLUMN guest_preview_enabled INTEGER NOT NULL DEFAULT 0"
+                )
+            # Keep this migration conservative: only rewrite preview interval values
+            # when they still match historical defaults.
+            preview_enabled_row = conn.execute(
+                "SELECT v FROM kv WHERE k='ui.preview_enabled_interval_s' LIMIT 1"
+            ).fetchone()
+            preview_disabled_row = conn.execute(
+                "SELECT v FROM kv WHERE k='ui.preview_disabled_interval_s' LIMIT 1"
+            ).fetchone()
+            now = datetime.now(timezone.utc).isoformat()
+            if preview_enabled_row is not None and str(preview_enabled_row[0]).strip() == "5":
+                cur.execute(
+                    "UPDATE kv SET v=?, updated_ts=? WHERE k='ui.preview_enabled_interval_s'",
+                    ("2", now),
+                )
+            if preview_disabled_row is not None and str(preview_disabled_row[0]).strip() == "600":
+                cur.execute(
+                    "UPDATE kv SET v=?, updated_ts=? WHERE k='ui.preview_disabled_interval_s'",
+                    ("60", now),
                 )
         finally:
             cur.close()
