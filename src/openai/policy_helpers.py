@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.config import ServiceConfig
+from src.db import db_get_camera_profile, db_list_camera_views
 from src.models import FrigateEvent
 
 
@@ -32,6 +33,7 @@ def render_prompts(
     allowed_actions: list[str],
     allowed_subject_types: list[str],
     config: ServiceConfig,
+    context_fields: dict[str, str] | None = None,
 ) -> tuple[str, str]:
     templates: dict[str, dict[str, str]] = config.ai.prompt_presets
     selected = templates.get(preset) or templates.get(config.ai.default_prompt_preset) or {}
@@ -43,10 +45,51 @@ def render_prompts(
         "allowed_actions": ", ".join(allowed_actions),
         "allowed_subject_types": ", ".join(allowed_subject_types),
     }
+    if context_fields:
+        format_args.update(context_fields)
     return (
         system_template.format(**format_args),
         user_template.format(**format_args),
     )
+
+
+def build_camera_context_fields(camera: str, config: ServiceConfig) -> dict[str, str]:
+    try:
+        profile = db_get_camera_profile(config.paths.db_file, camera) or {}
+        views = db_list_camera_views(config.paths.db_file, camera)
+    except Exception:
+        return {
+            "environment": "",
+            "purpose": "",
+            "view_type": "",
+            "context_summary": "",
+            "focus_notes": "",
+            "typical_activities": "",
+        }
+
+    default_view_id = str(profile.get("default_view_id") or "").strip()
+    selected_view: dict[str, Any] | None = None
+    if default_view_id:
+        selected_view = next(
+            (item for item in views if str(item.get("view_id", "")) == default_view_id),
+            None,
+        )
+    if selected_view is None and views:
+        selected_view = views[0]
+
+    expected_activity = []
+    if selected_view is not None:
+        raw = selected_view.get("expected_activity", [])
+        if isinstance(raw, list):
+            expected_activity = [str(item).strip() for item in raw if str(item).strip()]
+    return {
+        "environment": str(profile.get("environment", "") or ""),
+        "purpose": str(profile.get("purpose", "") or ""),
+        "view_type": str(profile.get("view_type", "") or ""),
+        "context_summary": str((selected_view or {}).get("context_summary", "") or ""),
+        "focus_notes": str((selected_view or {}).get("focus_notes", "") or ""),
+        "typical_activities": ", ".join(expected_activity),
+    }
 
 
 def enforce_classification_result(

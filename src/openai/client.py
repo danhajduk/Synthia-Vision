@@ -32,6 +32,7 @@ from src.config import ServiceConfig
 from src.errors import ExternalServiceError, ValidationError
 from src.models import OpenAIClassification
 from src.openai.policy_helpers import (
+    build_camera_context_fields,
     render_prompts,
     resolve_allowed_actions,
     resolve_preset,
@@ -82,12 +83,14 @@ class OpenAIClient:
         allowed_actions = resolve_allowed_actions(camera_name, self._config)
         allowed_subject_types = resolve_subject_types(self._config)
         preset = resolve_preset(camera_name, self._config)
+        context_fields = build_camera_context_fields(camera_name, self._config)
         system_prompt, user_prompt = render_prompts(
             preset=preset,
             camera_name=camera_name,
             allowed_actions=allowed_actions,
             allowed_subject_types=allowed_subject_types,
             config=self._config,
+            context_fields=context_fields,
         )
         _guard_prompt_text(system_prompt)
         _guard_prompt_text(user_prompt)
