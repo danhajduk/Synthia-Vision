@@ -28,10 +28,11 @@ def db_get_camera_profile(db_path: Path, camera_key: str) -> dict[str, Any] | No
     if row is None:
         return None
     data = dict(row)
+    purpose = _normalize_purpose(_nullable_str(data.get("purpose")))
     return {
         "camera_key": str(data.get("camera_key", "")),
         "environment": _nullable_str(data.get("environment")),
-        "purpose": _nullable_str(data.get("purpose")),
+        "purpose": purpose,
         "view_type": _nullable_str(data.get("view_type")),
         "mounting_location": _nullable_str(data.get("mounting_location")),
         "view_notes": _nullable_str(data.get("view_notes")),
@@ -44,9 +45,10 @@ def db_get_camera_profile(db_path: Path, camera_key: str) -> dict[str, Any] | No
 
 def db_upsert_camera_profile(db_path: Path, camera_key: str, payload: dict[str, Any]) -> dict[str, Any]:
     CameraStore(db_path).upsert_discovered_camera(camera_key)
+    purpose = _normalize_purpose(_nullable_str(payload.get("purpose")))
     updates = {
         "environment": _nullable_str(payload.get("environment")),
-        "purpose": _nullable_str(payload.get("purpose")),
+        "purpose": purpose,
         "view_type": _nullable_str(payload.get("view_type")),
         "mounting_location": _nullable_str(payload.get("mounting_location")),
         "view_notes": _nullable_str(payload.get("view_notes")),
@@ -242,3 +244,13 @@ def _as_bool(value: Any, default: bool) -> bool:
         return False
     return default
 
+
+def _normalize_purpose(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized == "indoor_general":
+        return "general"
+    return normalized
