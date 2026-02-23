@@ -21,9 +21,19 @@ except ModuleNotFoundError:  # pragma: no cover - optional API dependency
     HTMLResponse = RedirectResponse = StaticFiles = Jinja2Templates = None  # type: ignore[assignment]
 
 from src.config import ServiceConfig
-from src.db import AdminStore, DatabaseBootstrap, SummaryStore
+from src.db import (
+    AdminStore,
+    DatabaseBootstrap,
+    SummaryStore,
+    db_get_camera_profile,
+    db_upsert_camera_profile,
+    db_list_camera_views,
+    db_get_camera_view,
+    db_upsert_camera_view,
+)
 from src.auth import FirstRunBootstrap, SessionManager, UserStore
 from src.snapshot_manager import SnapshotManager
+from src.api.camera_setup_models import CameraProfile, CameraView
 from src.auth.session import (
     SESSION_COOKIE_HTTPONLY,
     SESSION_COOKIE_NAME,
@@ -119,6 +129,10 @@ def create_guest_api_app(config: ServiceConfig):
             return int(value)
         except Exception:
             return default
+
+    def _safe_token(value: str) -> str:
+        cleaned = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(value))
+        return cleaned.strip("_") or "value"
 
     def _get_effective_settings() -> tuple[dict[str, str], dict[str, str]]:
         persisted = admin_store.get_kv_many(ADMIN_SETTING_KEYS)
@@ -708,6 +722,108 @@ def create_guest_api_app(config: ServiceConfig):
             "items": items,
             "runtime_overrides": dict(runtime_camera_overrides),
             "unsaved_changes": bool(runtime_overrides) or bool(runtime_camera_overrides),
+        }
+
+    @app.get("/api/admin/cameras/{camera_key}/profile")
+    async def api_admin_camera_profile_get(
+        camera_key: str,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        profile = db_get_camera_profile(config.paths.db_file, camera_key)
+        if profile is None:
+            profile = db_upsert_camera_profile(config.paths.db_file, camera_key, {})
+        return CameraProfile(**profile).model_dump()
+
+    @app.put("/api/admin/cameras/{camera_key}/profile")
+    async def api_admin_camera_profile_put(
+        camera_key: str,
+        payload: dict,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        normalized = payload if isinstance(payload, dict) else {}
+        merged = {"camera_key": camera_key, **normalized}
+        try:
+            validated = CameraProfile(**merged).model_dump()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        saved = db_upsert_camera_profile(config.paths.db_file, camera_key, validated)
+        return CameraProfile(**saved).model_dump()
+
+    @app.get("/api/admin/cameras/{camera_key}/views")
+    async def api_admin_camera_views_get(
+        camera_key: str,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        views = db_list_camera_views(config.paths.db_file, camera_key)
+        return {
+            "camera_key": camera_key,
+            "count": len(views),
+            "items": [CameraView(**item).model_dump() for item in views],
+        }
+
+    @app.put("/api/admin/cameras/{camera_key}/views/{view_id}")
+    async def api_admin_camera_view_put(
+        camera_key: str,
+        view_id: str,
+        payload: dict,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        normalized = payload if isinstance(payload, dict) else {}
+        saved = db_upsert_camera_view(
+            config.paths.db_file,
+            camera_key,
+            view_id,
+            normalized,
+        )
+        return CameraView(**saved).model_dump()
+
+    @app.post("/api/admin/cameras/{camera_key}/views/{view_id}/setup/snapshot")
+    async def api_admin_camera_view_setup_snapshot(
+        camera_key: str,
+        view_id: str,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        if snapshot_manager is None:
+            raise HTTPException(status_code=503, detail="snapshot manager unavailable")
+        try:
+            image = snapshot_manager.fetch_camera_preview(camera_key, timeout_seconds=2.0)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"snapshot fetch failed: {exc}") from exc
+        setup_dir = config.paths.snapshots_dir / "setup"
+        setup_dir.mkdir(parents=True, exist_ok=True)
+        now_epoch = int(time.time())
+        filename = f"{_safe_token(camera_key)}_{_safe_token(view_id)}_{now_epoch}.jpg"
+        path = setup_dir / filename
+        try:
+            path.write_bytes(image)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"failed saving setup snapshot: {exc}") from exc
+        existing = db_get_camera_view(config.paths.db_file, camera_key, view_id) or {}
+        saved = db_upsert_camera_view(
+            config.paths.db_file,
+            camera_key,
+            view_id,
+            {
+                "label": existing.get("label") or view_id,
+                "ha_preset_id": existing.get("ha_preset_id"),
+                "setup_snapshot_path": str(path),
+                "context_summary": existing.get("context_summary"),
+                "expected_activity": existing.get("expected_activity", []),
+                "zones": existing.get("zones", []),
+                "focus_notes": existing.get("focus_notes"),
+            },
+        )
+        return {
+            "camera_key": camera_key,
+            "view_id": view_id,
+            "snapshot_path": str(path),
+            "snapshot_bytes": len(image),
+            "view": CameraView(**saved).model_dump(),
         }
 
     @app.post("/api/admin/cameras/{camera_key}/apply")
