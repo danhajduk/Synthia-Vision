@@ -1054,13 +1054,13 @@ class MQTTClient:
             )
             return
         try:
-            snapshot = self._snapshot_manager.fetch_event_snapshot(
-                event.event_id,
-                camera=event.camera,
+            snapshot = self._snapshot_manager.fetch_camera_preview(
+                event.camera,
+                timeout_seconds=float(self._config.frigate.snapshot.timeout_seconds),
             )
         except ExternalServiceError as exc:
             LOGGER.warning(
-                "Snapshot fetch failed event_id=%s camera=%s error=%s",
+                "Image fetch failed event_id=%s camera=%s error=%s",
                 event.event_id,
                 event.camera,
                 exc,
@@ -1068,29 +1068,31 @@ class MQTTClient:
             self._journal_event(
                 event=event,
                 accepted=True,
-                result_status="snapshot_failed",
+                result_status="image_fetch_failed",
                 action="unknown",
                 subject_type="unknown",
-                description="snapshot fetch failed",
+                description="image fetch failed",
             )
             self._journal_metric(
                 event_id=event.event_id,
-                skipped_openai_reason="snapshot_fail",
+                skipped_openai_reason="image_fetch_failed",
             )
             self._journal_error(
-                component="snapshot",
-                message="snapshot_failed",
+                component="frigate",
+                message="image_fetch_failed",
                 detail=str(exc),
                 event=event,
             )
-            self._publish_last_error(f"snapshot_failed camera={event.camera} event_id={event.event_id}: {exc}")
+            self._publish_last_error(
+                f"image_fetch_failed camera={event.camera} event_id={event.event_id}: {exc}"
+            )
             self._publish_camera_result(
                 event=event,
-                result_status="snapshot_failed",
+                result_status="image_fetch_failed",
                 action="unknown",
                 subject_type="unknown",
                 confidence_percent="unknown",
-                description="snapshot fetch failed",
+                description="image fetch failed",
             )
             return
         LOGGER.info(
