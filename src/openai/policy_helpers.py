@@ -101,7 +101,7 @@ def build_camera_context_fields(camera: str, config: ServiceConfig) -> dict[str,
     except Exception:
         return {
             "environment": "",
-            "purpose": "",
+            "purpose": "general",
             "view_type": "",
             "view_context_summary": "",
             "focus_notes": "",
@@ -130,7 +130,7 @@ def build_camera_context_fields(camera: str, config: ServiceConfig) -> dict[str,
         delivery_focus = [str(item).strip() for item in raw_delivery_focus if str(item).strip()]
     return {
         "environment": str(profile.get("environment", "") or ""),
-        "purpose": str(profile.get("purpose", "") or ""),
+        "purpose": str(profile.get("purpose", "general") or "general"),
         "view_type": str(profile.get("view_type", "") or ""),
         "view_context_summary": str((selected_view or {}).get("context_summary", "") or ""),
         "focus_notes": str((selected_view or {}).get("focus_notes", "") or ""),

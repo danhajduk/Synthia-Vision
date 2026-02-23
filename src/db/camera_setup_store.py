@@ -32,7 +32,7 @@ def db_get_camera_profile(db_path: Path, camera_key: str) -> dict[str, Any] | No
     return {
         "camera_key": str(data.get("camera_key", "")),
         "environment": _nullable_str(data.get("environment")),
-        "purpose": purpose,
+        "purpose": purpose or "general",
         "view_type": _nullable_str(data.get("view_type")),
         "mounting_location": _nullable_str(data.get("mounting_location")),
         "view_notes": _nullable_str(data.get("view_notes")),
@@ -48,7 +48,7 @@ def db_upsert_camera_profile(db_path: Path, camera_key: str, payload: dict[str, 
     purpose = _normalize_purpose(_nullable_str(payload.get("purpose")))
     updates = {
         "environment": _nullable_str(payload.get("environment")),
-        "purpose": purpose,
+        "purpose": purpose or "general",
         "view_type": _nullable_str(payload.get("view_type")),
         "mounting_location": _nullable_str(payload.get("mounting_location")),
         "view_notes": _nullable_str(payload.get("view_notes")),
