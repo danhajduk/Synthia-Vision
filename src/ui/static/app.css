@@ -104,6 +104,19 @@ body.is-embedded .content {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.kpis .card {
+  display: flex;
+  flex-direction: column;
+}
+
+.kpis .card .big {
+  margin-bottom: auto;
+}
+
+.kpis .card .sub + .sub {
+  margin-top: 4px;
+}
+
 .cameras {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));

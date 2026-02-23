@@ -254,7 +254,7 @@ def create_guest_api_app(config: ServiceConfig):
 
     def _format_money(value: Any) -> str:
         try:
-            return f"${float(value):.2f}"
+            return f"${float(value):.4f}"
         except Exception:
             return "—"
 

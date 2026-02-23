@@ -47,6 +47,25 @@
     );
   }
 
+  function formatLocalDateTime(raw) {
+    const value = String(raw || '').trim();
+    if (!value) {
+      return '—';
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return '—';
+    }
+    return (
+      pad2(parsed.getMonth() + 1) +
+      '/' + pad2(parsed.getDate()) +
+      '/' + parsed.getFullYear() +
+      ' ' + pad2(parsed.getHours()) +
+      ':' + pad2(parsed.getMinutes()) +
+      ':' + pad2(parsed.getSeconds())
+    );
+  }
+
   function scheduleWithJitter(baseMs) {
     const jitter = Math.floor((Math.random() * 600) - 300);
     return Math.max(500, baseMs + jitter);
@@ -260,7 +279,7 @@
     }
 
     function money(value) {
-      return '$' + asFloat(value, 0).toFixed(2);
+      return '$' + asFloat(value, 0).toFixed(4);
     }
 
     function healthInfo(statusRaw) {
@@ -309,7 +328,9 @@
           }
         }
         if (heartbeatEl) {
-          heartbeatEl.textContent = statusPayload.heartbeat_ts || statusPayload.timestamp || '—';
+          heartbeatEl.textContent = formatLocalDateTime(
+            statusPayload.heartbeat_ts || statusPayload.timestamp || ''
+          );
         }
 
         const queueDepth = asInt(metrics.queue_depth, 0);
