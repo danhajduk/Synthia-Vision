@@ -82,8 +82,12 @@ class OpenAIClient:
     ) -> tuple[OpenAIClassification, OpenAIUsage]:
         allowed_actions = resolve_allowed_actions(camera_name, self._config)
         allowed_subject_types = resolve_subject_types(self._config)
-        preset = resolve_preset(camera_name, self._config)
         context_fields = build_camera_context_fields(camera_name, self._config)
+        preset = resolve_preset(
+            camera_name,
+            self._config,
+            context_fields=context_fields,
+        )
         system_prompt, user_prompt = render_prompts(
             preset=preset,
             camera_name=camera_name,

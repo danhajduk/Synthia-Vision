@@ -872,6 +872,8 @@ class MQTTClient:
             camera_policy = PolicyCameraConfig(
                 name=settings.display_name,
                 enabled=enabled,
+                security_capable=settings.security_capable,
+                security_mode=settings.security_mode,
                 labels=list(self._config.policy.defaults.labels),
                 confidence_threshold=settings.confidence_threshold,
                 cooldown_seconds=settings.cooldown_s,
@@ -888,6 +890,8 @@ class MQTTClient:
             camera_policy.cooldown_seconds = settings.cooldown_s
             camera_policy.prompt_preset = settings.prompt_preset
             camera_policy.vision_detail = settings.vision_detail
+            camera_policy.security_capable = settings.security_capable
+            camera_policy.security_mode = settings.security_mode
         if settings.phash_threshold is not None:
             self._camera_phash_threshold_by_camera[camera] = settings.phash_threshold
 

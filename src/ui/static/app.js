@@ -461,7 +461,7 @@
     }
 
     function wizardDeliveryFocusFromInput() {
-      if (qs('wizard-profile-purpose').value !== 'doorbell_entry') {
+      if (qs('wizard-profile-purpose').value !== 'doorbell') {
         return [];
       }
       return ['package', 'food', 'grocery'].filter((key) => {
@@ -486,7 +486,7 @@
       if (!wrap) {
         return;
       }
-      const enabled = qs('wizard-profile-purpose').value === 'doorbell_entry';
+      const enabled = qs('wizard-profile-purpose').value === 'doorbell';
       wrap.style.display = enabled ? '' : 'none';
       if (!enabled) {
         wizardSetDeliveryFocus([]);
@@ -810,7 +810,7 @@
       wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
       const payload = {
         environment: qs('wizard-profile-environment').value || 'outdoor',
-        purpose: qs('wizard-profile-purpose').value || 'indoor_general',
+        purpose: qs('wizard-profile-purpose').value || 'general',
         view_type: qs('wizard-profile-view-type').value || 'fixed',
         mounting_location: String(qs('wizard-profile-mounting-location').value || '').trim(),
         view_notes: String(qs('wizard-profile-view-notes').value || '').trim() || null,
@@ -920,6 +920,8 @@
         '<label class="field-label">pHash threshold override (blank = global)</label><input class="field" data-field="phash_threshold" value="' + phashValue + '">' +
         '<label class="field-label">Updates per event (1 or 2)</label><input class="field" data-field="updates_per_event" value="' + updatesValue + '">' +
         '<label class="field-label">Guest preview</label><label class="toggle"><input type="checkbox" data-field="guest_preview_enabled"' + (camera.guest_preview_enabled ? ' checked' : '') + '><span>Allow preview image on guest dashboard</span></label>' +
+        '<label class="field-label">Security capable</label><label class="toggle"><input type="checkbox" data-field="security_capable"' + (camera.security_capable ? ' checked' : '') + '><span>Camera supports security overlay behavior</span></label>' +
+        '<label class="field-label">Security mode (runtime)</label><label class="toggle"><input type="checkbox" data-field="security_mode"' + (camera.security_mode ? ' checked' : '') + '><span>Enable conservative security overlay prompts</span></label>' +
         '</div>' +
         '<div class="row" style="margin-top:10px;">' +
         '<button class="btn" data-action="apply">Apply (runtime)</button>' +

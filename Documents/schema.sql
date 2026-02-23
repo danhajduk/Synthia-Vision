@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS cameras (
   process_update_events INTEGER,
   updates_per_event INTEGER,
   guest_preview_enabled INTEGER NOT NULL DEFAULT 0,
+  security_capable INTEGER NOT NULL DEFAULT 0,
+  security_mode INTEGER NOT NULL DEFAULT 0,
   environment TEXT,
   purpose TEXT,
   view_type TEXT,

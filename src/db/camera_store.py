@@ -27,6 +27,8 @@ class CameraPolicySettings:
     vision_detail: str
     phash_threshold: int | None
     guest_preview_enabled: bool
+    security_capable: bool
+    security_mode: bool
 
 
 @dataclass(slots=True)
@@ -133,7 +135,7 @@ class CameraStore:
             conn.execute("PRAGMA busy_timeout = 5000;")
             row = conn.execute(
                 """
-                SELECT display_name, prompt_preset, confidence_threshold, cooldown_s, vision_detail, phash_threshold, guest_preview_enabled
+                SELECT display_name, prompt_preset, confidence_threshold, cooldown_s, vision_detail, phash_threshold, guest_preview_enabled, security_capable, security_mode
                 FROM cameras
                 WHERE camera_key = ?
                 """,
@@ -148,6 +150,8 @@ class CameraStore:
                 vision_detail=default_vision_detail,
                 phash_threshold=None,
                 guest_preview_enabled=False,
+                security_capable=False,
+                security_mode=False,
             )
         display_name = str(row[0]) if row[0] else default_display_name
         prompt_preset = str(row[1]) if row[1] else None
@@ -166,6 +170,12 @@ class CameraStore:
         guest_preview_enabled = False
         if len(row) > 6 and row[6] is not None:
             guest_preview_enabled = bool(int(row[6]))
+        security_capable = False
+        if len(row) > 7 and row[7] is not None:
+            security_capable = bool(int(row[7]))
+        security_mode = False
+        if len(row) > 8 and row[8] is not None:
+            security_mode = bool(int(row[8]))
         return CameraPolicySettings(
             display_name=display_name,
             prompt_preset=prompt_preset,
@@ -174,6 +184,8 @@ class CameraStore:
             vision_detail=vision_detail,
             phash_threshold=phash_threshold,
             guest_preview_enabled=guest_preview_enabled,
+            security_capable=security_capable,
+            security_mode=security_mode,
         )
 
     def set_camera_enabled(self, camera_key: str, enabled: bool) -> None:
@@ -227,6 +239,8 @@ class CameraStore:
         phash_threshold: int | object = _UNSET,
         enabled: bool | object = _UNSET,
         guest_preview_enabled: bool | object = _UNSET,
+        security_capable: bool | object = _UNSET,
+        security_mode: bool | object = _UNSET,
     ) -> None:
         self._ensure_camera_row(camera_key)
         updates: list[str] = []
@@ -257,6 +271,12 @@ class CameraStore:
         if guest_preview_enabled is not _UNSET:
             updates.append("guest_preview_enabled = ?")
             params.append(1 if guest_preview_enabled else 0)
+        if security_capable is not _UNSET:
+            updates.append("security_capable = ?")
+            params.append(1 if security_capable else 0)
+        if security_mode is not _UNSET:
+            updates.append("security_mode = ?")
+            params.append(1 if security_mode else 0)
         if not updates:
             return
         updates.append("last_seen_ts = ?")

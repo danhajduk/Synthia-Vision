@@ -7,14 +7,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 PurposeType = Literal[
-    "doorbell_entry",
+    "general",
+    "doorbell",
     "perimeter_security",
     "driveway",
     "backyard",
     "garage",
-    "indoor_general",
     "child_room",
-    "other",
 ]
 
 ViewType = Literal["fixed", "wide", "ptz"]

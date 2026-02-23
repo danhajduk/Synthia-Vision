@@ -122,6 +122,8 @@ class DatabaseBootstrap:
             column_names = {str(row[1]) for row in columns}
             camera_column_additions: tuple[str, ...] = (
                 "guest_preview_enabled INTEGER NOT NULL DEFAULT 0",
+                "security_capable INTEGER NOT NULL DEFAULT 0",
+                "security_mode INTEGER NOT NULL DEFAULT 0",
                 "environment TEXT",
                 "purpose TEXT",
                 "view_type TEXT",
@@ -186,5 +188,15 @@ class DatabaseBootstrap:
                     "UPDATE kv SET v=?, updated_ts=? WHERE k='ui.preview_disabled_interval_s'",
                     ("60", now),
                 )
+            # Normalize legacy purpose values to the new enum set.
+            cur.execute(
+                "UPDATE cameras SET purpose='doorbell' WHERE purpose='doorbell_entry'"
+            )
+            cur.execute(
+                "UPDATE cameras SET purpose='general' WHERE purpose='indoor_general'"
+            )
+            cur.execute(
+                "UPDATE cameras SET purpose='general' WHERE purpose='other'"
+            )
         finally:
             cur.close()

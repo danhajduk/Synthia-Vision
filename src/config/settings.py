@@ -159,6 +159,8 @@ class PolicyDefaultsConfig:
 class PolicyCameraConfig:
     name: str | None = None
     enabled: bool = True
+    security_capable: bool = False
+    security_mode: bool = False
     labels: list[str] = field(default_factory=lambda: ["person"])
     confidence_threshold: float = 0.75
     cooldown_seconds: int = 30
@@ -521,6 +523,8 @@ def _build_camera_policy_map(data: dict[str, Any]) -> dict[str, PolicyCameraConf
         cameras[camera_name] = PolicyCameraConfig(
             name=_optional_str(raw_value.get("name")),
             enabled=_as_bool(raw_value.get("enabled", True)),
+            security_capable=_as_bool(raw_value.get("security_capable", False)),
+            security_mode=_as_bool(raw_value.get("security_mode", False)),
             labels=_as_string_list(
                 raw_value.get("labels", ["person"]),
                 f"policy.cameras.{camera_name}.labels",

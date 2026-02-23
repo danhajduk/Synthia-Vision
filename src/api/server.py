@@ -90,14 +90,13 @@ def create_guest_api_app(config: ServiceConfig):
     session_manager = SessionManager(secret=session_secret, ttl_seconds=SESSION_TTL_SECONDS)
     app = FastAPI(title="Synthia Vision API", version="0.1.0")
     PURPOSE_OPTIONS = [
-        "doorbell_entry",
+        "general",
+        "doorbell",
         "perimeter_security",
         "driveway",
         "backyard",
         "garage",
-        "indoor_general",
         "child_room",
-        "other",
     ]
 
     ADMIN_SETTING_KEYS = [
@@ -313,6 +312,10 @@ def create_guest_api_app(config: ServiceConfig):
             updates["process_update_events"] = _to_bool(payload.get("process_update_events"), True)
         if "guest_preview_enabled" in payload:
             updates["guest_preview_enabled"] = _to_bool(payload.get("guest_preview_enabled"), False)
+        if "security_capable" in payload:
+            updates["security_capable"] = _to_bool(payload.get("security_capable"), False)
+        if "security_mode" in payload:
+            updates["security_mode"] = _to_bool(payload.get("security_mode"), False)
         if "updates_per_event" in payload:
             try:
                 updates_per_event = int(payload.get("updates_per_event"))
@@ -868,7 +871,7 @@ def create_guest_api_app(config: ServiceConfig):
             )
         merged["setup_completed"] = True
         # delivery_focus only applies for doorbell profiles.
-        if merged.get("purpose") != "doorbell_entry":
+        if merged.get("purpose") != "doorbell":
             merged["delivery_focus"] = []
         default_view_id = str(merged.get("default_view_id") or "").strip()
         if default_view_id:
@@ -989,7 +992,7 @@ def create_guest_api_app(config: ServiceConfig):
                 payload,
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if req.purpose != "doorbell_entry":
+        if req.purpose != "doorbell":
             req.delivery_focus = []
 
         LOGGER.info("Setup context loading view row camera=%s view_id=%s", camera_key, view_id)

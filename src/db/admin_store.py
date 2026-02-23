@@ -127,7 +127,8 @@ class AdminStore:
                 SELECT camera_key, display_name, enabled, discovered_first_ts, last_seen_ts,
                        prompt_preset, confidence_threshold, cooldown_s,
                        process_end_events, process_update_events, updates_per_event,
-                       guest_preview_enabled, vision_detail, phash_threshold, last_phash, last_phash_ts
+                       guest_preview_enabled, security_capable, security_mode,
+                       vision_detail, phash_threshold, last_phash, last_phash_ts
                 FROM cameras
                 ORDER BY camera_key ASC
                 """
@@ -188,6 +189,12 @@ class AdminStore:
             guest_preview_enabled=payload.get("guest_preview_enabled")
             if isinstance(payload.get("guest_preview_enabled"), bool)
             else _UNSET,
+            security_capable=payload.get("security_capable")
+            if isinstance(payload.get("security_capable"), bool)
+            else _UNSET,
+            security_mode=payload.get("security_mode")
+            if isinstance(payload.get("security_mode"), bool)
+            else _UNSET,
         )
         return self.get_camera(camera_key)
 
@@ -200,7 +207,8 @@ class AdminStore:
                 SELECT camera_key, display_name, enabled, discovered_first_ts, last_seen_ts,
                        prompt_preset, confidence_threshold, cooldown_s,
                        process_end_events, process_update_events, updates_per_event,
-                       guest_preview_enabled, vision_detail, phash_threshold, last_phash, last_phash_ts
+                       guest_preview_enabled, security_capable, security_mode,
+                       vision_detail, phash_threshold, last_phash, last_phash_ts
                 FROM cameras
                 WHERE camera_key = ?
                 LIMIT 1

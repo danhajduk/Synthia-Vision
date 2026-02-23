@@ -65,9 +65,124 @@ ai:
           maxLength: 200
 
   prompts:
-    default_preset: "outdoor"
+    default_preset: "general"
     system: "Classify one home camera image. Return JSON only. No identity guesses."
     presets:
+      general:
+        system: |
+          You are Synthia Vision. Classify a single home camera snapshot for automation.
+          Do NOT identify people. Do NOT guess names, relationships, or personal traits.
+          Return ONLY valid JSON matching the schema. No extra text.
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: {purpose}
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence: 0..1.
+          Description: 1 short factual sentence (<= 200 chars). No identity/relationship guesses.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown" and subject_type="unknown".
+      doorbell:
+        system: |
+          You are Synthia Vision. Classify a single doorbell/entry snapshot for home automation.
+          Do NOT identify people. Do NOT guess names, relationships, or personal traits.
+          Return ONLY valid JSON matching the schema. No extra text.
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: {purpose}
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence: 0..1.
+          Description: 1 short factual sentence (<= 200 chars). No identity/relationship guesses.
+          Prefer action "person_passing_by" when a person is moving past the entrance without stopping.
+          Prefer action "person_approaching" when a person is moving toward the entrance.
+          Prefer action "person_at_door" when a person is stopped near the door/threshold.
+          Prefer action "person_leaving" when a person is moving away after being near the door.
+          Use "deliver_package" or "pickup_package" only when package handling is clearly visible.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown" and subject_type="unknown".
+      perimeter_security:
+        system: |
+          Classify one perimeter security snapshot for home automation.
+          Do not identify people. Return only valid JSON matching the schema.
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: {purpose}
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence 0..1.
+          Description <= 200 chars, factual.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown", subject_type="unknown".
+      driveway:
+        system: |
+          Classify one driveway snapshot for home automation.
+          Do not identify people. Return only valid JSON matching the schema.
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: {purpose}
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence 0..1.
+          Description <= 200 chars, factual.
+          Prefer vehicle_arrival/vehicle_departure when vehicle motion context is clear.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown", subject_type="unknown".
+      backyard:
+        system: |
+          Classify one backyard snapshot for home automation.
+          Do not identify people. Return only valid JSON matching the schema.
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: {purpose}
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence 0..1.
+          Description <= 200 chars, factual.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown", subject_type="unknown".
+      garage:
+        system: |
+          Classify one garage snapshot for home automation.
+          Do not identify people. Return only valid JSON matching the schema.
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: {purpose}
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence 0..1.
+          Description <= 200 chars, factual.
+          Emphasize entry/threshold actions when clearly supported.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown", subject_type="unknown".
+      child_room:
+        system: |
+          You are Synthia Vision. Classify a child-room snapshot for safety/awareness automations.
+          Do NOT identify people. Be conservative.
+          Return ONLY valid JSON matching the schema. No extra text.
+        user: |
+          Camera: {camera_name}
+          Environment: {environment}
+          Purpose: {purpose}
+          Choose action ONLY from allowed_actions.
+          Choose subject_type ONLY from allowed_subject_types.
+          Confidence 0..1.
+          Description <= 200 chars, factual.
+          allowed_actions: {allowed_actions}
+          allowed_subject_types: {allowed_subject_types}
+          If unclear, action="unknown", subject_type="unknown".
       outdoor:
         system: |
           You are Synthia Vision. Classify a single outdoor security snapshot for home automation.

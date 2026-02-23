@@ -20,10 +20,31 @@ def resolve_subject_types(config: ServiceConfig) -> list[str]:
     return list(config.policy.subject_types.allowed)
 
 
-def resolve_preset(camera: str, config: ServiceConfig) -> str:
+def resolve_preset(
+    camera: str,
+    config: ServiceConfig,
+    *,
+    context_fields: dict[str, str] | None = None,
+) -> str:
+    templates: dict[str, dict[str, str]] = config.ai.prompt_presets
+    purpose = ""
+    if context_fields:
+        purpose = str(context_fields.get("purpose", "") or "").strip()
+    if not purpose:
+        try:
+            profile = db_get_camera_profile(config.paths.db_file, camera) or {}
+            purpose = str(profile.get("purpose", "") or "").strip()
+        except Exception:
+            purpose = ""
+    if purpose and purpose in templates:
+        return purpose
+    if "general" in templates:
+        return "general"
     camera_cfg = config.policy.cameras.get(camera)
     if camera_cfg is not None and camera_cfg.prompt_preset:
-        return camera_cfg.prompt_preset
+        preset = str(camera_cfg.prompt_preset)
+        if preset in templates:
+            return preset
     return config.ai.default_prompt_preset
 
 
@@ -39,6 +60,21 @@ def render_prompts(
     selected = templates.get(preset) or templates.get(config.ai.default_prompt_preset) or {}
     system_template = str(selected.get("system", config.ai.system_prompt))
     user_template = str(selected.get("user", ""))
+    environment = ""
+    purpose = ""
+    if context_fields:
+        environment = str(context_fields.get("environment", "") or "").strip()
+        purpose = str(context_fields.get("purpose", "") or "").strip()
+    if "{environment}" not in user_template:
+        user_template = (
+            f"{user_template.rstrip()}\n"
+            "Environment: {environment}\n"
+        )
+    if "{purpose}" not in user_template:
+        user_template = (
+            f"{user_template.rstrip()}\n"
+            "Purpose: {purpose}\n"
+        )
 
     format_args = {
         "camera_name": camera_name,
@@ -47,10 +83,45 @@ def render_prompts(
     }
     if context_fields:
         format_args.update(context_fields)
-    return (
-        system_template.format(**format_args),
-        user_template.format(**format_args),
+    system_prompt = system_template.format(**format_args)
+    user_prompt = user_template.format(**format_args)
+    # Always inject setup context so classification sees configured camera intent.
+    user_prompt = (
+        f"{user_prompt.rstrip()}\n"
+        "View context summary: {context_summary}\n"
+        "View focus notes: {focus_notes}\n"
+        "Typical activities: {typical_activities}\n"
+    ).format(**format_args)
+    # Global privacy + output constraints for every classification request.
+    user_prompt = (
+        f"{user_prompt.rstrip()}\n"
+        "Privacy requirements: no identifying details (no faces, clothing/colors, brands, readable text, plates).\n"
+        "Return ONLY valid JSON for synthia_vision_event: action, subject_type, confidence, description.\n"
+        "Description: one short generic sentence, max 200 chars.\n"
     )
+    camera_cfg = config.policy.cameras.get(camera_name)
+    if (
+        camera_cfg is not None
+        and camera_cfg.security_capable
+        and camera_cfg.security_mode
+        and purpose != "child_room"
+    ):
+        overlay_lines = [
+            "Security overlay mode: conservative safety-focused interpretation only.",
+            "Do not infer intent without clear visual evidence.",
+            "Use suspicious_activity ONLY when clear tampering or forced-entry posture is visible.",
+            "Use loitering ONLY when clear lingering near a relevant area is visible.",
+        ]
+        if purpose in {"doorbell", "garage"}:
+            overlay_lines.append(
+                "Prioritize entry/threshold-related actions for this camera when clearly supported."
+            )
+        if purpose == "driveway":
+            overlay_lines.append(
+                "Prioritize vehicle_arrival/vehicle_departure when vehicle motion context is clear."
+            )
+        user_prompt = f"{user_prompt.rstrip()}\n" + "\n".join(overlay_lines) + "\n"
+    return system_prompt, user_prompt
 
 
 def build_camera_context_fields(camera: str, config: ServiceConfig) -> dict[str, str]:
