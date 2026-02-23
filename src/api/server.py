@@ -36,6 +36,7 @@ from src.db import (
     db_upsert_camera_view,
 )
 from src.auth import FirstRunBootstrap, SessionManager, UserStore
+from src.frigate import FrigateClient, sync_discovered_cameras_from_config
 from src.snapshot_manager import SnapshotManager
 from src.api.camera_setup_models import (
     CameraProfile,
@@ -817,6 +818,29 @@ def create_guest_api_app(config: ServiceConfig):
     ):
         _require_admin(session_token)
         return admin_store.list_cameras()
+
+    @app.post("/api/frigate/refresh")
+    async def api_frigate_refresh(
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        try:
+            client = FrigateClient(config)
+            payload = await asyncio.to_thread(client.get_config)
+            summary = await asyncio.to_thread(
+                sync_discovered_cameras_from_config,
+                db_path=config.paths.db_file,
+                frigate_config_payload=payload,
+            )
+        except Exception as exc:
+            LOGGER.warning("Frigate manual refresh failed error=%s", exc)
+            raise HTTPException(status_code=502, detail=f"frigate refresh failed: {exc}") from exc
+        LOGGER.info(
+            "Frigate manual refresh complete cameras=%s ids=%s",
+            int(summary.get("count", 0)),
+            summary.get("camera_ids", []),
+        )
+        return {"ok": True, "summary": summary}
 
     @app.post("/api/cameras/{camera_key}")
     async def api_camera_update(
