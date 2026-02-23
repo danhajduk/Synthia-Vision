@@ -21,7 +21,7 @@ except ModuleNotFoundError:  # pragma: no cover - optional API dependency
     HTMLResponse = RedirectResponse = StaticFiles = Jinja2Templates = None  # type: ignore[assignment]
 
 from src.config import ServiceConfig
-from src.db import AdminStore, SummaryStore
+from src.db import AdminStore, DatabaseBootstrap, SummaryStore
 from src.auth import FirstRunBootstrap, SessionManager, UserStore
 from src.snapshot_manager import SnapshotManager
 from src.auth.session import (
@@ -46,6 +46,9 @@ def create_guest_api_app(config: ServiceConfig):
         or Jinja2Templates is None
     ):
         raise ModuleNotFoundError("fastapi and jinja2 are required for API server")
+
+    # Ensure DB schema/seed exists even when API app is started standalone.
+    DatabaseBootstrap(db_path=config.paths.db_file).initialize()
 
     summary_store = SummaryStore(config.paths.db_file)
     admin_store = AdminStore(config.paths.db_file)
@@ -299,7 +302,7 @@ def create_guest_api_app(config: ServiceConfig):
             "kpis": {
                 "health_label": _health_label(service_status),
                 "health_badge": service_status.replace("_", " ").title() if service_status else "Unknown",
-                "heartbeat_ts": str(status.get("timestamp") or "—"),
+                "heartbeat_ts": str(status.get("heartbeat_ts") or "—"),
                 "queue_depth": int(metrics.get("queue_depth", status.get("queue_depth", 0)) or 0),
                 "queue_max": 50,
                 "drops_today": int(metrics.get("dropped_events_total", 0)),
@@ -307,6 +310,8 @@ def create_guest_api_app(config: ServiceConfig):
                 "cost_mtd": _format_money(metrics.get("cost_month2day_total", 0.0)),
                 "ai_calls_today": int(metrics.get("count_today", 0)),
                 "avg_cost_per_event": _format_money(metrics.get("cost_avg_per_event", 0.0)),
+                "tokens_today_total": int(metrics.get("tokens_today_total", 0)),
+                "avg_tokens_per_event": int(round(float(metrics.get("avg_tokens_per_event", 0.0)))),
             },
             "cameras": cameras,
             "preview": {

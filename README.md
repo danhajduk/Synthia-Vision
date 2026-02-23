@@ -407,8 +407,15 @@ Configured via:
 
 SQLite bootstrap:
 - On startup, the service initializes SQLite schema from `Documents/schema.sql`.
+- Bootstrap entry points:
+  - service process: `src/main.py` (`DatabaseBootstrap.initialize()` during startup)
+  - API process: `src/api/server.py` (`create_guest_api_app()` bootstraps schema for standalone API runs)
 - Connection pragmas include WAL mode, busy timeout, and foreign key enforcement.
 - Seed defaults are written into `kv` if missing (idempotent).
+- UI status KV keys:
+  - `service.status` (`starting`/`enabled`/`degraded`/`disabled`/`stopped`)
+  - `runtime.heartbeat_ts` (latest heartbeat ISO timestamp)
+  - `runtime.queue_depth` (current queue depth integer)
 - Worker-path journaling writes to SQLite:
   - `events`: one row per handled event (accepted or rejected) with latest result fields
   - `metrics`: processing-path rows for OpenAI usage or skip reasons
@@ -430,8 +437,11 @@ Camera runtime source of truth:
 
 Metric formulas:
 - `metrics.cost_avg_per_event = metrics.cost_month2day_total / metrics.count_total`
+- Guest summary alias: `avg_cost_per_event_usd = metrics.cost_avg_per_event`
 - `metrics.tokens_avg_per_request` is maintained as a running average over processed requests
 - `metrics.tokens_avg_per_day = metrics.tokens_avg_per_request * metrics.count_today` (estimated daily token total)
+- `metrics.tokens_today_total = sum(prompt_tokens + completion_tokens) for today's processed events`
+- `metrics.avg_tokens_per_event = metrics.tokens_today_total / metrics.count_today` (safe-divide, zero when no calls)
 
 ## Troubleshooting
 

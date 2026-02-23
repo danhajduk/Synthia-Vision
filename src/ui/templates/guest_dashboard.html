@@ -67,7 +67,7 @@
               <span class="pill"><span class="dot"></span> OK</span>
             </div>
             <div class="big" data-kpi-cost-today>{{ kpis.cost_today or '—' }}</div>
-            <div class="sub">Month-to-date: <span class="mono" data-kpi-cost-mtd>{{ kpis.cost_mtd or '—' }}</span></div>
+            <div class="sub">Month-to-date: <span class="mono" data-kpi-cost-mtd>{{ kpis.cost_mtd or '—' }}</span> • Avg/event: <span class="mono" data-kpi-cost-avg-event>{{ kpis.avg_cost_per_event or '—' }}</span></div>
           </div>
 
           <div class="card">
@@ -76,7 +76,8 @@
               <span class="pill"><span class="dot"></span> Today</span>
             </div>
             <div class="big" data-kpi-ai-calls>{{ kpis.ai_calls_today }}</div>
-            <div class="sub">Avg/event: <span class="mono" data-kpi-avg-event>{{ kpis.avg_cost_per_event or '—' }}</span></div>
+            <div class="sub">Tokens today: <span class="mono" data-kpi-tokens-today>{{ kpis.tokens_today_total }}</span></div>
+            <div class="sub">Avg tokens/event: <span class="mono" data-kpi-avg-tokens-event>{{ kpis.avg_tokens_per_event }}</span></div>
           </div>
         </div>
 

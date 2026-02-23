@@ -17,6 +17,7 @@ import paho.mqtt.client as mqtt
 from src.config import ServiceConfig
 from src.config.settings import PolicyCameraConfig
 from src.db import CameraStore, EventStore
+from src.db.kv_store import kv_set
 from src.event_router import EventRouter
 from src.ha_discovery import HADiscoveryPublisher
 from src.errors import ExternalServiceError, ValidationError
@@ -216,12 +217,15 @@ class MQTTClient:
         LOGGER.info("MQTT client stopped")
 
     async def publish_status(self, payload: str) -> None:
+        self._set_service_status(payload)
         await self.publish(self._status_topic, payload, retain=self._status_retain)
 
     async def publish_heartbeat(self) -> None:
+        heartbeat_ts = datetime.now(timezone.utc).isoformat()
+        self._set_runtime_heartbeat(heartbeat_ts)
         await self.publish(
             self._heartbeat_topic,
-            datetime.now(timezone.utc).isoformat(),
+            heartbeat_ts,
             retain=self._status_retain,
         )
 
@@ -400,6 +404,7 @@ class MQTTClient:
                 return True
             self._service_enabled = parsed
             self._publish_sync(topics["control_enabled"], bool_to_on_off(parsed))
+            self._publish_status_sync(self._effective_runtime_status())
             self._persist_runtime_controls()
             LOGGER.info("Updated service enabled=%s", parsed)
             return True
@@ -413,7 +418,7 @@ class MQTTClient:
             self._monthly_budget_limit = parsed_budget
             self._config.budget.monthly_budget_limit = parsed_budget
             self._publish_sync(topics["control_monthly_budget"], f"{parsed_budget:.2f}")
-            self._publish_sync(self._status_topic, self._effective_runtime_status())
+            self._publish_status_sync(self._effective_runtime_status())
             self._persist_runtime_controls()
             LOGGER.info("Updated monthly_budget=%s", parsed_budget)
             return True
@@ -763,7 +768,7 @@ class MQTTClient:
                     self._above_high_since = now
                 elif not self._is_degraded and (now - self._above_high_since) >= DEGRADE_SUSTAIN_SECONDS:
                     self._is_degraded = True
-                    self._publish_sync(self._status_topic, "degraded")
+                    self._publish_status_sync("degraded")
                     LOGGER.warning(
                         "Runtime degraded due to queue pressure depth=%s dropped_total=%s dropped_update=%s dropped_oldest=%s",
                         depth,
@@ -775,7 +780,8 @@ class MQTTClient:
                 self._above_high_since = None
                 if self._is_degraded:
                     self._is_degraded = False
-                    self._publish_sync(self._status_topic, self._effective_runtime_status())
+                    recovered_status = self._effective_runtime_status()
+                    self._publish_status_sync(recovered_status)
                     LOGGER.info("Runtime recovered from degraded mode depth=%s", depth)
             await asyncio.sleep(1.0)
         LOGGER.info("Degraded monitor stopped")
@@ -1030,7 +1036,7 @@ class MQTTClient:
                 event_id=event.event_id,
                 skipped_openai_reason="budget_blocked",
             )
-            self._publish_sync(self._status_topic, "budget_blocked")
+            self._publish_status_sync("budget_blocked")
             self._publish_last_error(
                 f"budget_blocked camera={event.camera} event_id={event.event_id}"
             )
@@ -1517,7 +1523,7 @@ class MQTTClient:
         self._save_policy_state()
         self._publish_global_metrics()
         self._publish_camera_monthly_cost(camera)
-        self._publish_sync(self._status_topic, self._effective_runtime_status())
+        self._publish_status_sync(self._effective_runtime_status())
 
     def _is_budget_blocked(self) -> bool:
         if not self._config.budget.enabled:
@@ -1913,6 +1919,22 @@ class MQTTClient:
         except asyncio.CancelledError:
             LOGGER.info("MQTT heartbeat loop stopped")
             raise
+
+    def _set_service_status(self, status: str) -> None:
+        try:
+            kv_set(self._config.paths.db_file, "service.status", str(status))
+        except Exception as exc:
+            LOGGER.warning("Failed writing kv service.status=%s error=%s", status, exc)
+
+    def _publish_status_sync(self, status: str) -> None:
+        self._set_service_status(status)
+        self._publish_sync(self._status_topic, str(status))
+
+    def _set_runtime_heartbeat(self, heartbeat_ts: str) -> None:
+        try:
+            kv_set(self._config.paths.db_file, "runtime.heartbeat_ts", str(heartbeat_ts))
+        except Exception as exc:
+            LOGGER.warning("Failed writing kv runtime.heartbeat_ts error=%s", exc)
 
 
 def _resolve_status_topic(config: ServiceConfig) -> str:

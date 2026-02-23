@@ -64,12 +64,13 @@ Four KPI cards, in this exact order:
 
 3) **Cost Today**
    - Big: `$X.XX`
-   - Small: **Month-to-date** `$Y.YY`
+   - Small: **Month-to-date** `$Y.YY` + **Avg/event** `$Z.ZZ`
 
 4) **AI Calls**
    - Label must be **AI Calls** (not "OpenAI")
    - Big: calls today (or period)
-   - Small: **Avg/event** `$Z.ZZ`
+   - Small line 1: **Tokens today** `N`
+   - Small line 2: **Avg tokens/event** `N`
    - Rationale: future multi-provider AI services
 
 Responsive behavior:

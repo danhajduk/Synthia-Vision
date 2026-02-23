@@ -241,8 +241,10 @@
     const dropsEl = document.querySelector('[data-kpi-drops]');
     const costTodayEl = document.querySelector('[data-kpi-cost-today]');
     const costMtdEl = document.querySelector('[data-kpi-cost-mtd]');
+    const costAvgEventEl = document.querySelector('[data-kpi-cost-avg-event]');
     const aiCallsEl = document.querySelector('[data-kpi-ai-calls]');
-    const avgEventEl = document.querySelector('[data-kpi-avg-event]');
+    const tokensTodayEl = document.querySelector('[data-kpi-tokens-today]');
+    const avgTokensEventEl = document.querySelector('[data-kpi-avg-tokens-event]');
 
     const queueMax = 50;
     let inFlight = false;
@@ -307,7 +309,7 @@
           }
         }
         if (heartbeatEl) {
-          heartbeatEl.textContent = statusPayload.timestamp || '—';
+          heartbeatEl.textContent = statusPayload.heartbeat_ts || statusPayload.timestamp || '—';
         }
 
         const queueDepth = asInt(metrics.queue_depth, 0);
@@ -327,11 +329,17 @@
         if (costMtdEl) {
           costMtdEl.textContent = money(metrics.cost_month2day_total);
         }
+        if (costAvgEventEl) {
+          costAvgEventEl.textContent = money(metrics.cost_avg_per_event);
+        }
         if (aiCallsEl) {
           aiCallsEl.textContent = String(asInt(metrics.count_today, 0));
         }
-        if (avgEventEl) {
-          avgEventEl.textContent = money(metrics.cost_avg_per_event);
+        if (tokensTodayEl) {
+          tokensTodayEl.textContent = String(asInt(metrics.tokens_today_total, 0));
+        }
+        if (avgTokensEventEl) {
+          avgTokensEventEl.textContent = String(Math.round(asFloat(metrics.avg_tokens_per_event, 0)));
         }
       } catch (err) {
         // Keep current values when polling temporarily fails.

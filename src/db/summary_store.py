@@ -15,6 +15,7 @@ class SummaryStore:
 
     def get_status_summary(self) -> dict[str, Any]:
         service_status = self._get_kv("service.status") or "unknown"
+        heartbeat_ts = self._get_kv("runtime.heartbeat_ts") or ""
         setup_completed = (self._get_kv("setup.completed") or "0") == "1"
         queue_depth_raw = self._get_kv("runtime.queue_depth") or "0"
         try:
@@ -23,6 +24,7 @@ class SummaryStore:
             queue_depth = 0
         return {
             "service_status": service_status,
+            "heartbeat_ts": heartbeat_ts,
             "setup_completed": setup_completed,
             "queue_depth": queue_depth,
             "db_ready": self.db_path.exists(),
@@ -74,6 +76,16 @@ class SummaryStore:
                 FROM metrics
                 """,
             )
+            tokens_today_total = _single_int(
+                conn,
+                """
+                SELECT COALESCE(SUM(COALESCE(m.prompt_tokens,0) + COALESCE(m.completion_tokens,0)), 0)
+                FROM metrics m
+                JOIN events e ON e.event_id = m.event_id
+                WHERE substr(e.ts,1,10)=?
+                """,
+                (today,),
+            )
             monthly_by_camera_rows = conn.execute(
                 """
                 SELECT e.camera, COALESCE(SUM(m.cost_usd), 0)
@@ -108,6 +120,7 @@ class SummaryStore:
         count_today = max(0, int(accepted_today))
         cost_avg_per_event = (cost_month2day_total / count_total) if count_total > 0 else 0.0
         tokens_avg_per_day = float(tokens_avg_per_request) * float(count_today)
+        avg_tokens_per_event = (float(tokens_today_total) / float(count_today)) if count_today > 0 else 0.0
         return {
             "cost_avg_per_event": float(cost_avg_per_event),
             "cost_daily_total": float(cost_daily_total),
@@ -123,6 +136,8 @@ class SummaryStore:
             "dropped_queue_full_total": max(0, int(dropped_queue_full_total)),
             "tokens_avg_per_day": float(tokens_avg_per_day),
             "tokens_avg_per_request": float(tokens_avg_per_request),
+            "tokens_today_total": int(tokens_today_total),
+            "avg_tokens_per_event": float(avg_tokens_per_event),
         }
 
     def get_cameras_summary(self) -> dict[str, Any]:
@@ -171,6 +186,7 @@ class SummaryStore:
         return {
             "service_status": status.get("service_status", "unknown"),
             "db_ready": bool(status.get("db_ready", False)),
+            "heartbeat_ts": str(status.get("heartbeat_ts", "")),
             "timestamp": status.get("timestamp"),
         }
 
@@ -178,6 +194,7 @@ class SummaryStore:
         metrics = self.get_metrics_summary()
         return {
             "count_total": int(metrics.get("count_total", 0)),
+            "ai_calls_today": int(metrics.get("count_today", 0)),
             "count_today": int(metrics.get("count_today", 0)),
             "count_today_date": str(metrics.get("count_today_date", "")),
             "queue_depth": int(metrics.get("queue_depth", 0)),
@@ -188,8 +205,11 @@ class SummaryStore:
             "cost_daily_total": float(metrics.get("cost_daily_total", 0.0)),
             "cost_month2day_total": float(metrics.get("cost_month2day_total", 0.0)),
             "cost_avg_per_event": float(metrics.get("cost_avg_per_event", 0.0)),
+            "avg_cost_per_event_usd": float(metrics.get("cost_avg_per_event", 0.0)),
             "tokens_avg_per_request": float(metrics.get("tokens_avg_per_request", 0.0)),
             "tokens_avg_per_day": float(metrics.get("tokens_avg_per_day", 0.0)),
+            "tokens_today_total": int(metrics.get("tokens_today_total", 0)),
+            "avg_tokens_per_event": float(metrics.get("avg_tokens_per_event", 0.0)),
             "cost_monthly_by_camera": dict(metrics.get("cost_monthly_by_camera", {})),
         }
 

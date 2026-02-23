@@ -25,6 +25,7 @@ class SummaryStoreTests(unittest.TestCase):
             camera_store.set_camera_enabled("doorbell", True)
             camera_store.upsert_kv("runtime.queue_depth", "3")
             camera_store.upsert_kv("service.status", "enabled")
+            camera_store.upsert_kv("runtime.heartbeat_ts", "2026-02-23T10:00:00+00:00")
 
             event_store = EventStore(db_path)
             event = FrigateEvent(
@@ -61,13 +62,19 @@ class SummaryStoreTests(unittest.TestCase):
             self.assertEqual(metrics["count_total"], 1)
             self.assertGreaterEqual(metrics["cost_last"], 0.0)
             self.assertIn("doorbell", metrics["cost_monthly_by_camera"])
+            self.assertEqual(metrics["tokens_today_total"], 120)
+            self.assertEqual(metrics["avg_tokens_per_event"], 120.0)
 
             cameras = store.get_cameras_summary()
             self.assertEqual(cameras["count"], 1)
             self.assertEqual(cameras["items"][0]["camera_key"], "doorbell")
 
             guest_status = store.get_guest_status_payload()
-            self.assertEqual(set(guest_status.keys()), {"service_status", "db_ready", "timestamp"})
+            self.assertEqual(
+                set(guest_status.keys()),
+                {"service_status", "db_ready", "heartbeat_ts", "timestamp"},
+            )
+            self.assertEqual(guest_status["heartbeat_ts"], "2026-02-23T10:00:00+00:00")
             self.assertNotIn("queue_depth", guest_status)
             self.assertNotIn("setup_completed", guest_status)
 
@@ -75,6 +82,10 @@ class SummaryStoreTests(unittest.TestCase):
             self.assertNotIn("reject_reason", guest_metrics)
             self.assertNotIn("skipped_openai_reason", guest_metrics)
             self.assertNotIn("description", guest_metrics)
+            self.assertEqual(guest_metrics["tokens_today_total"], 120)
+            self.assertEqual(guest_metrics["avg_tokens_per_event"], 120.0)
+            self.assertEqual(guest_metrics["avg_cost_per_event_usd"], guest_metrics["cost_avg_per_event"])
+            self.assertEqual(guest_metrics["ai_calls_today"], guest_metrics["count_today"])
 
             guest_cameras = store.get_guest_cameras_payload()
             self.assertEqual(guest_cameras["count"], 1)
