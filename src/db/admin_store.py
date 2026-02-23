@@ -128,7 +128,7 @@ class AdminStore:
                        prompt_preset, confidence_threshold, cooldown_s,
                        process_end_events, process_update_events, updates_per_event,
                        guest_preview_enabled, security_capable, security_mode,
-                       vision_detail, phash_threshold, last_phash, last_phash_ts
+                       setup_completed, vision_detail, phash_threshold, last_phash, last_phash_ts
                 FROM cameras
                 ORDER BY camera_key ASC
                 """
@@ -208,7 +208,7 @@ class AdminStore:
                        prompt_preset, confidence_threshold, cooldown_s,
                        process_end_events, process_update_events, updates_per_event,
                        guest_preview_enabled, security_capable, security_mode,
-                       vision_detail, phash_threshold, last_phash, last_phash_ts
+                       setup_completed, vision_detail, phash_threshold, last_phash, last_phash_ts
                 FROM cameras
                 WHERE camera_key = ?
                 LIMIT 1

@@ -894,6 +894,8 @@
     function cameraCard(camera) {
       const root = document.createElement('div');
       root.className = 'card';
+      const setupCompleted = Boolean(camera.setup_completed);
+      const setupLabel = setupCompleted ? 'Setup complete' : 'Needs setup';
       const confidenceValue =
         camera.confidence_threshold === null || camera.confidence_threshold === undefined
           ? ''
@@ -909,7 +911,7 @@
           ? ''
           : String(camera.updates_per_event);
       root.innerHTML =
-        '<div class="row"><strong>' + (camera.display_name || camera.camera_key) + '</strong><span class="sub">' + camera.camera_key + '</span></div>' +
+        '<div class="row"><strong>' + (camera.display_name || camera.camera_key) + '</strong><span class="sub">' + camera.camera_key + ' • ' + setupLabel + '</span></div>' +
         '<div class="form-grid" style="margin-top:10px;">' +
         '<label class="field-label">Display name</label><input class="field" data-field="display_name" value="' + (camera.display_name || '') + '">' +
         '<label class="field-label">Enabled</label><label class="toggle"><input type="checkbox" data-field="enabled"' + (camera.enabled ? ' checked' : '') + '><span>Process events for this camera</span></label>' +
