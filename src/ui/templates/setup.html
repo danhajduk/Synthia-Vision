@@ -42,10 +42,6 @@
                 <div class="sub">Minimum confidence to accept an event.</div>
               </div>
               <div class="field-stack">
-                <label class="field-label">High precision mode</label>
-                <label class="toggle"><input type="checkbox" id="setting-ai.modes.high_precision" /><span>Use higher precision AI mode defaults</span></label>
-              </div>
-              <div class="field-stack">
                 <label class="field-label">Default vision detail</label>
                 <select class="field" id="setting-ai.defaults.vision_detail">
                   <option value="low">low</option>
@@ -61,6 +57,10 @@
               <div class="field-stack">
                 <label class="field-label">Update pHash threshold</label>
                 <input class="field" id="setting-policy.smart_update.phash_threshold_update" />
+              </div>
+              <div class="field-stack">
+                <label class="field-label">High precision mode</label>
+                <label class="toggle"><input type="checkbox" id="setting-ai.modes.high_precision" /><span>Use higher precision AI mode defaults</span></label>
               </div>
             </div>
           </div>
@@ -84,6 +84,10 @@
             <h3>Preview Settings</h3>
             <div class="form-grid">
               <div class="field-stack">
+                <label class="field-label">UI subtitle</label>
+                <input class="field" id="setting-ui.subtitle" />
+              </div>
+              <div class="field-stack">
                 <label class="field-label">Preview enabled</label>
                 <label class="toggle"><input type="checkbox" id="setting-ui.preview_enabled" /><span>Show guest snapshot previews</span></label>
               </div>
@@ -98,10 +102,6 @@
               <div class="field-stack">
                 <label class="field-label">Preview max active</label>
                 <input class="field" id="setting-ui.preview_max_active" />
-              </div>
-              <div class="field-stack">
-                <label class="field-label">UI subtitle</label>
-                <input class="field" id="setting-ui.subtitle" />
               </div>
             </div>
           </div>
