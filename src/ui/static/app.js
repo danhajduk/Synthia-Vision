@@ -373,6 +373,341 @@
     window.setInterval(refreshOnce, 2000);
   }
 
+  async function guardAdminUiRoute() {
+    const page = document.body.getAttribute('data-ui-page') || '';
+    if (['admin', 'setup', 'events', 'errors'].indexOf(page) < 0) {
+      return true;
+    }
+    try {
+      const resp = await fetch('/api/auth/me', { credentials: 'same-origin' });
+      if (resp.status === 401 || resp.status === 403) {
+        window.location.href = '/ui/login';
+        return false;
+      }
+      return resp.ok;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function initAdminPage() {
+    const logoutBtn = document.getElementById('admin-logout');
+    if (!logoutBtn) {
+      return;
+    }
+    const statusEl = document.getElementById('admin-summary-status');
+    const fields = {
+      service_status: document.getElementById('admin-service-status'),
+      heartbeat_age_s: document.getElementById('admin-heartbeat-age'),
+      queue_depth: document.getElementById('admin-queue-depth'),
+      last_event_ts: document.getElementById('admin-last-event-ts'),
+      events_total: document.getElementById('admin-events-total'),
+      errors_total: document.getElementById('admin-errors-total'),
+    };
+
+    function ageLabel(value) {
+      const seconds = Number(value);
+      if (!Number.isFinite(seconds)) {
+        return '—';
+      }
+      if (seconds < 60) {
+        return String(seconds) + 's ago';
+      }
+      if (seconds < 3600) {
+        return String(Math.floor(seconds / 60)) + 'm ago';
+      }
+      return String(Math.floor(seconds / 3600)) + 'h ago';
+    }
+
+    async function loadSummary() {
+      try {
+        const resp = await fetch('/api/admin/summary', { credentials: 'same-origin' });
+        if (!resp.ok) {
+          if (statusEl) {
+            statusEl.textContent = 'Failed to load summary.';
+          }
+          return;
+        }
+        const data = await resp.json();
+        if (fields.service_status) {
+          fields.service_status.textContent = String(data.service_status || '—');
+        }
+        if (fields.heartbeat_age_s) {
+          fields.heartbeat_age_s.textContent = ageLabel(data.heartbeat_age_s);
+        }
+        if (fields.queue_depth) {
+          fields.queue_depth.textContent = String(data.queue_depth ?? '—');
+        }
+        if (fields.last_event_ts) {
+          fields.last_event_ts.textContent = formatLocalDateTime(data.last_event_ts);
+        }
+        if (fields.events_total) {
+          fields.events_total.textContent = String(data.events_total ?? '0');
+        }
+        if (fields.errors_total) {
+          fields.errors_total.textContent = String(data.errors_total ?? '0');
+        }
+        if (statusEl) {
+          statusEl.textContent = 'Updated ' + formatLocalDateTime(new Date().toISOString());
+        }
+      } catch (err) {
+        if (statusEl) {
+          statusEl.textContent = 'Failed to load summary.';
+        }
+      }
+    }
+
+    logoutBtn.addEventListener('click', async function () {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+      } finally {
+        window.location.href = '/ui/login';
+      }
+    });
+    loadSummary();
+    window.setInterval(loadSummary, 5000);
+  }
+
+  function initEventsPage() {
+    const tableBody = document.getElementById('events-table-body');
+    if (!tableBody) {
+      return;
+    }
+    const statusEl = document.getElementById('events-status');
+    const pageLabelEl = document.getElementById('events-page-label');
+    const prevBtn = document.getElementById('events-prev');
+    const nextBtn = document.getElementById('events-next');
+    const refreshBtn = document.getElementById('events-refresh');
+    const detailOverlay = document.getElementById('events-detail-overlay');
+    const detailClose = document.getElementById('events-detail-close');
+    const detailJson = document.getElementById('events-detail-json');
+    const detailReason = document.getElementById('events-detail-reason');
+    const detailSnapshot = document.getElementById('events-detail-snapshot');
+    const state = { limit: 50, offset: 0, total: 0, items: [] };
+
+    function queryFilters() {
+      const params = new URLSearchParams(window.location.search);
+      const filter = {
+        camera: String(params.get('camera') || '').trim(),
+        status: String(params.get('status') || '').trim().toLowerCase(),
+        since: String(params.get('since') || '').trim(),
+      };
+      return filter;
+    }
+
+    function renderRows(items) {
+      tableBody.innerHTML = '';
+      if (!items.length) {
+        tableBody.innerHTML = '<tr><td colspan="4">No events yet.</td></tr>';
+        return;
+      }
+      items.forEach(function (item) {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-event-row', '1');
+        tr.setAttribute('data-event-id', item.event_id || '');
+        tr.innerHTML =
+          '<td>' + formatLocalDateTime(item.ts) + '</td>' +
+          '<td>' + (item.camera || '—') + '</td>' +
+          '<td>' + (item.result_status || '—') + '</td>' +
+          '<td><a href="#" data-event-link>' + (item.event_id || '—') + '</a></td>';
+        tableBody.appendChild(tr);
+      });
+    }
+
+    async function openDetail(eventId) {
+      try {
+        const resp = await fetch('/api/events/' + encodeURIComponent(eventId), { credentials: 'same-origin' });
+        if (!resp.ok) {
+          return;
+        }
+        const data = await resp.json();
+        detailJson.textContent = JSON.stringify(data, null, 2);
+        detailReason.textContent = 'Status reason: ' + String(data.reject_reason || data.result_status || '—');
+        detailSnapshot.textContent = 'Snapshot URL: /api/events/' + eventId + '/snapshot.jpg';
+        detailOverlay.hidden = false;
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    async function loadPage() {
+      const filters = queryFilters();
+      const params = new URLSearchParams({
+        limit: String(state.limit),
+        offset: String(state.offset),
+      });
+      if (filters.camera) {
+        params.set('camera', filters.camera);
+      }
+      if (filters.status === 'accepted' || filters.status === 'ok' || filters.status === 'approved') {
+        params.set('accepted', 'true');
+      } else if (filters.status === 'rejected' || filters.status === 'denied') {
+        params.set('accepted', 'false');
+      }
+      const resp = await fetch('/api/events?' + params.toString(), { credentials: 'same-origin' });
+      if (!resp.ok) {
+        statusEl.textContent = 'Failed loading events.';
+        return;
+      }
+      const payload = await resp.json();
+      let items = Array.isArray(payload.items) ? payload.items : [];
+      if (filters.since) {
+        const sinceTime = new Date(filters.since).getTime();
+        if (!Number.isNaN(sinceTime)) {
+          items = items.filter((item) => {
+            const ts = new Date(item.ts || '').getTime();
+            return !Number.isNaN(ts) && ts >= sinceTime;
+          });
+        }
+      }
+      state.items = items;
+      state.total = Number(payload.total || 0);
+      renderRows(items);
+      pageLabelEl.textContent = 'Page ' + String(Math.floor(state.offset / state.limit) + 1);
+      prevBtn.disabled = state.offset <= 0;
+      nextBtn.disabled = state.offset + state.limit >= state.total;
+      statusEl.textContent = items.length ? ('Showing ' + String(items.length) + ' events') : 'No events.';
+    }
+
+    tableBody.addEventListener('click', function (e) {
+      const link = e.target.closest('[data-event-link]');
+      const row = e.target.closest('[data-event-row]');
+      if (!link && !row) {
+        return;
+      }
+      e.preventDefault();
+      const targetRow = row || link.closest('[data-event-row]');
+      if (!targetRow) {
+        return;
+      }
+      const eventId = targetRow.getAttribute('data-event-id');
+      if (eventId) {
+        openDetail(eventId);
+      }
+    });
+    detailClose.addEventListener('click', function () { detailOverlay.hidden = true; });
+    detailOverlay.addEventListener('click', function (e) {
+      if (e.target === detailOverlay) {
+        detailOverlay.hidden = true;
+      }
+    });
+    prevBtn.addEventListener('click', function () {
+      state.offset = Math.max(0, state.offset - state.limit);
+      loadPage();
+    });
+    nextBtn.addEventListener('click', function () {
+      state.offset += state.limit;
+      loadPage();
+    });
+    refreshBtn.addEventListener('click', function () {
+      loadPage();
+    });
+    loadPage();
+  }
+
+  function initErrorsPage() {
+    const tableBody = document.getElementById('errors-table-body');
+    if (!tableBody) {
+      return;
+    }
+    const statusEl = document.getElementById('errors-status');
+    const pageLabelEl = document.getElementById('errors-page-label');
+    const prevBtn = document.getElementById('errors-prev');
+    const nextBtn = document.getElementById('errors-next');
+    const refreshBtn = document.getElementById('errors-refresh');
+    const detailOverlay = document.getElementById('errors-detail-overlay');
+    const detailClose = document.getElementById('errors-detail-close');
+    const copyBtn = document.getElementById('errors-copy-detail');
+    const detailTitle = document.getElementById('errors-detail-title');
+    const detailJson = document.getElementById('errors-detail-json');
+    const state = { limit: 50, offset: 0, total: 0, items: [], selected: null };
+
+    function renderRows(items) {
+      tableBody.innerHTML = '';
+      if (!items.length) {
+        tableBody.innerHTML = '<tr><td colspan="4">No errors.</td></tr>';
+        return;
+      }
+      items.forEach(function (item) {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-error-row', '1');
+        tr.setAttribute('data-error-id', String(item.id || ''));
+        tr.innerHTML =
+          '<td>' + formatLocalDateTime(item.ts) + '</td>' +
+          '<td>' + (item.component || '—') + '</td>' +
+          '<td>' + (item.message || '—') + '</td>' +
+          '<td>' + (item.event_id || '—') + '</td>';
+        tableBody.appendChild(tr);
+      });
+    }
+
+    function openDetail(id) {
+      const item = state.items.find((entry) => String(entry.id) === String(id));
+      if (!item) {
+        return;
+      }
+      state.selected = item;
+      detailTitle.textContent = String(item.component || 'unknown') + ' @ ' + formatLocalDateTime(item.ts);
+      detailJson.textContent = JSON.stringify(item, null, 2);
+      detailOverlay.hidden = false;
+    }
+
+    async function loadPage() {
+      const resp = await fetch('/api/errors?limit=' + String(state.limit) + '&offset=' + String(state.offset), {
+        credentials: 'same-origin',
+      });
+      if (!resp.ok) {
+        statusEl.textContent = 'Failed loading errors.';
+        return;
+      }
+      const payload = await resp.json();
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      state.items = items;
+      state.total = Number(payload.total || 0);
+      renderRows(items);
+      pageLabelEl.textContent = 'Page ' + String(Math.floor(state.offset / state.limit) + 1);
+      prevBtn.disabled = state.offset <= 0;
+      nextBtn.disabled = state.offset + state.limit >= state.total;
+      statusEl.textContent = items.length ? ('Showing ' + String(items.length) + ' errors') : 'No errors.';
+    }
+
+    tableBody.addEventListener('click', function (e) {
+      const row = e.target.closest('[data-error-row]');
+      if (!row) {
+        return;
+      }
+      openDetail(row.getAttribute('data-error-id'));
+    });
+    prevBtn.addEventListener('click', function () {
+      state.offset = Math.max(0, state.offset - state.limit);
+      loadPage();
+    });
+    nextBtn.addEventListener('click', function () {
+      state.offset += state.limit;
+      loadPage();
+    });
+    refreshBtn.addEventListener('click', function () {
+      loadPage();
+    });
+    detailClose.addEventListener('click', function () { detailOverlay.hidden = true; });
+    detailOverlay.addEventListener('click', function (e) {
+      if (e.target === detailOverlay) {
+        detailOverlay.hidden = true;
+      }
+    });
+    copyBtn.addEventListener('click', async function () {
+      if (!state.selected) {
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(state.selected, null, 2));
+      } catch (err) {
+        // ignore
+      }
+    });
+    loadPage();
+  }
+
   function initSetupPage() {
     const container = document.getElementById('setup-cameras');
     if (!container) {
@@ -393,71 +728,77 @@
       'ui.preview_disabled_interval_s',
       'ui.preview_max_active',
     ];
-
     const wizard = document.getElementById('camera-setup-wizard');
-    const wizardState = {
-      cameraKey: '',
-      viewId: '',
-      profile: null,
-      currentView: null,
-      currentStep: 1,
-    };
+    const wizardOverlay = document.getElementById('wizard-overlay');
+    const globalStatusEl = document.getElementById('settings-status');
+    const cameraStatusEl = document.getElementById('camera-save-status');
+    const globalDirtyBadge = document.getElementById('unsaved-indicator');
+    const cameraDirtyBadge = document.getElementById('camera-unsaved-indicator');
+    let serverUnsavedChanges = false;
+    const settingsBaseline = {};
+    const cameraDirty = {};
+
+    const wizardState = { cameraKey: '', viewId: '', profile: null, currentView: null, currentStep: 1 };
+
+    function qs(id) {
+      return document.getElementById(id);
+    }
 
     function fieldValue(id) {
-      const input = document.getElementById(id);
+      const input = qs(id);
       if (!input) {
         return '';
       }
-      if (input.type === 'checkbox') {
-        return input.checked;
-      }
-      return input.value;
+      return input.type === 'checkbox' ? input.checked : input.value;
     }
 
     function setFieldValue(id, value) {
-      const input = document.getElementById(id);
+      const input = qs(id);
       if (!input) {
         return;
       }
       if (input.type === 'checkbox') {
         input.checked = value === true || value === '1' || String(value).toLowerCase() === 'true';
-        return;
+      } else {
+        input.value = value ?? '';
       }
-      input.value = value ?? '';
     }
 
     function collectSettingsPayload() {
       const payload = {};
-      settingKeys.forEach((key) => {
-        payload[key] = fieldValue('setting-' + key);
-      });
+      settingKeys.forEach((key) => { payload[key] = fieldValue('setting-' + key); });
       return payload;
     }
 
-    function setUnsavedIndicator(hasUnsaved) {
-      const badge = document.getElementById('unsaved-indicator');
-      if (!badge) {
-        return;
-      }
-      badge.textContent = hasUnsaved ? 'Unsaved runtime changes' : 'No runtime-only changes';
-      badge.classList.toggle('warn', hasUnsaved);
-    }
-
-    async function loadSettings() {
-      const resp = await fetch('/api/admin/settings', { credentials: 'same-origin' });
-      if (!resp.ok) {
-        return;
-      }
-      const data = await resp.json();
-      const values = data.runtime || {};
+    function refreshGlobalDirtyBadge() {
+      let localDirty = false;
       settingKeys.forEach((key) => {
-        setFieldValue('setting-' + key, values[key] ?? '');
+        const current = fieldValue('setting-' + key);
+        const baseline = settingsBaseline[key];
+        if (String(current) !== String(baseline)) {
+          localDirty = true;
+        }
       });
-      setUnsavedIndicator(Boolean(data.unsaved_changes));
+      const hasUnsaved = localDirty || serverUnsavedChanges;
+      globalDirtyBadge.textContent = hasUnsaved ? 'Unsaved global changes' : 'No unsaved global changes';
+      globalDirtyBadge.classList.toggle('warn', hasUnsaved);
     }
 
-    function qs(id) {
-      return document.getElementById(id);
+    function refreshCameraDirtyBadge() {
+      const localDirty = Object.keys(cameraDirty).some((key) => cameraDirty[key]);
+      const hasUnsaved = localDirty || serverUnsavedChanges;
+      cameraDirtyBadge.textContent = hasUnsaved ? 'Unsaved camera changes' : 'No unsaved camera changes';
+      cameraDirtyBadge.classList.toggle('warn', hasUnsaved);
+    }
+
+    function wizardSetDeliveryFocus(values) {
+      const current = Array.isArray(values) ? values : [];
+      ['package', 'food', 'grocery'].forEach((key) => {
+        const node = qs('wizard-delivery-focus-' + key);
+        if (node) {
+          node.checked = current.indexOf(key) >= 0;
+        }
+      });
     }
 
     function wizardDeliveryFocusFromInput() {
@@ -470,15 +811,55 @@
       });
     }
 
-    function wizardSetDeliveryFocus(values) {
-      const current = Array.isArray(values) ? values : [];
-      ['package', 'food', 'grocery'].forEach((key) => {
-        const node = qs('wizard-delivery-focus-' + key);
-        if (!node) {
-          return;
-        }
-        node.checked = current.indexOf(key) >= 0;
-      });
+    function wizardProfileMissingRequired() {
+      const missing = [];
+      if (!qs('wizard-profile-environment').value) {
+        missing.push('environment');
+      }
+      if (!qs('wizard-profile-purpose').value) {
+        missing.push('purpose');
+      }
+      if (!qs('wizard-profile-view-type').value) {
+        missing.push('view_type');
+      }
+      if (!String(qs('wizard-profile-mounting-location').value || '').trim()) {
+        missing.push('mounting_location');
+      }
+      return missing;
+    }
+
+    function wizardViewPayload() {
+      return {
+        label: String(qs('wizard-view-label').value || '').trim() || wizardState.viewId,
+        ha_preset_id: String(qs('wizard-view-ha-preset-id').value || '').trim() || null,
+        context_summary: String(qs('wizard-context-summary').value || '').trim() || null,
+        expected_activity: String(qs('wizard-context-activity').value || '').split(',').map((item) => item.trim()).filter(Boolean),
+        zones: (function () {
+          const raw = String(qs('wizard-context-zones').value || '').trim();
+          if (!raw) {
+            return [];
+          }
+          try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch (err) {
+            return [];
+          }
+        })(),
+        focus_notes: String(qs('wizard-context-focus-notes').value || '').trim() || null,
+      };
+    }
+
+    function wizardProfilePayload() {
+      return {
+        environment: qs('wizard-profile-environment').value || null,
+        purpose: qs('wizard-profile-purpose').value || null,
+        view_type: qs('wizard-profile-view-type').value || null,
+        mounting_location: String(qs('wizard-profile-mounting-location').value || '').trim() || null,
+        view_notes: String(qs('wizard-profile-view-notes').value || '').trim() || null,
+        delivery_focus: wizardDeliveryFocusFromInput(),
+        default_view_id: String(qs('wizard-profile-default-view-id').value || '').trim() || null,
+      };
     }
 
     function wizardSyncDeliveryFocusVisibility() {
@@ -517,60 +898,6 @@
       select.value = selectedValue;
     }
 
-    function wizardProfilePayload() {
-      return {
-        environment: qs('wizard-profile-environment').value || null,
-        purpose: qs('wizard-profile-purpose').value || null,
-        view_type: qs('wizard-profile-view-type').value || null,
-        mounting_location: String(qs('wizard-profile-mounting-location').value || '').trim() || null,
-        view_notes: String(qs('wizard-profile-view-notes').value || '').trim() || null,
-        delivery_focus: wizardDeliveryFocusFromInput(),
-        default_view_id: String(qs('wizard-profile-default-view-id').value || '').trim() || null,
-      };
-    }
-
-    function wizardProfileMissingRequired() {
-      const missing = [];
-      if (!qs('wizard-profile-environment').value) {
-        missing.push('environment');
-      }
-      if (!qs('wizard-profile-purpose').value) {
-        missing.push('purpose');
-      }
-      if (!qs('wizard-profile-view-type').value) {
-        missing.push('view_type');
-      }
-      if (!String(qs('wizard-profile-mounting-location').value || '').trim()) {
-        missing.push('mounting_location');
-      }
-      return missing;
-    }
-
-    function wizardViewPayload() {
-      return {
-        label: String(qs('wizard-view-label').value || '').trim() || wizardState.viewId,
-        ha_preset_id: String(qs('wizard-view-ha-preset-id').value || '').trim() || null,
-        context_summary: String(qs('wizard-context-summary').value || '').trim() || null,
-        expected_activity: String(qs('wizard-context-activity').value || '')
-          .split(',')
-          .map((item) => item.trim())
-          .filter((item) => Boolean(item)),
-        zones: (function () {
-          const raw = String(qs('wizard-context-zones').value || '').trim();
-          if (!raw) {
-            return [];
-          }
-          try {
-            const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? parsed : [];
-          } catch (err) {
-            return [];
-          }
-        })(),
-        focus_notes: String(qs('wizard-context-focus-notes').value || '').trim() || null,
-      };
-    }
-
     function applyWizardProfile(profile) {
       qs('wizard-profile-environment').value = profile.environment || '';
       qs('wizard-profile-purpose').value = profile.purpose || '';
@@ -588,9 +915,7 @@
       qs('wizard-view-id').value = view.view_id || '';
       qs('wizard-view-label').value = view.label || '';
       qs('wizard-view-ha-preset-id').value = view.ha_preset_id || '';
-      qs('wizard-snapshot-path').textContent = view.setup_snapshot_path
-        ? 'Snapshot: ' + view.setup_snapshot_path
-        : 'No setup snapshot captured yet.';
+      qs('wizard-snapshot-path').textContent = view.setup_snapshot_path ? ('Snapshot: ' + view.setup_snapshot_path) : 'No setup snapshot captured yet.';
       qs('wizard-context-summary').value = view.context_summary || '';
       qs('wizard-context-activity').value = (view.expected_activity || []).join(',');
       qs('wizard-context-zones').value = JSON.stringify(view.zones || [], null, 2);
@@ -598,28 +923,98 @@
       qs('wizard-view-meta').textContent = 'Loaded view: ' + (view.view_id || '—');
     }
 
+    function refreshWizardNav() {
+      const backBtn = qs('wizard-back-btn');
+      const nextBtn = qs('wizard-next-btn');
+      const step = wizardState.currentStep;
+      backBtn.disabled = step <= 1;
+      nextBtn.style.display = step >= 7 ? 'none' : '';
+      if (step === 1) {
+        nextBtn.disabled = !wizardState.cameraKey;
+      } else if (step === 3) {
+        nextBtn.disabled = wizardProfileMissingRequired().length > 0;
+      } else if (step === 4) {
+        nextBtn.disabled = !String(qs('wizard-view-id').value || '').trim();
+      } else {
+        nextBtn.disabled = false;
+      }
+    }
+
     function setWizardStep(step) {
-      wizardState.currentStep = step;
+      wizardState.currentStep = Math.max(1, Math.min(7, step));
       Array.from(wizard.querySelectorAll('[data-step-panel]')).forEach((panel) => {
-        const panelStep = Number(panel.getAttribute('data-step-panel') || '0');
-        panel.classList.toggle('is-active', panelStep === step);
+        panel.classList.toggle('is-active', Number(panel.getAttribute('data-step-panel') || '0') === wizardState.currentStep);
       });
       Array.from(wizard.querySelectorAll('[data-step-btn]')).forEach((button) => {
-        const buttonStep = Number(button.getAttribute('data-step-btn') || '0');
-        button.classList.toggle('primary', buttonStep === step);
+        button.classList.toggle('primary', Number(button.getAttribute('data-step-btn') || '0') === wizardState.currentStep);
       });
+      refreshWizardNav();
+    }
+
+    async function loadSettings() {
+      const resp = await fetch('/api/admin/settings', { credentials: 'same-origin' });
+      if (!resp.ok) {
+        globalStatusEl.textContent = 'Failed loading global settings.';
+        return;
+      }
+      const data = await resp.json();
+      const values = data.runtime || {};
+      settingKeys.forEach((key) => {
+        const value = values[key] ?? '';
+        setFieldValue('setting-' + key, value);
+        settingsBaseline[key] = String(fieldValue('setting-' + key));
+      });
+      serverUnsavedChanges = Boolean(data.unsaved_changes);
+      refreshGlobalDirtyBadge();
+      refreshCameraDirtyBadge();
+    }
+
+    async function wizardLoadProfile() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      const resp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/profile', { credentials: 'same-origin' });
+      if (!resp.ok) {
+        return;
+      }
+      const profile = await resp.json();
+      wizardState.profile = profile;
+      applyWizardProfile(profile);
+      qs('wizard-camera-meta').textContent = 'Camera: ' + wizardState.cameraKey + ' • env=' + (profile.environment || '—') + ' • purpose=' + (profile.purpose || '—');
+      if (!wizardState.viewId) {
+        wizardState.viewId = profile.default_view_id || 'default';
+      }
+      qs('wizard-view-id').value = wizardState.viewId;
+      refreshWizardNav();
+    }
+
+    async function wizardLoadViews() {
+      if (!wizardState.cameraKey) {
+        return;
+      }
+      const resp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views', { credentials: 'same-origin' });
+      if (!resp.ok) {
+        return;
+      }
+      const data = await resp.json();
+      const items = data.items || [];
+      wizardRefreshDefaultViewOptions(items, wizardState.profile && wizardState.profile.default_view_id);
+      if (!wizardState.viewId) {
+        wizardState.viewId = items.length ? items[0].view_id : 'default';
+        qs('wizard-view-id').value = wizardState.viewId;
+      }
+      const view = items.find((item) => item.view_id === wizardState.viewId);
+      if (view) {
+        wizardState.currentView = view;
+        applyWizardView(view);
+      }
     }
 
     async function wizardLoadCameras() {
       const select = qs('wizard-camera');
       const resp = await fetch('/api/admin/cameras', { credentials: 'same-origin' });
       if (!resp.ok) {
-        const meta = qs('wizard-camera-meta');
-        if (meta) {
-          meta.textContent = resp.status === 401
-            ? 'Admin session expired. Please log in again.'
-            : 'Failed loading cameras for setup.';
-        }
+        qs('wizard-camera-meta').textContent = resp.status === 401 ? 'Admin session expired. Please log in again.' : 'Failed loading cameras for setup.';
         return;
       }
       const data = await resp.json();
@@ -640,103 +1035,32 @@
       await wizardRefreshPreview();
     }
 
-    async function wizardLoadProfile() {
-      if (!wizardState.cameraKey) {
-        return;
-      }
-      const resp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/profile', {
-        credentials: 'same-origin',
-      });
-      if (!resp.ok) {
-        return;
-      }
-      const profile = await resp.json();
-      wizardState.profile = profile;
-      applyWizardProfile(profile);
-      qs('wizard-camera-meta').textContent =
-        'Camera: ' + wizardState.cameraKey +
-        ' • env=' + (profile.environment || '—') +
-        ' • purpose=' + (profile.purpose || '—');
-      if (!wizardState.viewId) {
-        wizardState.viewId = profile.default_view_id || 'default';
-      }
-      qs('wizard-view-id').value = wizardState.viewId;
-    }
-
-    async function wizardLoadViews() {
-      if (!wizardState.cameraKey) {
-        return;
-      }
-      const resp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views', {
-        credentials: 'same-origin',
-      });
-      if (!resp.ok) {
-        return;
-      }
-      const data = await resp.json();
-      const items = data.items || [];
-      wizardRefreshDefaultViewOptions(items, wizardState.profile && wizardState.profile.default_view_id);
-      if (!wizardState.viewId) {
-        wizardState.viewId = items.length ? items[0].view_id : 'default';
-        qs('wizard-view-id').value = wizardState.viewId;
-      }
-      const view = items.find((item) => item.view_id === wizardState.viewId);
-      if (view) {
-        wizardState.currentView = view;
-        applyWizardView(view);
-      }
-    }
-
     async function wizardLoadViewById() {
-      if (!wizardState.cameraKey) {
-        return;
-      }
       wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
-      const resp = await fetch(
-        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views',
-        { credentials: 'same-origin' }
-      );
-      if (!resp.ok) {
-        return;
-      }
-      const data = await resp.json();
-      const items = data.items || [];
-      wizardRefreshDefaultViewOptions(items, qs('wizard-profile-default-view-id').value);
-      const view = items.find((item) => item.view_id === wizardState.viewId);
-      if (view) {
-        wizardState.currentView = view;
-        applyWizardView(view);
-      } else {
-        qs('wizard-view-label').value = wizardState.viewId;
-        qs('wizard-view-ha-preset-id').value = '';
-        qs('wizard-view-meta').textContent = 'View not found. New view will be created on save.';
-      }
+      await wizardLoadViews();
+      refreshWizardNav();
     }
 
     async function wizardSaveView() {
       if (!wizardState.cameraKey) {
-        return;
+        return false;
       }
       wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
-      const payload = wizardViewPayload();
-      const resp = await fetch(
-        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' + encodeURIComponent(wizardState.viewId),
-        {
-          method: 'PUT',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
-        }
-      );
+      const resp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' + encodeURIComponent(wizardState.viewId), {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(wizardViewPayload()),
+      });
       if (!resp.ok) {
         qs('wizard-view-meta').textContent = 'Failed to save view.';
-        return;
+        return false;
       }
       const view = await resp.json();
       wizardState.currentView = view;
       applyWizardView(view);
       qs('wizard-view-meta').textContent = 'Saved view: ' + wizardState.viewId;
-      await wizardLoadViews();
+      return true;
     }
 
     async function wizardRefreshPreview() {
@@ -745,70 +1069,42 @@
       }
       const img = qs('wizard-preview-image');
       img.src = '/api/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/preview.jpg?ts=' + String(nowTs());
+      img.onload = function () {
+        qs('wizard-preview-meta').textContent = 'Preview updated.';
+      };
+      img.onerror = function () {
+        qs('wizard-preview-meta').textContent = 'No preview';
+      };
     }
 
     async function wizardCaptureSnapshot() {
-      if (!wizardState.cameraKey) {
-        return;
-      }
       wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
-      const resp = await fetch(
-        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' +
-          encodeURIComponent(wizardState.viewId) + '/setup/snapshot',
-        {
-          method: 'POST',
-          credentials: 'same-origin',
-        }
-      );
+      const resp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' + encodeURIComponent(wizardState.viewId) + '/setup/snapshot', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
       if (!resp.ok) {
-        let detail = '';
-        try {
-          const payload = await resp.json();
-          detail = payload && payload.detail ? String(payload.detail) : '';
-        } catch (err) {
-          detail = '';
-        }
-        qs('wizard-snapshot-path').textContent = detail
-          ? 'Failed capturing setup snapshot: ' + detail
-          : 'Failed capturing setup snapshot.';
+        qs('wizard-snapshot-path').textContent = 'Snapshot capture unavailable (coming soon).';
         return;
       }
       const data = await resp.json();
       qs('wizard-snapshot-path').textContent = 'Snapshot: ' + (data.snapshot_path || 'saved');
       if (data.view) {
-        wizardState.currentView = data.view;
         applyWizardView(data.view);
       }
-      await wizardRefreshPreview();
     }
 
     async function wizardGenerateContext() {
-      if (!wizardState.cameraKey) {
-        qs('wizard-save-status').textContent = 'No camera selected. Reload setup or log in again.';
-        return;
-      }
       const generateBtn = qs('wizard-generate-context');
-      const statusEl = qs('wizard-save-status');
-      if (generateBtn) {
-        generateBtn.disabled = true;
-        generateBtn.textContent = 'Generating...';
-      }
-      if (statusEl) {
-        statusEl.textContent = 'Generating context...';
-      }
+      generateBtn.disabled = true;
       const missing = wizardProfileMissingRequired();
       if (missing.length) {
-        if (statusEl) {
-          statusEl.textContent = 'Missing required profile fields: ' + missing.join(', ');
-        }
-        if (generateBtn) {
-          generateBtn.disabled = false;
-          generateBtn.textContent = 'Generate context';
-        }
-        return;
+        qs('wizard-save-status').textContent = 'Missing required profile fields: ' + missing.join(', ');
+        generateBtn.disabled = false;
+        return false;
       }
       wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
-      const payload = {
+      const contextPayload = {
         environment: qs('wizard-profile-environment').value || 'outdoor',
         purpose: qs('wizard-profile-purpose').value || 'general',
         view_type: qs('wizard-profile-view-type').value || 'fixed',
@@ -816,102 +1112,86 @@
         view_notes: String(qs('wizard-profile-view-notes').value || '').trim() || null,
         delivery_focus: wizardDeliveryFocusFromInput(),
       };
-      try {
-        const resp = await fetch(
-          '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' +
-            encodeURIComponent(wizardState.viewId) + '/setup/generate_context',
-          {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(payload),
-          }
-        );
-        if (!resp.ok) {
-          let detail = '';
-          try {
-            const payload = await resp.json();
-            detail = payload && payload.detail ? String(payload.detail) : '';
-          } catch (err) {
-            detail = '';
-          }
-          qs('wizard-save-status').textContent = detail
-            ? ('Context generation failed: ' + detail)
-            : 'Context generation failed.';
-          return;
-        }
-        const data = await resp.json();
-        if (data.profile) {
-          wizardState.profile = data.profile;
-          applyWizardProfile(data.profile);
-        }
-        if (data.view) {
-          wizardState.currentView = data.view;
-          applyWizardView(data.view);
-        }
-        qs('wizard-save-status').textContent = 'Context generated.';
-      } catch (err) {
-        qs('wizard-save-status').textContent =
-          'Context generation failed: ' + (err && err.message ? err.message : 'network error');
-      } finally {
-        if (generateBtn) {
-          generateBtn.disabled = false;
-          generateBtn.textContent = 'Generate context';
-        }
+      const resp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/views/' + encodeURIComponent(wizardState.viewId) + '/setup/generate_context', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(contextPayload),
+      });
+      if (!resp.ok) {
+        qs('wizard-save-status').textContent = 'Context generation unavailable (coming soon).';
+        generateBtn.disabled = false;
+        return false;
       }
+      const data = await resp.json();
+      if (data.profile) {
+        wizardState.profile = data.profile;
+        applyWizardProfile(data.profile);
+      }
+      if (data.view) {
+        wizardState.currentView = data.view;
+        applyWizardView(data.view);
+      }
+      qs('wizard-save-status').textContent = 'Context generated.';
+      generateBtn.disabled = false;
+      return true;
     }
 
     async function wizardSaveAll() {
-      if (!wizardState.cameraKey) {
-        return;
-      }
       const missing = wizardProfileMissingRequired();
       if (missing.length) {
-        qs('wizard-save-status').textContent =
-          'Missing required profile fields: ' + missing.join(', ');
+        qs('wizard-save-status').textContent = 'Missing required profile fields: ' + missing.join(', ');
         return;
       }
       wizardState.viewId = String(qs('wizard-view-id').value || '').trim() || 'default';
-      const profileResp = await fetch(
-        '/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/profile',
-        {
-          method: 'PUT',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(wizardProfilePayload()),
-        }
-      );
+      const profileResp = await fetch('/api/admin/cameras/' + encodeURIComponent(wizardState.cameraKey) + '/profile', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(wizardProfilePayload()),
+      });
       if (!profileResp.ok) {
         qs('wizard-save-status').textContent = 'Profile save failed.';
         return;
       }
-      await wizardSaveView();
-      const profile = await profileResp.json();
-      wizardState.profile = profile;
+      const savedView = await wizardSaveView();
+      if (!savedView) {
+        qs('wizard-save-status').textContent = 'View save failed.';
+        return;
+      }
       qs('wizard-save-status').textContent = 'Setup saved.';
     }
 
-    function cameraCard(camera) {
+    function payloadFromCameraCard(card) {
+      const payload = {};
+      card.querySelectorAll('[data-field]').forEach((input) => {
+        const key = input.getAttribute('data-field');
+        let value = input.type === 'checkbox' ? input.checked : input.value;
+        if (key === 'display_name' || key === 'prompt_preset' || key === 'vision_detail') {
+          value = String(value).trim();
+        }
+        if (['confidence_threshold', 'cooldown_s', 'phash_threshold', 'updates_per_event'].indexOf(key) >= 0 && value !== '') {
+          value = Number(value);
+        }
+        if ((key === 'confidence_threshold' || key === 'cooldown_s' || key === 'phash_threshold' || key === 'vision_detail' || key === 'prompt_preset') && value === '') {
+          return;
+        }
+        payload[key] = value;
+      });
+      return payload;
+    }
+
+    function renderCameraCard(camera) {
       const root = document.createElement('div');
       root.className = 'card';
-      const setupCompleted = Boolean(camera.setup_completed);
-      const setupLabel = setupCompleted ? 'Setup complete' : 'Needs setup';
-      const confidenceValue =
-        camera.confidence_threshold === null || camera.confidence_threshold === undefined
-          ? ''
-          : String(camera.confidence_threshold);
-      const cooldownValue =
-        camera.cooldown_s === null || camera.cooldown_s === undefined ? '' : String(camera.cooldown_s);
-      const phashValue =
-        camera.phash_threshold === null || camera.phash_threshold === undefined
-          ? ''
-          : String(camera.phash_threshold);
-      const updatesValue =
-        camera.updates_per_event === null || camera.updates_per_event === undefined
-          ? ''
-          : String(camera.updates_per_event);
+      root.setAttribute('data-camera-key', camera.camera_key);
+      const setupLabel = camera.setup_completed ? 'Setup complete' : 'Needs setup';
+      const confidenceValue = camera.confidence_threshold === null || camera.confidence_threshold === undefined ? '' : String(camera.confidence_threshold);
+      const cooldownValue = camera.cooldown_s === null || camera.cooldown_s === undefined ? '' : String(camera.cooldown_s);
+      const phashValue = camera.phash_threshold === null || camera.phash_threshold === undefined ? '' : String(camera.phash_threshold);
+      const updatesValue = camera.updates_per_event === null || camera.updates_per_event === undefined ? '' : String(camera.updates_per_event);
       root.innerHTML =
-        '<div class="row"><strong>' + (camera.display_name || camera.camera_key) + '</strong><span class="sub">' + camera.camera_key + ' • ' + setupLabel + '</span></div>' +
+        '<div class="row"><strong>' + (camera.display_name || camera.camera_key) + '</strong><span class="sub">' + camera.camera_key + ' • ' + setupLabel + '</span><span class="pill" data-camera-dirty>Saved</span></div>' +
         '<div class="form-grid" style="margin-top:10px;">' +
         '<label class="field-label">Display name</label><input class="field" data-field="display_name" value="' + (camera.display_name || '') + '">' +
         '<label class="field-label">Enabled</label><label class="toggle"><input type="checkbox" data-field="enabled"' + (camera.enabled ? ' checked' : '') + '><span>Process events for this camera</span></label>' +
@@ -932,71 +1212,90 @@
       return root;
     }
 
-    function payloadFromCameraCard(card) {
-      const payload = {};
-      card.querySelectorAll('[data-field]').forEach((input) => {
-        const key = input.getAttribute('data-field');
-        let value;
-        if (input.type === 'checkbox') {
-          value = input.checked;
-        } else {
-          value = input.value;
-        }
-        if (key === 'display_name' || key === 'prompt_preset' || key === 'vision_detail') {
-          value = String(value).trim();
-        }
-        if (['confidence_threshold', 'cooldown_s', 'phash_threshold', 'updates_per_event'].indexOf(key) >= 0 && value !== '') {
-          value = Number(value);
-        }
-        if ((key === 'confidence_threshold' || key === 'cooldown_s' || key === 'phash_threshold' || key === 'vision_detail' || key === 'prompt_preset') && value === '') {
-          return;
-        }
-        payload[key] = value;
-      });
-      return payload;
+    function setCameraCardDirty(card, dirty) {
+      const key = card.getAttribute('data-camera-key');
+      cameraDirty[key] = Boolean(dirty);
+      const badge = card.querySelector('[data-camera-dirty]');
+      badge.textContent = dirty ? 'Unsaved' : 'Saved';
+      badge.classList.toggle('warn', Boolean(dirty));
+      refreshCameraDirtyBadge();
     }
 
     async function loadCameras() {
       const resp = await fetch('/api/admin/cameras', { credentials: 'same-origin' });
       if (!resp.ok) {
+        cameraStatusEl.textContent = 'Failed loading cameras.';
         return;
       }
       const data = await resp.json();
       container.innerHTML = '';
       (data.items || []).forEach((camera) => {
-        const card = cameraCard(camera);
+        const card = renderCameraCard(camera);
         container.appendChild(card);
+        setCameraCardDirty(card, false);
+        card.querySelectorAll('[data-field]').forEach((input) => {
+          input.addEventListener('change', function () {
+            setCameraCardDirty(card, true);
+          });
+          input.addEventListener('input', function () {
+            setCameraCardDirty(card, true);
+          });
+        });
         card.querySelector('[data-action="apply"]').addEventListener('click', async function (e) {
           e.preventDefault();
           const payload = payloadFromCameraCard(card);
-          await fetch('/api/admin/cameras/' + encodeURIComponent(camera.camera_key) + '/apply', {
+          const result = await fetch('/api/admin/cameras/' + encodeURIComponent(camera.camera_key) + '/apply', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(payload),
           });
-          setUnsavedIndicator(true);
-          await loadCameras();
+          if (result.ok) {
+            cameraStatusEl.textContent = 'Applied runtime changes for ' + camera.camera_key + '.';
+            setCameraCardDirty(card, false);
+            serverUnsavedChanges = true;
+            refreshGlobalDirtyBadge();
+            refreshCameraDirtyBadge();
+          } else {
+            cameraStatusEl.textContent = 'Failed applying runtime changes.';
+          }
         });
         card.querySelector('[data-action="save"]').addEventListener('click', async function (e) {
           e.preventDefault();
           const payload = payloadFromCameraCard(card);
-          const saveResp = await fetch('/api/admin/cameras/' + encodeURIComponent(camera.camera_key) + '/save', {
+          const result = await fetch('/api/admin/cameras/' + encodeURIComponent(camera.camera_key) + '/save', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(payload),
           });
-          if (saveResp.ok) {
-            setUnsavedIndicator(false);
+          if (result.ok) {
+            cameraStatusEl.textContent = 'Saved camera config for ' + camera.camera_key + '.';
+            setCameraCardDirty(card, false);
+            const savedData = await result.json();
+            serverUnsavedChanges = Boolean(savedData.unsaved_changes);
+            refreshGlobalDirtyBadge();
+            refreshCameraDirtyBadge();
+          } else {
+            cameraStatusEl.textContent = 'Failed saving camera config.';
           }
-          await loadCameras();
         });
       });
-      setUnsavedIndicator(Boolean(data.unsaved_changes));
+      serverUnsavedChanges = Boolean(data.unsaved_changes);
+      refreshGlobalDirtyBadge();
+      refreshCameraDirtyBadge();
     }
 
-    document.getElementById('settings-apply').addEventListener('click', async function (e) {
+    settingKeys.forEach((key) => {
+      const input = qs('setting-' + key);
+      if (!input) {
+        return;
+      }
+      input.addEventListener('change', refreshGlobalDirtyBadge);
+      input.addEventListener('input', refreshGlobalDirtyBadge);
+    });
+
+    qs('settings-apply').addEventListener('click', async function (e) {
       e.preventDefault();
       const resp = await fetch('/api/admin/settings/apply', {
         method: 'POST',
@@ -1006,11 +1305,16 @@
       });
       if (resp.ok) {
         const data = await resp.json();
-        setUnsavedIndicator(Boolean(data.unsaved_changes));
+        serverUnsavedChanges = Boolean(data.unsaved_changes);
+        globalStatusEl.textContent = 'Applied runtime settings.';
+      } else {
+        globalStatusEl.textContent = 'Failed applying runtime settings.';
       }
+      refreshGlobalDirtyBadge();
+      refreshCameraDirtyBadge();
     });
 
-    document.getElementById('settings-save').addEventListener('click', async function (e) {
+    qs('settings-save').addEventListener('click', async function (e) {
       e.preventDefault();
       const resp = await fetch('/api/admin/settings/save', {
         method: 'POST',
@@ -1020,7 +1324,27 @@
       });
       if (resp.ok) {
         const data = await resp.json();
-        setUnsavedIndicator(Boolean(data.unsaved_changes));
+        serverUnsavedChanges = Boolean(data.unsaved_changes);
+        settingKeys.forEach((key) => {
+          settingsBaseline[key] = String(fieldValue('setting-' + key));
+        });
+        globalStatusEl.textContent = 'Saved global settings.';
+      } else {
+        globalStatusEl.textContent = 'Failed saving global settings.';
+      }
+      refreshGlobalDirtyBadge();
+      refreshCameraDirtyBadge();
+    });
+
+    qs('wizard-open-modal').addEventListener('click', function () {
+      wizardOverlay.hidden = false;
+    });
+    qs('wizard-close-modal').addEventListener('click', function () {
+      wizardOverlay.hidden = true;
+    });
+    wizardOverlay.addEventListener('click', function (e) {
+      if (e.target === wizardOverlay) {
+        wizardOverlay.hidden = true;
       }
     });
 
@@ -1028,9 +1352,29 @@
       Array.from(wizard.querySelectorAll('[data-step-btn]')).forEach((button) => {
         button.addEventListener('click', function (e) {
           e.preventDefault();
-          const step = Number(button.getAttribute('data-step-btn') || '1');
-          setWizardStep(step);
+          setWizardStep(Number(button.getAttribute('data-step-btn') || '1'));
         });
+      });
+      qs('wizard-back-btn').addEventListener('click', function () {
+        setWizardStep(wizardState.currentStep - 1);
+      });
+      qs('wizard-next-btn').addEventListener('click', async function () {
+        if (wizardState.currentStep === 4) {
+          const saved = await wizardSaveView();
+          if (!saved) {
+            return;
+          }
+        }
+        if (wizardState.currentStep === 5) {
+          await wizardCaptureSnapshot();
+        }
+        if (wizardState.currentStep === 6) {
+          const generated = await wizardGenerateContext();
+          if (!generated) {
+            return;
+          }
+        }
+        setWizardStep(wizardState.currentStep + 1);
       });
       qs('wizard-camera').addEventListener('change', async function () {
         wizardState.cameraKey = qs('wizard-camera').value;
@@ -1038,34 +1382,25 @@
         await wizardLoadProfile();
         await wizardLoadViews();
         await wizardRefreshPreview();
+        refreshWizardNav();
       });
-      qs('wizard-view-load').addEventListener('click', async function (e) {
-        e.preventDefault();
-        await wizardLoadViewById();
-      });
-      qs('wizard-view-save').addEventListener('click', async function (e) {
-        e.preventDefault();
-        await wizardSaveView();
-      });
-      qs('wizard-profile-purpose').addEventListener('change', function () {
-        wizardSyncDeliveryFocusVisibility();
-      });
-      qs('wizard-refresh-preview').addEventListener('click', async function (e) {
-        e.preventDefault();
-        await wizardRefreshPreview();
-      });
-      qs('wizard-capture-snapshot').addEventListener('click', async function (e) {
-        e.preventDefault();
-        await wizardCaptureSnapshot();
-      });
-      qs('wizard-generate-context').addEventListener('click', async function (e) {
-        e.preventDefault();
-        await wizardGenerateContext();
-      });
-      qs('wizard-save-all').addEventListener('click', async function (e) {
-        e.preventDefault();
-        await wizardSaveAll();
-      });
+      qs('wizard-view-load').addEventListener('click', async function (e) { e.preventDefault(); await wizardLoadViewById(); });
+      qs('wizard-view-save').addEventListener('click', async function (e) { e.preventDefault(); await wizardSaveView(); });
+      qs('wizard-refresh-preview').addEventListener('click', async function (e) { e.preventDefault(); await wizardRefreshPreview(); });
+      qs('wizard-capture-snapshot').addEventListener('click', async function (e) { e.preventDefault(); await wizardCaptureSnapshot(); });
+      qs('wizard-generate-context').addEventListener('click', async function (e) { e.preventDefault(); await wizardGenerateContext(); });
+      qs('wizard-save-all').addEventListener('click', async function (e) { e.preventDefault(); await wizardSaveAll(); });
+      ['wizard-profile-environment', 'wizard-profile-purpose', 'wizard-profile-view-type', 'wizard-profile-mounting-location', 'wizard-view-id']
+        .forEach(function (id) {
+          const node = qs(id);
+          if (node) {
+            node.addEventListener('change', function () {
+              wizardSyncDeliveryFocusVisibility();
+              refreshWizardNav();
+            });
+            node.addEventListener('input', refreshWizardNav);
+          }
+        });
       wizardSyncDeliveryFocusVisibility();
       setWizardStep(1);
       wizardLoadCameras();
@@ -1075,11 +1410,18 @@
     loadCameras();
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
+  document.addEventListener('DOMContentLoaded', async function () {
     initEmbeddedMode();
+    const allowed = await guardAdminUiRoute();
+    if (!allowed && ['admin', 'setup', 'events', 'errors'].indexOf(document.body.getAttribute('data-ui-page') || '') >= 0) {
+      return;
+    }
     initGuestTimestamps();
     initGuestKpiRefresh();
     initGuestPreview();
+    initAdminPage();
     initSetupPage();
+    initEventsPage();
+    initErrorsPage();
   });
 })();

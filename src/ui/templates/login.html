@@ -6,7 +6,7 @@
   <title>Login — {{ title }}</title>
   <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
 </head>
-<body>
+<body data-ui-page="login">
   <div class="container">
     <main class="main">
       <div class="topbar">
@@ -27,6 +27,10 @@
           <input class="field" id="username" name="username" type="text" required />
           <label class="field-label" for="password">Password</label>
           <input class="field" id="password" name="password" type="password" required />
+          <label class="toggle" for="remember_me">
+            <input id="remember_me" name="remember_me" type="checkbox" value="1" />
+            <span>Remember me for 30 days</span>
+          </label>
           <button class="btn primary" type="submit">Login</button>
         </form>
       </div>

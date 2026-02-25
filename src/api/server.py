@@ -10,7 +10,7 @@ import os
 import sqlite3
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
@@ -515,15 +515,24 @@ def create_guest_api_app(config: ServiceConfig):
             "cameras": cameras,
         }
 
-    def _set_session_cookie(response: Response, *, username: str, role: str) -> None:
+    def _set_session_cookie(
+        response: Response,
+        *,
+        username: str,
+        role: str,
+        remember_me: bool = False,
+    ) -> None:
         token = session_manager.create_token(username=username, role=role)
+        max_age = 60 * 60 * 24 * 30 if remember_me else None
+        expires = datetime.now(timezone.utc) + timedelta(seconds=max_age) if max_age else None
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=token,
             httponly=SESSION_COOKIE_HTTPONLY,
             samesite=SESSION_COOKIE_SAMESITE,
             secure=SESSION_COOKIE_SECURE,
-            max_age=SESSION_TTL_SECONDS,
+            max_age=max_age,
+            expires=expires,
             path="/",
         )
 
@@ -563,6 +572,7 @@ def create_guest_api_app(config: ServiceConfig):
         form = parse_qs(body, keep_blank_values=True)
         username = str((form.get("username") or [""])[0]).strip()
         password = str((form.get("password") or [""])[0])
+        remember_me = _to_bool((form.get("remember_me") or [""])[0], False)
         ok, role = user_store.authenticate(username=username, password=password)
         if not ok or role is None or role != "admin":
             return templates.TemplateResponse(
@@ -575,7 +585,7 @@ def create_guest_api_app(config: ServiceConfig):
                 status_code=401,
             )
         response = RedirectResponse(url="/ui/admin", status_code=303)
-        _set_session_cookie(response, username=username, role=role)
+        _set_session_cookie(response, username=username, role=role, remember_me=remember_me)
         return response
 
     @app.post("/ui/logout", include_in_schema=False)
@@ -663,10 +673,11 @@ def create_guest_api_app(config: ServiceConfig):
     async def api_auth_login(payload: dict, response: Response):
         username = str(payload.get("username", "")).strip()
         password = str(payload.get("password", ""))
+        remember_me = _to_bool(payload.get("remember_me"), False)
         ok, role = user_store.authenticate(username=username, password=password)
         if not ok or role is None:
             raise HTTPException(status_code=401, detail="invalid credentials")
-        _set_session_cookie(response, username=username, role=role)
+        _set_session_cookie(response, username=username, role=role, remember_me=remember_me)
         return {"ok": True, "role": role}
 
     @app.post("/api/setup/first-run")
@@ -705,12 +716,48 @@ def create_guest_api_app(config: ServiceConfig):
     ):
         principal = _session_principal(session_token)
         if principal is None:
-            return {"authenticated": False}
+            raise HTTPException(status_code=401, detail="not authenticated")
         return {
             "authenticated": True,
             "username": principal.username,
             "role": principal.role,
             "expires_at": principal.expires_at,
+        }
+
+    @app.get("/api/admin/summary")
+    async def api_admin_summary(
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+
+        def _seconds_since(raw_ts: Any) -> int | None:
+            value = str(raw_ts or "").strip()
+            if not value:
+                return None
+            parsed_raw = value.replace("Z", "+00:00")
+            try:
+                parsed = datetime.fromisoformat(parsed_raw)
+            except ValueError:
+                return None
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            seconds = (datetime.now(timezone.utc) - parsed).total_seconds()
+            return max(0, int(seconds))
+
+        status = summary_store.get_status_summary()
+        metrics = summary_store.get_guest_metrics_payload()
+        events = admin_store.list_events(limit=1, offset=0)
+        errors = admin_store.list_errors(limit=1, offset=0)
+        latest_event = (events.get("items") or [{}])[0]
+        heartbeat_ts = status.get("heartbeat_ts") or status.get("timestamp")
+        return {
+            "service_status": str(status.get("service_status", "unknown")),
+            "heartbeat_ts": heartbeat_ts,
+            "heartbeat_age_s": _seconds_since(heartbeat_ts),
+            "queue_depth": int(metrics.get("queue_depth", status.get("queue_depth", 0)) or 0),
+            "last_event_ts": str(latest_event.get("ts") or ""),
+            "events_total": int(events.get("total", 0) or 0),
+            "errors_total": int(errors.get("total", 0) or 0),
         }
 
     @app.get("/api/status")

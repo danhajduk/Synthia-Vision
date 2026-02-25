@@ -6,7 +6,7 @@
   <title>Admin — {{ title }}</title>
   <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
 </head>
-<body>
+<body data-ui-page="admin">
   <div class="container">
     <main class="main">
       <div class="topbar">
@@ -18,13 +18,26 @@
           <a class="btn" href="/ui/setup">Setup</a>
           <a class="btn" href="/ui/events">Events</a>
           <a class="btn" href="/ui/errors">Errors</a>
-          <form method="post" action="/ui/logout"><button class="btn primary" type="submit">Logout</button></form>
+          <button class="btn primary" id="admin-logout" type="button">Logout</button>
         </div>
       </div>
       <div class="content">
-        <div class="card"><h3>Admin Console</h3><div class="sub">Phase 10 scaffold is ready. Continue with full admin pages in next tasks.</div></div>
+        <div class="card">
+          <h3>Admin Console</h3>
+          <div class="sub">Runtime summary</div>
+          <div class="form-grid" style="margin-top:12px;">
+            <label class="field-label">Service status</label><div class="sub mono" id="admin-service-status">—</div>
+            <label class="field-label">Heartbeat age</label><div class="sub mono" id="admin-heartbeat-age">—</div>
+            <label class="field-label">Queue depth</label><div class="sub mono" id="admin-queue-depth">—</div>
+            <label class="field-label">Last event</label><div class="sub mono" id="admin-last-event-ts">—</div>
+            <label class="field-label">Events total</label><div class="sub mono" id="admin-events-total">—</div>
+            <label class="field-label">Errors total</label><div class="sub mono" id="admin-errors-total">—</div>
+          </div>
+          <div class="sub" id="admin-summary-status" style="margin-top:10px;">Loading summary…</div>
+        </div>
       </div>
     </main>
   </div>
+  <script src="{{ request.url_for('ui-static', path='app.js') }}"></script>
 </body>
 </html>

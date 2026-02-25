@@ -1,2 +1,70 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Errors — {{ title }}</title><link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" /></head><body><div class="container"><main class="main"><div class="topbar"><div class="brand"><div class="title">Errors</div><div class="subtitle">Runtime error journal</div></div><a class="btn" href="/ui/admin">Back</a></div><div class="content"><div class="card"><div class="table-wrap"><table class="table"><thead><tr><th>Time</th><th>Component</th><th>Message</th><th>Event</th></tr></thead><tbody>{% for item in errors %}<tr><td>{{ item.ts or '—' }}</td><td>{{ item.component or '—' }}</td><td>{{ item.message or '—' }}</td><td>{{ item.event_id or '—' }}</td></tr>{% endfor %}{% if not errors %}<tr><td colspan="4">No errors.</td></tr>{% endif %}</tbody></table></div></div></div></main></div></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Errors — {{ title }}</title>
+  <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
+</head>
+<body data-ui-page="errors">
+  <div class="container">
+    <main class="main">
+      <div class="topbar">
+        <div class="brand">
+          <div class="title">Errors</div>
+          <div class="subtitle">Runtime error journal</div>
+        </div>
+        <div class="row">
+          <button class="btn" id="errors-refresh" type="button">Refresh</button>
+          <a class="btn" href="/ui/admin">Back</a>
+        </div>
+      </div>
+      <div class="content">
+        <div class="card">
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr><th>Time</th><th>Component</th><th>Message</th><th>Event</th></tr>
+              </thead>
+              <tbody id="errors-table-body">
+                {% for item in errors %}
+                <tr data-error-row data-error-id="{{ item.id }}">
+                  <td>{{ item.ts or '—' }}</td>
+                  <td>{{ item.component or '—' }}</td>
+                  <td>{{ item.message or '—' }}</td>
+                  <td>{{ item.event_id or '—' }}</td>
+                </tr>
+                {% endfor %}
+                {% if not errors %}
+                <tr><td colspan="4">No errors.</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn" id="errors-prev" type="button">Prev</button>
+            <span class="sub mono" id="errors-page-label">Page 1</span>
+            <button class="btn" id="errors-next" type="button">Next</button>
+          </div>
+          <div class="sub" id="errors-status" style="margin-top:8px;">Loading…</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="overlay" id="errors-detail-overlay" hidden>
+    <div class="modal-card">
+      <div class="row">
+        <h3>Error Details</h3>
+        <div class="row">
+          <button class="btn" id="errors-copy-detail" type="button">Copy</button>
+          <button class="btn" id="errors-detail-close" type="button">Close</button>
+        </div>
+      </div>
+      <div class="sub mono" id="errors-detail-title">—</div>
+      <pre class="json-block" id="errors-detail-json">—</pre>
+    </div>
+  </div>
+  <script src="{{ request.url_for('ui-static', path='app.js') }}"></script>
+</body>
+</html>
