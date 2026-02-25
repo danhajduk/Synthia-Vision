@@ -812,6 +812,36 @@ def create_guest_api_app(config: ServiceConfig):
             raise HTTPException(status_code=404, detail="event not found")
         return item
 
+    @app.get("/api/events/{event_id}/snapshot.jpg")
+    async def api_event_snapshot(
+        event_id: str,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        event = admin_store.get_event(event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="event not found")
+        if snapshot_manager is None:
+            raise HTTPException(status_code=503, detail="snapshot service unavailable")
+        try:
+            snapshot = snapshot_manager.fetch_event_snapshot(
+                event_id=event_id,
+                camera=str(event.get("camera", "")).strip() or None,
+            )
+        except Exception as exc:
+            LOGGER.warning(
+                "Failed fetching event snapshot event_id=%s camera=%s error=%s",
+                event_id,
+                event.get("camera"),
+                exc,
+            )
+            raise HTTPException(status_code=502, detail="snapshot fetch failed") from exc
+        return Response(
+            content=snapshot,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.get("/api/cameras")
     async def api_cameras(
         session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
@@ -903,14 +933,19 @@ def create_guest_api_app(config: ServiceConfig):
             updates = _normalize_setting_payload(payload if isinstance(payload, dict) else {})
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if updates:
-            admin_store.upsert_kv_many(updates)
+        persisted_updates = dict(updates)
+        if "policy.defaults.confidence_threshold" in updates:
+            persisted_updates["policy.default_confidence_threshold"] = updates[
+                "policy.defaults.confidence_threshold"
+            ]
+        if persisted_updates:
+            admin_store.upsert_kv_many(persisted_updates)
         runtime_overrides.update(updates)
-        for key in updates:
+        for key in persisted_updates:
             runtime_overrides.pop(key, None)
         return {
             "ok": True,
-            "saved": updates,
+            "saved": persisted_updates,
             "persisted": True,
             **_get_admin_settings(),
         }

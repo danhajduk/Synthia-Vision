@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS events (
   result_status TEXT,
   action TEXT,
   subject_type TEXT,
+  frigate_score REAL,
   confidence REAL,
   description TEXT,
 

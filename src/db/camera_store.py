@@ -303,6 +303,20 @@ class CameraStore:
             )
             conn.commit()
 
+    def get_kv(self, key: str) -> str | None:
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            row = conn.execute(
+                "SELECT v FROM kv WHERE k = ? LIMIT 1",
+                (key,),
+            ).fetchone()
+        if row is None:
+            return None
+        value = row[0]
+        if value is None:
+            return None
+        return str(value)
+
     def get_last_phash(self, camera_key: str) -> str | None:
         with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
             conn.execute("PRAGMA busy_timeout = 5000;")

@@ -130,6 +130,7 @@ class MQTTClient:
         self._confidence_threshold_percent: int = int(
             round(self._config.policy.defaults.confidence_threshold * 100)
         )
+        self._last_confidence_threshold_sync_ts: float = 0.0
         self._process_end_events_by_camera: dict[str, bool] = {}
         self._process_update_events_by_camera: dict[str, bool] = {}
         self._camera_phash_threshold_by_camera: dict[str, int] = {}
@@ -627,6 +628,7 @@ class MQTTClient:
 
     def _evaluate_policy(self, event: FrigateEvent) -> None:
         self._upsert_discovered_camera(event)
+        self._refresh_confidence_threshold_from_kv()
         camera_runtime = self._resolve_camera_runtime_settings(event.camera)
         self._apply_camera_policy_overrides(event.camera, camera_runtime.enabled)
 
@@ -1830,7 +1832,44 @@ class MQTTClient:
                 ),
             }
         controls["camera_event_processing"] = camera_event_processing
+        self._persist_confidence_threshold_to_kv()
         self._save_policy_state()
+
+    def _persist_confidence_threshold_to_kv(self) -> None:
+        normalized = f"{self._confidence_threshold_percent / 100.0:.4f}".rstrip("0").rstrip(".")
+        try:
+            self._camera_store.upsert_kv("policy.defaults.confidence_threshold", normalized)
+            self._camera_store.upsert_kv("policy.default_confidence_threshold", normalized)
+        except Exception as exc:
+            LOGGER.warning("Failed to persist confidence_threshold to kv error=%s", exc)
+
+    def _refresh_confidence_threshold_from_kv(self) -> None:
+        now = time.monotonic()
+        if now - self._last_confidence_threshold_sync_ts < 1.0:
+            return
+        self._last_confidence_threshold_sync_ts = now
+        try:
+            raw = self._camera_store.get_kv("policy.defaults.confidence_threshold")
+            if raw is None:
+                raw = self._camera_store.get_kv("policy.default_confidence_threshold")
+            if raw is None:
+                return
+            parsed = float(raw)
+        except Exception as exc:
+            LOGGER.warning("Failed reading confidence_threshold from kv error=%s", exc)
+            return
+        if parsed > 1.0:
+            parsed = parsed / 100.0
+        parsed = max(0.0, min(1.0, parsed))
+        parsed_percent = int(round(parsed * 100))
+        if parsed_percent == self._confidence_threshold_percent:
+            return
+        self._confidence_threshold_percent = parsed_percent
+        self._config.policy.defaults.confidence_threshold = parsed
+        LOGGER.info(
+            "Runtime confidence_threshold synchronized from kv percent=%s",
+            parsed_percent,
+        )
 
     def _resolve_topic_path(self, dotted_key: str, fallback_suffix: str) -> str:
         node: Any = self._config.topics

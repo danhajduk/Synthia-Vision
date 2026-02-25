@@ -25,6 +25,7 @@ class EventStore:
         result_status: str | None = None,
         action: str | None = None,
         subject_type: str | None = None,
+        frigate_score: float | None = None,
         confidence: float | None = None,
         description: str | None = None,
         snapshot_bytes: int | None = None,
@@ -43,9 +44,9 @@ class EventStore:
                 """
                 INSERT INTO events(
                   event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit,
-                  result_status, action, subject_type, confidence, description,
+                  result_status, action, subject_type, frigate_score, confidence, description,
                   snapshot_bytes, image_width, image_height, vision_detail, created_ts
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(event_id) DO UPDATE SET
                   ts=excluded.ts,
                   camera=excluded.camera,
@@ -57,6 +58,7 @@ class EventStore:
                   result_status=excluded.result_status,
                   action=excluded.action,
                   subject_type=excluded.subject_type,
+                  frigate_score=excluded.frigate_score,
                   confidence=excluded.confidence,
                   description=excluded.description,
                   snapshot_bytes=excluded.snapshot_bytes,
@@ -76,6 +78,7 @@ class EventStore:
                     result_status,
                     action,
                     subject_type,
+                    event.score if frigate_score is None else frigate_score,
                     confidence,
                     description,
                     snapshot_bytes,

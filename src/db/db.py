@@ -211,5 +211,9 @@ class DatabaseBootstrap:
             cur.execute(
                 "UPDATE cameras SET purpose='general' WHERE purpose='other'"
             )
+            event_columns = conn.execute("PRAGMA table_info(events)").fetchall()
+            event_column_names = {str(row[1]) for row in event_columns}
+            if "frigate_score" not in event_column_names:
+                cur.execute("ALTER TABLE events ADD COLUMN frigate_score REAL")
         finally:
             cur.close()

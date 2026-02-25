@@ -533,3 +533,23 @@ body.is-embedded .content {
   text-align: left;
   white-space: nowrap;
 }
+
+.event-media {
+  margin-bottom: 12px;
+}
+
+.event-snapshot-wrap {
+  display: grid;
+  gap: 10px;
+}
+
+.event-snapshot-img {
+  display: block;
+  width: 100%;
+  max-width: 980px;
+  max-height: 70vh;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  object-fit: contain;
+}

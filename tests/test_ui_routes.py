@@ -102,6 +102,20 @@ class UIRouteTests(unittest.TestCase):
         self.assertEqual(admin.status_code, 200)
         self.assertIn("Admin", admin.text)
 
+    def test_event_detail_page_includes_snapshot_image_url(self) -> None:
+        if TestClient is None:
+            self.skipTest("fastapi not installed")
+        client = self._build_client()
+        login = client.post(
+            "/ui/login",
+            data={"username": "admin", "password": "supersecurepass"},
+            follow_redirects=False,
+        )
+        self.assertEqual(login.status_code, 303)
+        detail = client.get("/ui/events/evt-1")
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn("/api/events/evt-1/snapshot.jpg", detail.text)
+
 
 if __name__ == "__main__":
     unittest.main()

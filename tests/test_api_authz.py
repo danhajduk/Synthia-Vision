@@ -22,9 +22,11 @@ from src.api.server import create_guest_api_app
 from src.db import (
     CameraStore,
     DatabaseBootstrap,
+    EventStore,
     db_upsert_camera_view,
 )
 from src.auth.user_store import UserStore
+from src.models import FrigateEvent
 
 
 class APIAuthzTests(unittest.TestCase):
@@ -200,6 +202,43 @@ class APIAuthzTests(unittest.TestCase):
             denied_global = client.get("/api/cameras/doorbell/preview.jpg")
             self.assertEqual(denied_global.status_code, 403)
 
+    def test_event_snapshot_route_requires_admin_and_handles_unavailable_snapshot_service(self) -> None:
+        if TestClient is None:
+            self.skipTest("fastapi not installed")
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            event_store = EventStore(db_path)
+            event_store.upsert_event(
+                event=FrigateEvent(
+                    event_id="evt-1",
+                    camera="doorbell",
+                    label="person",
+                    event_type="end",
+                ),
+                accepted=True,
+            )
+            UserStore(db_path).create_user(username="admin", password="supersecurepass", role="admin")
+            config = SimpleNamespace(
+                paths=SimpleNamespace(db_file=db_path),
+                service=SimpleNamespace(slug="synthia_vision"),
+            )
+            app = create_guest_api_app(config)
+            client = TestClient(app)
+
+            denied = client.get("/api/events/evt-1/snapshot.jpg")
+            self.assertEqual(denied.status_code, 401)
+
+            login = client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "supersecurepass"},
+            )
+            self.assertEqual(login.status_code, 200)
+
+            # Tests intentionally omit Frigate config, so snapshot manager is unavailable.
+            unavailable = client.get("/api/events/evt-1/snapshot.jpg")
+            self.assertEqual(unavailable.status_code, 503)
+
     def test_admin_settings_apply_changes_preview_runtime_without_persist(self) -> None:
         if TestClient is None:
             self.skipTest("fastapi not installed")
@@ -243,6 +282,43 @@ class APIAuthzTests(unittest.TestCase):
                 ).fetchone()
             self.assertIsNotNone(kv_value)
             self.assertEqual(str(kv_value[0]), "1")
+
+    def test_admin_settings_save_mirrors_confidence_threshold_legacy_key(self) -> None:
+        if TestClient is None:
+            self.skipTest("fastapi not installed")
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            UserStore(db_path).create_user(username="admin", password="supersecurepass", role="admin")
+            config = SimpleNamespace(
+                paths=SimpleNamespace(db_file=db_path),
+                service=SimpleNamespace(slug="synthia_vision"),
+            )
+            app = create_guest_api_app(config)
+            client = TestClient(app)
+            login = client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "supersecurepass"},
+            )
+            self.assertEqual(login.status_code, 200)
+
+            saved = client.post(
+                "/api/admin/settings/save",
+                json={"policy.defaults.confidence_threshold": 0.5},
+            )
+            self.assertEqual(saved.status_code, 200)
+
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                rows = dict(
+                    conn.execute(
+                        """
+                        SELECT k, v FROM kv
+                        WHERE k IN ('policy.defaults.confidence_threshold', 'policy.default_confidence_threshold')
+                        """
+                    ).fetchall()
+                )
+            self.assertEqual(rows.get("policy.defaults.confidence_threshold"), "0.5")
+            self.assertEqual(rows.get("policy.default_confidence_threshold"), "0.5")
 
     def test_generate_context_endpoint_saves_profile_and_view(self) -> None:
         if TestClient is None:
