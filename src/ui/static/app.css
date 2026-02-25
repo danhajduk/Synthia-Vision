@@ -529,9 +529,46 @@ body.is-embedded .content {
 
 .form-grid {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+#camera-setup-wizard .form-grid {
   grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
   gap: 8px 12px;
   align-items: center;
+}
+
+.setup-subsection {
+  margin-top: 12px;
+}
+
+.setup-subsection h3 {
+  margin: 0 0 10px;
+}
+
+.field-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.field-stack .toggle {
+  min-height: 40px;
+}
+
+.field-help,
+.field-effective {
+  color: var(--muted2);
+  font-size: 12px;
+}
+
+.field-effective {
+  font-family: var(--mono);
+}
+
+.field.is-override {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .toggle {

@@ -20,10 +20,7 @@
         <div class="card">
           <div class="row">
             <h3>Camera Setup Wizard</h3>
-            <div class="row">
-              <span class="pill">Admin only</span>
-              <button class="btn primary" id="wizard-open-modal" type="button">Open Wizard</button>
-            </div>
+            <button class="btn primary" id="wizard-open-modal" type="button">Open Wizard</button>
           </div>
           <div class="sub">1) Select camera 2) Snapshot preview 3) Edit profile 4) Manage views/presets 5) Capture snapshot 6) Generate context 7) Save</div>
         </div>
@@ -33,19 +30,79 @@
             <h3>Global Settings</h3>
             <span id="unsaved-indicator" class="pill">No unsaved global changes</span>
           </div>
-          <div class="form-grid">
-            <label class="field-label">Monthly budget (USD)</label><input class="field" id="setting-budget.monthly_limit_usd" />
-            <label class="field-label">Confidence threshold</label><input class="field" id="setting-policy.defaults.confidence_threshold" />
-            <label class="field-label">Doorbell-only mode</label><label class="toggle"><input type="checkbox" id="setting-policy.modes.doorbell_only" /><span>Process only configured doorbell cameras</span></label>
-            <label class="field-label">High precision mode</label><label class="toggle"><input type="checkbox" id="setting-ai.modes.high_precision" /><span>Use higher precision AI mode defaults</span></label>
-            <label class="field-label">Default vision detail</label><input class="field" id="setting-ai.defaults.vision_detail" />
-            <label class="field-label">Default pHash threshold</label><input class="field" id="setting-policy.smart_update.phash_threshold_default" />
-            <label class="field-label">Update pHash threshold</label><input class="field" id="setting-policy.smart_update.phash_threshold_update" />
-            <label class="field-label">UI subtitle</label><input class="field" id="setting-ui.subtitle" />
-            <label class="field-label">Preview enabled</label><label class="toggle"><input type="checkbox" id="setting-ui.preview_enabled" /><span>Show guest snapshot previews</span></label>
-            <label class="field-label">Preview interval enabled (s)</label><input class="field" id="setting-ui.preview_enabled_interval_s" />
-            <label class="field-label">Preview interval disabled (s)</label><input class="field" id="setting-ui.preview_disabled_interval_s" />
-            <label class="field-label">Preview max active</label><input class="field" id="setting-ui.preview_max_active" />
+          <div class="setup-subsection">
+            <h3>AI Behavior</h3>
+            <div class="form-grid">
+              <div class="field-stack">
+                <label class="field-label">Confidence threshold</label>
+                <input class="field" id="setting-policy.defaults.confidence_threshold" />
+                <div class="sub">Minimum confidence to accept an event.</div>
+              </div>
+              <div class="field-stack">
+                <label class="field-label">High precision mode</label>
+                <label class="toggle"><input type="checkbox" id="setting-ai.modes.high_precision" /><span>Use higher precision AI mode defaults</span></label>
+                <div class="sub">Uses higher-precision defaults (higher cost).</div>
+              </div>
+              <div class="field-stack">
+                <label class="field-label">Default vision detail</label>
+                <select class="field" id="setting-ai.defaults.vision_detail">
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+                <div class="sub">Default image detail level for AI.</div>
+              </div>
+              <div class="field-stack">
+                <label class="field-label">Default pHash threshold</label>
+                <input class="field" id="setting-policy.smart_update.phash_threshold_default" />
+              </div>
+              <div class="field-stack">
+                <label class="field-label">Update pHash threshold</label>
+                <input class="field" id="setting-policy.smart_update.phash_threshold_update" />
+              </div>
+            </div>
+          </div>
+
+          <div class="setup-subsection">
+            <h3>Budget & Limits</h3>
+            <div class="form-grid">
+              <div class="field-stack">
+                <label class="field-label">Monthly budget (USD)</label>
+                <input class="field" id="setting-budget.monthly_limit_usd" />
+                <div class="sub">Monthly budget for AI calls.</div>
+              </div>
+              <div class="field-stack">
+                <label class="field-label">Doorbell-only mode</label>
+                <label class="toggle"><input type="checkbox" id="setting-policy.modes.doorbell_only" /><span>Process only configured doorbell cameras</span></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="setup-subsection">
+            <h3>Preview Settings</h3>
+            <div class="form-grid">
+              <div class="field-stack">
+                <label class="field-label">Preview enabled</label>
+                <label class="toggle"><input type="checkbox" id="setting-ui.preview_enabled" /><span>Show guest snapshot previews</span></label>
+                <div class="sub">Show guest snapshot previews.</div>
+              </div>
+              <div class="field-stack">
+                <label class="field-label">Preview interval enabled (s)</label>
+                <input class="field" id="setting-ui.preview_enabled_interval_s" />
+              </div>
+              <div class="field-stack">
+                <label class="field-label">Preview interval disabled (s)</label>
+                <input class="field" id="setting-ui.preview_disabled_interval_s" />
+              </div>
+              <div class="field-stack">
+                <label class="field-label">Preview max active</label>
+                <input class="field" id="setting-ui.preview_max_active" />
+              </div>
+              <div class="field-stack">
+                <label class="field-label">UI subtitle</label>
+                <input class="field" id="setting-ui.subtitle" />
+              </div>
+            </div>
           </div>
           <div class="row" style="margin-top:12px;">
             <button class="btn" id="settings-apply">Apply (runtime)</button>
