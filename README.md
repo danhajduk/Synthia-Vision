@@ -125,6 +125,12 @@ Admin endpoints currently available:
 - `GET /api/admin/cameras`
 - `POST /api/admin/cameras/{camera_key}/apply`
 - `POST /api/admin/cameras/{camera_key}/save`
+- `GET /api/admin/cameras/{camera_key}/profile`
+- `PUT /api/admin/cameras/{camera_key}/profile`
+- `GET /api/admin/cameras/{camera_key}/views`
+- `PUT /api/admin/cameras/{camera_key}/views/{view_id}`
+- `POST /api/admin/cameras/{camera_key}/views/{view_id}/setup/snapshot`
+- `POST /api/admin/cameras/{camera_key}/views/{view_id}/setup/generate_context`
 
 Auth/session endpoints:
 - `POST /api/auth/login` (sets HTTPOnly session cookie)
@@ -195,6 +201,11 @@ Implementation paths:
 - templates: `src/ui/templates`
 - static assets: `src/ui/static`
 - runtime contract reference: `Documents/current_runtime_contract.md`
+
+Setup wizard:
+- `/ui/setup` includes a 7-step admin-only camera setup flow:
+  - select camera, preview, profile fields, views/presets, setup snapshot, context generation, save
+- generated setup context is persisted in SQLite `camera_views` and camera profile fields in `cameras`
 
 ## Active MQTT Topics (Now)
 
@@ -445,6 +456,12 @@ Camera runtime source of truth:
 - Runtime camera enable/event controls and per-camera overrides are resolved from SQLite.
 - Legacy YAML `policy.cameras` values are not used as runtime source of truth.
 - Optional one-time import tool: `python tools/migrate_policy_cameras_to_sqlite.py` (`--dry-run`, `--overwrite` supported).
+- Camera setup flow fields persisted in `cameras`:
+  - `environment`, `purpose`, `view_type`, `mounting_location`, `view_notes`
+  - `delivery_focus_json`, `privacy_mode`, `setup_completed`, `default_view_id`
+- Camera setup view records persisted in `camera_views`:
+  - `camera_key`, `view_id`, `label`, `ha_preset_id`, `setup_snapshot_path`
+  - `context_summary`, `expected_activity_json`, `zones_json`, `focus_notes`
 
 Metric formulas:
 - `metrics.cost_avg_per_event = metrics.cost_month2day_total / metrics.count_total`
@@ -453,6 +470,12 @@ Metric formulas:
 - `metrics.tokens_avg_per_day = metrics.tokens_avg_per_request * metrics.count_today` (estimated daily token total)
 - `metrics.tokens_today_total = sum(prompt_tokens + completion_tokens) for today's processed events`
 - `metrics.avg_tokens_per_event = metrics.tokens_today_total / metrics.count_today` (safe-divide, zero when no calls)
+
+Prompt context injection:
+- Runtime classification prompts now include camera setup context when available:
+  - `environment`, `purpose`, `view_type`, `context_summary`, `focus_notes`
+  - `typical_activities` (derived from setup view `expected_activity`)
+- Policy decision behavior is unchanged.
 
 ## Troubleshooting
 

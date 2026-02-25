@@ -46,7 +46,7 @@ class AdminStore:
             rows = conn.execute(
                 f"""
                 SELECT event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit,
-                       result_status, action, subject_type, confidence, description,
+                       result_status, action, subject_type, frigate_score, confidence, description,
                        snapshot_bytes, image_width, image_height, vision_detail, created_ts
                 FROM events
                 {where_sql}
@@ -69,7 +69,7 @@ class AdminStore:
             event = conn.execute(
                 """
                 SELECT event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit,
-                       result_status, action, subject_type, confidence, description,
+                       result_status, action, subject_type, frigate_score, confidence, description,
                        snapshot_bytes, image_width, image_height, vision_detail, created_ts
                 FROM events
                 WHERE event_id = ?
@@ -127,7 +127,8 @@ class AdminStore:
                 SELECT camera_key, display_name, enabled, discovered_first_ts, last_seen_ts,
                        prompt_preset, confidence_threshold, cooldown_s,
                        process_end_events, process_update_events, updates_per_event,
-                       guest_preview_enabled, vision_detail, phash_threshold, last_phash, last_phash_ts
+                       guest_preview_enabled, security_capable, security_mode,
+                       setup_completed, vision_detail, phash_threshold, last_phash, last_phash_ts
                 FROM cameras
                 ORDER BY camera_key ASC
                 """
@@ -188,6 +189,12 @@ class AdminStore:
             guest_preview_enabled=payload.get("guest_preview_enabled")
             if isinstance(payload.get("guest_preview_enabled"), bool)
             else _UNSET,
+            security_capable=payload.get("security_capable")
+            if isinstance(payload.get("security_capable"), bool)
+            else _UNSET,
+            security_mode=payload.get("security_mode")
+            if isinstance(payload.get("security_mode"), bool)
+            else _UNSET,
         )
         return self.get_camera(camera_key)
 
@@ -200,7 +207,8 @@ class AdminStore:
                 SELECT camera_key, display_name, enabled, discovered_first_ts, last_seen_ts,
                        prompt_preset, confidence_threshold, cooldown_s,
                        process_end_events, process_update_events, updates_per_event,
-                       guest_preview_enabled, vision_detail, phash_threshold, last_phash, last_phash_ts
+                       guest_preview_enabled, security_capable, security_mode,
+                       setup_completed, vision_detail, phash_threshold, last_phash, last_phash_ts
                 FROM cameras
                 WHERE camera_key = ?
                 LIMIT 1
@@ -215,6 +223,9 @@ class AdminStore:
         key, serialized = _normalize_control(name, value)
         camera_store = CameraStore(self.db_path)
         camera_store.upsert_kv(key, serialized)
+        # Keep legacy key in sync for older readers.
+        if name == "confidence_threshold":
+            camera_store.upsert_kv("policy.default_confidence_threshold", serialized)
         return {"name": name, "kv_key": key, "value": serialized}
 
     def get_kv_many(self, keys: list[str]) -> dict[str, str]:
@@ -241,7 +252,7 @@ def _normalize_control(name: str, value: Any) -> tuple[str, str]:
     mapping = {
         "enabled": "runtime.enabled",
         "monthly_budget": "budget.monthly_limit_usd",
-        "confidence_threshold": "policy.default_confidence_threshold",
+        "confidence_threshold": "policy.defaults.confidence_threshold",
         "doorbell_only_mode": "runtime.doorbell_only_mode",
         "high_precision_mode": "runtime.high_precision_mode",
         "updates_per_event": "policy.default_updates_per_event",

@@ -30,6 +30,7 @@ class DatabaseBootstrapTests(unittest.TestCase):
                 }
                 for required in ("kv", "users", "cameras", "events", "metrics", "errors"):
                     self.assertIn(required, tables)
+                self.assertIn("camera_views", tables)
 
                 indexes = {
                     row[0]
@@ -44,6 +45,8 @@ class DatabaseBootstrapTests(unittest.TestCase):
                     "idx_metrics_event_id",
                     "idx_cameras_last_seen",
                     "idx_errors_ts",
+                    "idx_camera_views_camera_key",
+                    "idx_camera_views_camera_ha_preset",
                 ):
                     self.assertIn(required, indexes)
 
@@ -55,14 +58,26 @@ class DatabaseBootstrapTests(unittest.TestCase):
                 self.assertEqual(kv.get("ai.preprocess.crop_enabled"), "0")
                 self.assertEqual(kv.get("ui.subtitle"), "OpenAI-powered camera events")
                 self.assertEqual(kv.get("ui.preview_enabled"), "1")
-                self.assertEqual(kv.get("ui.preview_enabled_interval_s"), "5")
-                self.assertEqual(kv.get("ui.preview_disabled_interval_s"), "600")
+                self.assertEqual(kv.get("ui.preview_enabled_interval_s"), "2")
+                self.assertEqual(kv.get("ui.preview_disabled_interval_s"), "60")
                 self.assertEqual(kv.get("ui.preview_max_active"), "1")
                 self.assertIn("budget.current_month", kv)
                 camera_columns = {
                     row[1] for row in conn.execute("PRAGMA table_info(cameras)")
                 }
                 self.assertIn("guest_preview_enabled", camera_columns)
+                for required_camera_column in (
+                    "environment",
+                    "purpose",
+                    "view_type",
+                    "mounting_location",
+                    "view_notes",
+                    "delivery_focus_json",
+                    "privacy_mode",
+                    "setup_completed",
+                    "default_view_id",
+                ):
+                    self.assertIn(required_camera_column, camera_columns)
 
     def test_initialize_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as td:

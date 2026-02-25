@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
+import logging
 import os
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -21,9 +25,26 @@ except ModuleNotFoundError:  # pragma: no cover - optional API dependency
     HTMLResponse = RedirectResponse = StaticFiles = Jinja2Templates = None  # type: ignore[assignment]
 
 from src.config import ServiceConfig
-from src.db import AdminStore, DatabaseBootstrap, SummaryStore
+from src.db import (
+    AdminStore,
+    DatabaseBootstrap,
+    SummaryStore,
+    db_get_camera_profile,
+    db_upsert_camera_profile,
+    db_list_camera_views,
+    db_get_camera_view,
+    db_upsert_camera_view,
+)
 from src.auth import FirstRunBootstrap, SessionManager, UserStore
+from src.frigate import FrigateClient, sync_discovered_cameras_from_config
 from src.snapshot_manager import SnapshotManager
+from src.api.camera_setup_models import (
+    CameraProfile,
+    CameraView,
+    CameraViewUpsertRequest,
+    CameraSetupGenerateRequest,
+    CameraSetupGenerateResponse,
+)
 from src.auth.session import (
     SESSION_COOKIE_HTTPONLY,
     SESSION_COOKIE_NAME,
@@ -31,6 +52,9 @@ from src.auth.session import (
     SESSION_COOKIE_SECURE,
     SESSION_TTL_SECONDS,
 )
+
+LOGGER = logging.getLogger("synthia_vision.api")
+AI_LOGGER = logging.getLogger("synthia_vision.ai")
 
 
 def create_guest_api_app(config: ServiceConfig):
@@ -61,11 +85,21 @@ def create_guest_api_app(config: ServiceConfig):
         # is intentionally omitted.
         snapshot_manager = None
     preview_cache: dict[str, tuple[float, bytes]] = {}
+    setup_snapshot_dir_cache: Path | None = None
     runtime_overrides: dict[str, Any] = {}
     runtime_camera_overrides: dict[str, dict[str, Any]] = {}
     session_secret = os.getenv("SYNTHIA_SESSION_SECRET", f"{config.service.slug}-dev-secret")
     session_manager = SessionManager(secret=session_secret, ttl_seconds=SESSION_TTL_SECONDS)
     app = FastAPI(title="Synthia Vision API", version="0.1.0")
+    PURPOSE_OPTIONS = [
+        "general",
+        "doorbell",
+        "perimeter_security",
+        "driveway",
+        "backyard",
+        "garage",
+        "child_room",
+    ]
 
     ADMIN_SETTING_KEYS = [
         "budget.monthly_limit_usd",
@@ -119,6 +153,124 @@ def create_guest_api_app(config: ServiceConfig):
             return int(value)
         except Exception:
             return default
+
+    def _safe_token(value: str) -> str:
+        cleaned = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(value))
+        return cleaned.strip("_") or "value"
+
+    def _resolve_setup_snapshot_dir() -> Path:
+        nonlocal setup_snapshot_dir_cache
+        if setup_snapshot_dir_cache is not None:
+            return setup_snapshot_dir_cache
+        preferred = config.paths.snapshots_dir / "setup"
+        fallback = Path("/tmp/synthia_vision/setup")
+        for idx, candidate in enumerate((preferred, fallback)):
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
+                probe = candidate / ".write_probe"
+                probe.write_bytes(b"ok")
+                probe.unlink(missing_ok=True)
+                setup_snapshot_dir_cache = candidate
+                if idx == 1:
+                    LOGGER.warning(
+                        "Using fallback setup snapshot dir path=%s preferred=%s",
+                        candidate,
+                        preferred,
+                    )
+                return setup_snapshot_dir_cache
+            except OSError as exc:
+                LOGGER.warning("Setup snapshot dir not writable path=%s error=%s", candidate, exc)
+        raise OSError("no writable setup snapshot directory available")
+
+    def _camera_setup_context_schema() -> dict[str, Any]:
+        return {
+            "type": "json_schema",
+            "name": "camera_setup_context_v1",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "schema_version",
+                    "environment",
+                    "purpose",
+                    "view_type",
+                    "context_summary",
+                    "expected_activity",
+                    "zones",
+                    "focus_notes",
+                    "delivery_focus",
+                    "privacy_mode",
+                ],
+                "properties": {
+                    "schema_version": {"type": "integer", "enum": [1]},
+                    "environment": {"type": "string", "enum": ["indoor", "outdoor"]},
+                    "purpose": {"type": "string", "enum": PURPOSE_OPTIONS},
+                    "view_type": {"type": "string", "enum": ["fixed", "wide", "ptz"]},
+                    "context_summary": {"type": "string", "minLength": 10, "maxLength": 220},
+                    "expected_activity": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 10,
+                        "items": {"type": "string", "minLength": 3, "maxLength": 60},
+                    },
+                    "zones": {
+                        "type": "array",
+                        "maxItems": 6,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["zone_id", "label", "notes"],
+                            "properties": {
+                                "zone_id": {"type": "string", "minLength": 2, "maxLength": 40},
+                                "label": {"type": "string", "minLength": 2, "maxLength": 50},
+                                "notes": {"type": "string", "minLength": 5, "maxLength": 220},
+                            },
+                        },
+                    },
+                    "focus_notes": {"type": "string", "minLength": 5, "maxLength": 260},
+                    "delivery_focus": {
+                        "type": "array",
+                        "maxItems": 3,
+                        "items": {"type": "string", "enum": ["package", "food", "grocery"]},
+                    },
+                    "privacy_mode": {
+                        "type": "string",
+                        "enum": ["no_identifying_details"],
+                    },
+                },
+            },
+        }
+
+    def _normalize_openai_json_schema_format(
+        raw_format: dict[str, Any],
+        *,
+        fallback_name: str,
+    ) -> dict[str, Any]:
+        schema_type = str(raw_format.get("type", "") or "").strip()
+        if schema_type != "json_schema":
+            raise ValueError("type must be json_schema")
+        nested = raw_format.get("json_schema")
+        if isinstance(nested, dict):
+            name = str(nested.get("name") or raw_format.get("name") or fallback_name).strip()
+            strict = bool(nested.get("strict", raw_format.get("strict", False)))
+            schema = nested.get("schema", raw_format.get("schema"))
+        else:
+            name = str(raw_format.get("name") or fallback_name).strip()
+            strict = bool(raw_format.get("strict", False))
+            schema = raw_format.get("schema")
+        if not name:
+            raise ValueError("name is required")
+        if strict is not True:
+            raise ValueError("strict must be true")
+        if not isinstance(schema, dict) or not schema:
+            raise ValueError("schema must be a non-empty object")
+        return {
+            "type": "json_schema",
+            "name": name,
+            "strict": True,
+            "schema": schema,
+        }
 
     def _get_effective_settings() -> tuple[dict[str, str], dict[str, str]]:
         persisted = admin_store.get_kv_many(ADMIN_SETTING_KEYS)
@@ -192,6 +344,10 @@ def create_guest_api_app(config: ServiceConfig):
             updates["process_update_events"] = _to_bool(payload.get("process_update_events"), True)
         if "guest_preview_enabled" in payload:
             updates["guest_preview_enabled"] = _to_bool(payload.get("guest_preview_enabled"), False)
+        if "security_capable" in payload:
+            updates["security_capable"] = _to_bool(payload.get("security_capable"), False)
+        if "security_mode" in payload:
+            updates["security_mode"] = _to_bool(payload.get("security_mode"), False)
         if "updates_per_event" in payload:
             try:
                 updates_per_event = int(payload.get("updates_per_event"))
@@ -321,6 +477,42 @@ def create_guest_api_app(config: ServiceConfig):
                 "max_active": preview_max_active,
             },
             "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def _get_frigate_health_payload() -> dict[str, Any]:
+        kv = admin_store.get_kv_many(
+            [
+                "frigate.health.status",
+                "frigate.health.last_ok_at",
+                "frigate.health.updated_at",
+            ]
+        )
+        with sqlite3.connect(str(config.paths.db_file), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            rows = conn.execute(
+                """
+                SELECT camera_key, health_status, health_detail, health_updated_ts
+                FROM cameras
+                ORDER BY camera_key ASC
+                """
+            ).fetchall()
+        cameras = [
+            {
+                "camera_id": str(row["camera_key"]),
+                "status": str(row["health_status"] or "unknown"),
+                "detail": str(row["health_detail"] or ""),
+                "updated_at": str(row["health_updated_ts"] or ""),
+            }
+            for row in rows
+        ]
+        return {
+            "frigate": {
+                "status": str(kv.get("frigate.health.status", "unknown")),
+                "last_ok_at": str(kv.get("frigate.health.last_ok_at", "")),
+                "updated_at": str(kv.get("frigate.health.updated_at", "")),
+            },
+            "cameras": cameras,
         }
 
     def _set_session_cookie(response: Response, *, username: str, role: str) -> None:
@@ -533,6 +725,10 @@ def create_guest_api_app(config: ServiceConfig):
     async def api_cameras_summary():
         return summary_store.get_guest_cameras_payload()
 
+    @app.get("/api/frigate/health")
+    async def api_frigate_health():
+        return _get_frigate_health_payload()
+
     @app.get("/api/cameras/{camera_key}/card")
     async def api_camera_card(camera_key: str):
         service_status = str(summary_store.get_status_summary().get("service_status", "unknown")).lower()
@@ -616,12 +812,65 @@ def create_guest_api_app(config: ServiceConfig):
             raise HTTPException(status_code=404, detail="event not found")
         return item
 
+    @app.get("/api/events/{event_id}/snapshot.jpg")
+    async def api_event_snapshot(
+        event_id: str,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        event = admin_store.get_event(event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="event not found")
+        if snapshot_manager is None:
+            raise HTTPException(status_code=503, detail="snapshot service unavailable")
+        try:
+            snapshot = snapshot_manager.fetch_event_snapshot(
+                event_id=event_id,
+                camera=str(event.get("camera", "")).strip() or None,
+            )
+        except Exception as exc:
+            LOGGER.warning(
+                "Failed fetching event snapshot event_id=%s camera=%s error=%s",
+                event_id,
+                event.get("camera"),
+                exc,
+            )
+            raise HTTPException(status_code=502, detail="snapshot fetch failed") from exc
+        return Response(
+            content=snapshot,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.get("/api/cameras")
     async def api_cameras(
         session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     ):
         _require_admin(session_token)
         return admin_store.list_cameras()
+
+    @app.post("/api/frigate/refresh")
+    async def api_frigate_refresh(
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        try:
+            client = FrigateClient(config)
+            payload = await asyncio.to_thread(client.get_config)
+            summary = await asyncio.to_thread(
+                sync_discovered_cameras_from_config,
+                db_path=config.paths.db_file,
+                frigate_config_payload=payload,
+            )
+        except Exception as exc:
+            LOGGER.warning("Frigate manual refresh failed error=%s", exc)
+            raise HTTPException(status_code=502, detail=f"frigate refresh failed: {exc}") from exc
+        LOGGER.info(
+            "Frigate manual refresh complete cameras=%s ids=%s",
+            int(summary.get("count", 0)),
+            summary.get("camera_ids", []),
+        )
+        return {"ok": True, "summary": summary}
 
     @app.post("/api/cameras/{camera_key}")
     async def api_camera_update(
@@ -684,14 +933,19 @@ def create_guest_api_app(config: ServiceConfig):
             updates = _normalize_setting_payload(payload if isinstance(payload, dict) else {})
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if updates:
-            admin_store.upsert_kv_many(updates)
+        persisted_updates = dict(updates)
+        if "policy.defaults.confidence_threshold" in updates:
+            persisted_updates["policy.default_confidence_threshold"] = updates[
+                "policy.defaults.confidence_threshold"
+            ]
+        if persisted_updates:
+            admin_store.upsert_kv_many(persisted_updates)
         runtime_overrides.update(updates)
-        for key in updates:
+        for key in persisted_updates:
             runtime_overrides.pop(key, None)
         return {
             "ok": True,
-            "saved": updates,
+            "saved": persisted_updates,
             "persisted": True,
             **_get_admin_settings(),
         }
@@ -708,6 +962,414 @@ def create_guest_api_app(config: ServiceConfig):
             "items": items,
             "runtime_overrides": dict(runtime_camera_overrides),
             "unsaved_changes": bool(runtime_overrides) or bool(runtime_camera_overrides),
+        }
+
+    @app.get("/api/admin/cameras/{camera_key}/profile")
+    async def api_admin_camera_profile_get(
+        camera_key: str,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        profile = db_get_camera_profile(config.paths.db_file, camera_key)
+        if profile is None:
+            profile = db_upsert_camera_profile(config.paths.db_file, camera_key, {})
+        return CameraProfile(**profile).model_dump()
+
+    @app.put("/api/admin/cameras/{camera_key}/profile")
+    async def api_admin_camera_profile_put(
+        camera_key: str,
+        payload: dict,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        normalized = payload if isinstance(payload, dict) else {}
+        merged = {"camera_key": camera_key, **normalized}
+        # Enforce fixed privacy mode and system-managed completion state.
+        merged["privacy_mode"] = "no_identifying_details"
+        required_fields_present = bool(
+            merged.get("environment")
+            and merged.get("purpose")
+            and merged.get("view_type")
+            and str(merged.get("mounting_location") or "").strip()
+        )
+        if not required_fields_present:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "environment, purpose, view_type, and mounting_location are required for camera profile"
+                ),
+            )
+        merged["setup_completed"] = True
+        # delivery_focus only applies for doorbell profiles.
+        if merged.get("purpose") != "doorbell":
+            merged["delivery_focus"] = []
+        default_view_id = str(merged.get("default_view_id") or "").strip()
+        if default_view_id:
+            existing_view = db_get_camera_view(config.paths.db_file, camera_key, default_view_id)
+            if existing_view is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"default_view_id '{default_view_id}' does not exist for camera '{camera_key}'",
+                )
+        try:
+            validated = CameraProfile(**merged).model_dump()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        saved = db_upsert_camera_profile(config.paths.db_file, camera_key, validated)
+        return CameraProfile(**saved).model_dump()
+
+    @app.get("/api/admin/cameras/{camera_key}/views")
+    async def api_admin_camera_views_get(
+        camera_key: str,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        views = db_list_camera_views(config.paths.db_file, camera_key)
+        return {
+            "camera_key": camera_key,
+            "count": len(views),
+            "items": [CameraView(**item).model_dump() for item in views],
+        }
+
+    @app.put("/api/admin/cameras/{camera_key}/views/{view_id}")
+    async def api_admin_camera_view_put(
+        camera_key: str,
+        view_id: str,
+        payload: dict,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        if len(str(view_id or "").strip()) > 40:
+            raise HTTPException(status_code=400, detail="view_id must be 40 characters or fewer")
+        normalized = payload if isinstance(payload, dict) else {}
+        try:
+            view_payload = CameraViewUpsertRequest(**normalized).model_dump()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        saved = db_upsert_camera_view(
+            config.paths.db_file,
+            camera_key,
+            view_id,
+            view_payload,
+        )
+        return CameraView(**saved).model_dump()
+
+    @app.post("/api/admin/cameras/{camera_key}/views/{view_id}/setup/snapshot")
+    async def api_admin_camera_view_setup_snapshot(
+        camera_key: str,
+        view_id: str,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        if snapshot_manager is None:
+            raise HTTPException(status_code=503, detail="snapshot manager unavailable")
+        try:
+            image = snapshot_manager.fetch_camera_preview(camera_key, timeout_seconds=2.0)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"snapshot fetch failed: {exc}") from exc
+        try:
+            setup_dir = _resolve_setup_snapshot_dir()
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"no writable setup snapshot path: {exc}") from exc
+        now_epoch = int(time.time())
+        filename = f"{_safe_token(camera_key)}_{_safe_token(view_id)}_{now_epoch}.jpg"
+        path = setup_dir / filename
+        try:
+            path.write_bytes(image)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"failed saving setup snapshot: {exc}") from exc
+        existing = db_get_camera_view(config.paths.db_file, camera_key, view_id) or {}
+        saved = db_upsert_camera_view(
+            config.paths.db_file,
+            camera_key,
+            view_id,
+            {
+                "label": existing.get("label") or view_id,
+                "ha_preset_id": existing.get("ha_preset_id"),
+                "setup_snapshot_path": str(path),
+                "context_summary": existing.get("context_summary"),
+                "expected_activity": existing.get("expected_activity", []),
+                "zones": existing.get("zones", []),
+                "focus_notes": existing.get("focus_notes"),
+            },
+        )
+        return {
+            "camera_key": camera_key,
+            "view_id": view_id,
+            "snapshot_path": str(path),
+            "snapshot_bytes": len(image),
+            "view": CameraView(**saved).model_dump(),
+        }
+
+    @app.post("/api/admin/cameras/{camera_key}/views/{view_id}/setup/generate_context")
+    async def api_admin_camera_view_generate_context(
+        camera_key: str,
+        view_id: str,
+        payload: dict,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        LOGGER.info("Setup context generation requested camera=%s view_id=%s", camera_key, view_id)
+        started_at = time.monotonic()
+        try:
+            req = CameraSetupGenerateRequest(**(payload if isinstance(payload, dict) else {}))
+        except Exception as exc:
+            LOGGER.warning(
+                "Setup context request validation failed camera=%s view_id=%s error=%s payload=%s",
+                camera_key,
+                view_id,
+                exc,
+                payload,
+            )
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if req.purpose != "doorbell":
+            req.delivery_focus = []
+
+        LOGGER.info("Setup context loading view row camera=%s view_id=%s", camera_key, view_id)
+        try:
+            view = await asyncio.wait_for(
+                asyncio.to_thread(db_get_camera_view, config.paths.db_file, camera_key, view_id),
+                timeout=3.0,
+            )
+        except TimeoutError as exc:
+            LOGGER.exception(
+                "Setup context view load timed out camera=%s view_id=%s",
+                camera_key,
+                view_id,
+            )
+            raise HTTPException(status_code=504, detail="timeout loading camera view from db") from exc
+        view = view or {}
+        LOGGER.info("Setup context view loaded camera=%s view_id=%s", camera_key, view_id)
+
+        snapshot_bytes: bytes | None = None
+        snapshot_path = str(view.get("setup_snapshot_path") or "").strip()
+        if snapshot_path:
+            LOGGER.info(
+                "Setup context attempting existing snapshot camera=%s view_id=%s path=%s",
+                camera_key,
+                view_id,
+                snapshot_path,
+            )
+        if snapshot_path:
+            path_obj = Path(snapshot_path)
+            if path_obj.exists() and path_obj.is_file():
+                try:
+                    snapshot_bytes = path_obj.read_bytes()
+                    LOGGER.info(
+                        "Setup context loaded existing snapshot camera=%s view_id=%s bytes=%s",
+                        camera_key,
+                        view_id,
+                        len(snapshot_bytes),
+                    )
+                except OSError:
+                    snapshot_bytes = None
+        if snapshot_bytes is None:
+            if snapshot_manager is None:
+                raise HTTPException(status_code=503, detail="snapshot manager unavailable")
+            try:
+                LOGGER.info(
+                    "Setup context fetching live snapshot camera=%s view_id=%s timeout_s=3.0",
+                    camera_key,
+                    view_id,
+                )
+                snapshot_bytes = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        snapshot_manager.fetch_camera_preview,
+                        camera_key,
+                        timeout_seconds=2.0,
+                    ),
+                    timeout=3.0,
+                )
+            except Exception as exc:
+                LOGGER.exception(
+                    "Setup context snapshot fetch failed camera=%s view_id=%s error=%s",
+                    camera_key,
+                    view_id,
+                    exc,
+                )
+                raise HTTPException(status_code=502, detail=f"snapshot fetch failed: {exc}") from exc
+        LOGGER.info(
+            "Setup context snapshot ready camera=%s view_id=%s bytes=%s",
+            camera_key,
+            view_id,
+            len(snapshot_bytes),
+        )
+
+        try:
+            from openai import OpenAI
+        except ModuleNotFoundError as exc:
+            raise HTTPException(status_code=503, detail="openai package unavailable") from exc
+
+        setup_cfg = config.ai.setup
+        if setup_cfg.structured_output.mode != "json_schema":
+            raise HTTPException(status_code=500, detail="ai.setup.structured_output.mode must be json_schema")
+        client = OpenAI(
+            api_key=config.openai.api_key,
+            timeout=float(setup_cfg.openai.timeout_seconds),
+        )
+        encoded = base64.b64encode(snapshot_bytes).decode("ascii")
+        image_data_url = f"data:image/jpeg;base64,{encoded}"
+        raw_setup_format = dict(setup_cfg.structured_output.schema or {})
+        try:
+            setup_format = _normalize_openai_json_schema_format(
+                raw_setup_format,
+                fallback_name=setup_cfg.structured_output.schema_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"ai.setup.structured_output.schema invalid: {exc}",
+            ) from exc
+        privacy_rules = str(setup_cfg.prompts.privacy_rules or "")
+        system_prompt = str(setup_cfg.prompts.system or "").format(
+            privacy_rules=privacy_rules,
+        )
+        user_prompt = str(setup_cfg.prompts.user or "").format(
+            camera_name=camera_key,
+            environment=req.environment,
+            purpose=req.purpose,
+            view_type=req.view_type,
+            mounting_location=req.mounting_location or "",
+            view_notes=req.view_notes or "",
+            delivery_focus=",".join(req.delivery_focus),
+        )
+        AI_LOGGER.info(
+            "setup_context_openai_request_start camera=%s view_id=%s model=%s timeout_s=%s",
+            camera_key,
+            view_id,
+            setup_cfg.openai.model,
+            setup_cfg.openai.timeout_seconds,
+        )
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.responses.create,
+                    model=setup_cfg.openai.model,
+                    max_output_tokens=int(setup_cfg.openai.max_output_tokens),
+                    input=[
+                        {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": user_prompt},
+                                {"type": "input_image", "image_url": image_data_url, "detail": "high"},
+                            ],
+                        },
+                    ],
+                    text={"format": setup_format},
+                ),
+                timeout=float(setup_cfg.openai.timeout_seconds) + 10.0,
+            )
+        except Exception as exc:
+            AI_LOGGER.exception(
+                "setup_context_openai_request_failed camera=%s view_id=%s error=%s",
+                camera_key,
+                view_id,
+                exc,
+            )
+            raise HTTPException(status_code=502, detail=f"openai request failed: {exc}") from exc
+        usage = getattr(response, "usage", None)
+        prompt_tokens = int(getattr(usage, "input_tokens", getattr(usage, "prompt_tokens", 0)) or 0)
+        completion_tokens = int(
+            getattr(usage, "output_tokens", getattr(usage, "completion_tokens", 0)) or 0
+        )
+        total_tokens = int(getattr(usage, "total_tokens", prompt_tokens + completion_tokens) or 0)
+        AI_LOGGER.info(
+            "setup_context_openai_request_done camera=%s view_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s",
+            camera_key,
+            view_id,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        )
+
+        output_text = getattr(response, "output_text", None)
+        if not isinstance(output_text, str) or not output_text.strip():
+            raise HTTPException(status_code=502, detail="openai response missing output_text")
+        try:
+            decoded = json.loads(output_text)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"openai response invalid json: {exc}") from exc
+        if not isinstance(decoded, dict):
+            raise HTTPException(status_code=502, detail="openai response json must be object")
+        decoded["environment"] = req.environment
+        decoded["purpose"] = req.purpose
+        decoded["view_type"] = req.view_type
+        decoded["delivery_focus"] = list(req.delivery_focus)
+        decoded["privacy_mode"] = "no_identifying_details"
+        decoded["schema_version"] = 1
+
+        try:
+            generated = CameraSetupGenerateResponse(**decoded).model_dump()
+        except Exception as exc:
+            AI_LOGGER.error(
+                "setup_context_validation_failed camera=%s view_id=%s error=%s payload=%s",
+                camera_key,
+                view_id,
+                exc,
+                decoded,
+            )
+            raise HTTPException(status_code=502, detail=f"openai response schema mismatch: {exc}") from exc
+
+        try:
+            profile_saved = await asyncio.wait_for(
+                asyncio.to_thread(
+                    db_upsert_camera_profile,
+                    config.paths.db_file,
+                    camera_key,
+                    {
+                        "environment": req.environment,
+                        "purpose": req.purpose,
+                        "view_type": req.view_type,
+                        "mounting_location": req.mounting_location,
+                        "view_notes": req.view_notes,
+                        "delivery_focus": list(req.delivery_focus),
+                        "privacy_mode": "no_identifying_details",
+                        "setup_completed": True,
+                        "default_view_id": view_id,
+                    },
+                ),
+                timeout=3.0,
+            )
+            saved_view = await asyncio.wait_for(
+                asyncio.to_thread(
+                    db_upsert_camera_view,
+                    config.paths.db_file,
+                    camera_key,
+                    view_id,
+                    {
+                        "label": str(view.get("label") or view_id),
+                        "ha_preset_id": view.get("ha_preset_id"),
+                        "setup_snapshot_path": snapshot_path or view.get("setup_snapshot_path"),
+                        "context_summary": generated.get("context_summary"),
+                        "expected_activity": generated.get("expected_activity", []),
+                        "zones": generated.get("zones", []),
+                        "focus_notes": generated.get("focus_notes"),
+                    },
+                ),
+                timeout=3.0,
+            )
+        except TimeoutError as exc:
+            LOGGER.exception(
+                "Setup context db upsert timed out camera=%s view_id=%s",
+                camera_key,
+                view_id,
+            )
+            raise HTTPException(status_code=504, detail="timeout persisting setup context to db") from exc
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        LOGGER.info(
+            "Setup context generation completed camera=%s view_id=%s elapsed_ms=%s",
+            camera_key,
+            view_id,
+            elapsed_ms,
+        )
+        return {
+            "ok": True,
+            "camera_key": camera_key,
+            "view_id": view_id,
+            "profile": CameraProfile(**profile_saved).model_dump(),
+            "view": CameraView(**saved_view).model_dump(),
+            "generated": generated,
         }
 
     @app.post("/api/admin/cameras/{camera_key}/apply")

@@ -130,6 +130,7 @@ class MQTTClient:
         self._confidence_threshold_percent: int = int(
             round(self._config.policy.defaults.confidence_threshold * 100)
         )
+        self._last_confidence_threshold_sync_ts: float = 0.0
         self._process_end_events_by_camera: dict[str, bool] = {}
         self._process_update_events_by_camera: dict[str, bool] = {}
         self._camera_phash_threshold_by_camera: dict[str, int] = {}
@@ -627,6 +628,7 @@ class MQTTClient:
 
     def _evaluate_policy(self, event: FrigateEvent) -> None:
         self._upsert_discovered_camera(event)
+        self._refresh_confidence_threshold_from_kv()
         camera_runtime = self._resolve_camera_runtime_settings(event.camera)
         self._apply_camera_policy_overrides(event.camera, camera_runtime.enabled)
 
@@ -872,6 +874,8 @@ class MQTTClient:
             camera_policy = PolicyCameraConfig(
                 name=settings.display_name,
                 enabled=enabled,
+                security_capable=settings.security_capable,
+                security_mode=settings.security_mode,
                 labels=list(self._config.policy.defaults.labels),
                 confidence_threshold=settings.confidence_threshold,
                 cooldown_seconds=settings.cooldown_s,
@@ -888,6 +892,8 @@ class MQTTClient:
             camera_policy.cooldown_seconds = settings.cooldown_s
             camera_policy.prompt_preset = settings.prompt_preset
             camera_policy.vision_detail = settings.vision_detail
+            camera_policy.security_capable = settings.security_capable
+            camera_policy.security_mode = settings.security_mode
         if settings.phash_threshold is not None:
             self._camera_phash_threshold_by_camera[camera] = settings.phash_threshold
 
@@ -1050,13 +1056,13 @@ class MQTTClient:
             )
             return
         try:
-            snapshot = self._snapshot_manager.fetch_event_snapshot(
-                event.event_id,
-                camera=event.camera,
+            snapshot = self._snapshot_manager.fetch_camera_preview(
+                event.camera,
+                timeout_seconds=float(self._config.frigate.snapshot.timeout_seconds),
             )
         except ExternalServiceError as exc:
             LOGGER.warning(
-                "Snapshot fetch failed event_id=%s camera=%s error=%s",
+                "Image fetch failed event_id=%s camera=%s error=%s",
                 event.event_id,
                 event.camera,
                 exc,
@@ -1064,29 +1070,31 @@ class MQTTClient:
             self._journal_event(
                 event=event,
                 accepted=True,
-                result_status="snapshot_failed",
+                result_status="image_fetch_failed",
                 action="unknown",
                 subject_type="unknown",
-                description="snapshot fetch failed",
+                description="image fetch failed",
             )
             self._journal_metric(
                 event_id=event.event_id,
-                skipped_openai_reason="snapshot_fail",
+                skipped_openai_reason="image_fetch_failed",
             )
             self._journal_error(
-                component="snapshot",
-                message="snapshot_failed",
+                component="frigate",
+                message="image_fetch_failed",
                 detail=str(exc),
                 event=event,
             )
-            self._publish_last_error(f"snapshot_failed camera={event.camera} event_id={event.event_id}: {exc}")
+            self._publish_last_error(
+                f"image_fetch_failed camera={event.camera} event_id={event.event_id}: {exc}"
+            )
             self._publish_camera_result(
                 event=event,
-                result_status="snapshot_failed",
+                result_status="image_fetch_failed",
                 action="unknown",
                 subject_type="unknown",
                 confidence_percent="unknown",
-                description="snapshot fetch failed",
+                description="image fetch failed",
             )
             return
         LOGGER.info(
@@ -1824,7 +1832,44 @@ class MQTTClient:
                 ),
             }
         controls["camera_event_processing"] = camera_event_processing
+        self._persist_confidence_threshold_to_kv()
         self._save_policy_state()
+
+    def _persist_confidence_threshold_to_kv(self) -> None:
+        normalized = f"{self._confidence_threshold_percent / 100.0:.4f}".rstrip("0").rstrip(".")
+        try:
+            self._camera_store.upsert_kv("policy.defaults.confidence_threshold", normalized)
+            self._camera_store.upsert_kv("policy.default_confidence_threshold", normalized)
+        except Exception as exc:
+            LOGGER.warning("Failed to persist confidence_threshold to kv error=%s", exc)
+
+    def _refresh_confidence_threshold_from_kv(self) -> None:
+        now = time.monotonic()
+        if now - self._last_confidence_threshold_sync_ts < 1.0:
+            return
+        self._last_confidence_threshold_sync_ts = now
+        try:
+            raw = self._camera_store.get_kv("policy.defaults.confidence_threshold")
+            if raw is None:
+                raw = self._camera_store.get_kv("policy.default_confidence_threshold")
+            if raw is None:
+                return
+            parsed = float(raw)
+        except Exception as exc:
+            LOGGER.warning("Failed reading confidence_threshold from kv error=%s", exc)
+            return
+        if parsed > 1.0:
+            parsed = parsed / 100.0
+        parsed = max(0.0, min(1.0, parsed))
+        parsed_percent = int(round(parsed * 100))
+        if parsed_percent == self._confidence_threshold_percent:
+            return
+        self._confidence_threshold_percent = parsed_percent
+        self._config.policy.defaults.confidence_threshold = parsed
+        LOGGER.info(
+            "Runtime confidence_threshold synchronized from kv percent=%s",
+            parsed_percent,
+        )
 
     def _resolve_topic_path(self, dotted_key: str, fallback_suffix: str) -> str:
         node: Any = self._config.topics

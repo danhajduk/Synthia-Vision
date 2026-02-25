@@ -22,6 +22,7 @@ class EventStoreTests(unittest.TestCase):
                 camera="doorbell",
                 label="person",
                 event_type="end",
+                score=0.84,
                 event_ts=1700000000.0,
             )
             store.upsert_event(event=event, accepted=True, result_status="processing")
@@ -42,7 +43,7 @@ class EventStoreTests(unittest.TestCase):
             with sqlite3.connect(str(db_path), timeout=5.0) as conn:
                 row = conn.execute(
                     """
-                    SELECT accepted, result_status, action, subject_type, confidence, description,
+                    SELECT accepted, result_status, action, subject_type, frigate_score, confidence, description,
                            snapshot_bytes, image_width, image_height, vision_detail
                     FROM events WHERE event_id = 'evt-1'
                     """
@@ -52,12 +53,13 @@ class EventStoreTests(unittest.TestCase):
             self.assertEqual(row[1], "ok")
             self.assertEqual(row[2], "person_at_door")
             self.assertEqual(row[3], "human")
-            self.assertAlmostEqual(float(row[4]), 0.88, places=6)
-            self.assertEqual(row[5], "visitor at the door")
-            self.assertEqual(row[6], 12345)
-            self.assertEqual(row[7], 1280)
-            self.assertEqual(row[8], 720)
-            self.assertEqual(row[9], "low")
+            self.assertAlmostEqual(float(row[4]), 0.84, places=6)
+            self.assertAlmostEqual(float(row[5]), 0.88, places=6)
+            self.assertEqual(row[6], "visitor at the door")
+            self.assertEqual(row[7], 12345)
+            self.assertEqual(row[8], 1280)
+            self.assertEqual(row[9], 720)
+            self.assertEqual(row[10], "low")
 
     def test_insert_metric_and_error_rows(self) -> None:
         with tempfile.TemporaryDirectory() as td:

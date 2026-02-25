@@ -120,10 +120,68 @@ class DatabaseBootstrap:
         try:
             columns = conn.execute("PRAGMA table_info(cameras)").fetchall()
             column_names = {str(row[1]) for row in columns}
-            if "guest_preview_enabled" not in column_names:
-                cur.execute(
-                    "ALTER TABLE cameras ADD COLUMN guest_preview_enabled INTEGER NOT NULL DEFAULT 0"
+            camera_column_additions: tuple[str, ...] = (
+                "guest_preview_enabled INTEGER NOT NULL DEFAULT 0",
+                "security_capable INTEGER NOT NULL DEFAULT 0",
+                "security_mode INTEGER NOT NULL DEFAULT 0",
+                "environment TEXT",
+                "purpose TEXT",
+                "view_type TEXT",
+                "mounting_location TEXT",
+                "view_notes TEXT",
+                "delivery_focus_json TEXT",
+                "privacy_mode TEXT NOT NULL DEFAULT 'no_identifying_details'",
+                "setup_completed INTEGER NOT NULL DEFAULT 0",
+                "default_view_id TEXT",
+                "frigate_camera_id TEXT",
+                "detect_width INTEGER",
+                "detect_height INTEGER",
+                "detect_fps REAL",
+                "audio_enabled INTEGER NOT NULL DEFAULT 0",
+                "tracked_objects_json TEXT",
+                "snapshots_enabled INTEGER NOT NULL DEFAULT 0",
+                "record_enabled INTEGER NOT NULL DEFAULT 0",
+                "detect_stream_name TEXT",
+                "record_stream_name TEXT",
+                "health_status TEXT",
+                "health_detail TEXT",
+                "health_updated_ts TEXT",
+            )
+            for column_def in camera_column_additions:
+                column_name = column_def.split(" ", 1)[0]
+                if column_name in column_names:
+                    continue
+                cur.execute(f"ALTER TABLE cameras ADD COLUMN {column_def}")
+                column_names.add(column_name)
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS camera_views (
+                  id INTEGER PRIMARY KEY,
+                  camera_key TEXT NOT NULL,
+                  view_id TEXT NOT NULL,
+                  label TEXT NOT NULL,
+                  ha_preset_id TEXT,
+                  setup_snapshot_path TEXT,
+                  context_summary TEXT,
+                  expected_activity_json TEXT,
+                  zones_json TEXT,
+                  focus_notes TEXT,
+                  created_ts INTEGER NOT NULL,
+                  updated_ts INTEGER NOT NULL,
+                  UNIQUE(camera_key, view_id)
                 )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_camera_views_camera_key ON camera_views(camera_key)"
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_camera_views_camera_ha_preset
+                ON camera_views(camera_key, ha_preset_id)
+                """
+            )
             # Keep this migration conservative: only rewrite preview interval values
             # when they still match historical defaults.
             preview_enabled_row = conn.execute(
@@ -143,5 +201,19 @@ class DatabaseBootstrap:
                     "UPDATE kv SET v=?, updated_ts=? WHERE k='ui.preview_disabled_interval_s'",
                     ("60", now),
                 )
+            # Normalize legacy purpose values to the new enum set.
+            cur.execute(
+                "UPDATE cameras SET purpose='doorbell' WHERE purpose='doorbell_entry'"
+            )
+            cur.execute(
+                "UPDATE cameras SET purpose='general' WHERE purpose='indoor_general'"
+            )
+            cur.execute(
+                "UPDATE cameras SET purpose='general' WHERE purpose='other'"
+            )
+            event_columns = conn.execute("PRAGMA table_info(events)").fetchall()
+            event_column_names = {str(row[1]) for row in event_columns}
+            if "frigate_score" not in event_column_names:
+                cur.execute("ALTER TABLE events ADD COLUMN frigate_score REAL")
         finally:
             cur.close()

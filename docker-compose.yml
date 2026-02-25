@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: synthia-vision
+    user: "${PUID:-1000}:${PGID:-1000}"
     restart: unless-stopped
     environment:
       MQTT_HOST: ${MQTT_HOST:-10.0.0.100}

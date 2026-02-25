@@ -137,6 +137,17 @@ def _create_rotating_file_handler(
     try:
         file_target = Path(file_path)
         file_target.parent.mkdir(parents=True, exist_ok=True)
+        # When logs are bind-mounted from host, legacy ownership/mode can block writes.
+        # Best-effort permission fix keeps logging enabled after user/uid changes.
+        try:
+            file_target.parent.chmod(0o777)
+        except OSError:
+            pass
+        if file_target.exists():
+            try:
+                file_target.chmod(0o666)
+            except OSError:
+                pass
         return DailyNamedRotatingFileHandler(
             file_target=file_target,
             backup_count=max(1, retention_days),

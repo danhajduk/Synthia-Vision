@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from src.config import ServiceConfig
+from src.db import db_get_camera_profile, db_list_camera_views
 from src.models import FrigateEvent
+
+_PLACEHOLDER_PATTERN = re.compile(r"\{[a-zA-Z_][a-zA-Z0-9_]*\}")
 
 
 def resolve_allowed_actions(camera: str, config: ServiceConfig) -> list[str]:
@@ -19,10 +23,26 @@ def resolve_subject_types(config: ServiceConfig) -> list[str]:
     return list(config.policy.subject_types.allowed)
 
 
-def resolve_preset(camera: str, config: ServiceConfig) -> str:
-    camera_cfg = config.policy.cameras.get(camera)
-    if camera_cfg is not None and camera_cfg.prompt_preset:
-        return camera_cfg.prompt_preset
+def resolve_preset(
+    camera: str,
+    config: ServiceConfig,
+    *,
+    context_fields: dict[str, str] | None = None,
+) -> str:
+    templates: dict[str, dict[str, str]] = config.ai.prompt_presets
+    purpose = ""
+    if context_fields:
+        purpose = str(context_fields.get("purpose", "") or "").strip()
+    if not purpose:
+        try:
+            profile = db_get_camera_profile(config.paths.db_file, camera) or {}
+            purpose = str(profile.get("purpose", "") or "").strip()
+        except Exception:
+            purpose = ""
+    if purpose and purpose in templates:
+        return purpose
+    if "general" in templates:
+        return "general"
     return config.ai.default_prompt_preset
 
 
@@ -32,21 +52,96 @@ def render_prompts(
     allowed_actions: list[str],
     allowed_subject_types: list[str],
     config: ServiceConfig,
+    context_fields: dict[str, str] | None = None,
 ) -> tuple[str, str]:
     templates: dict[str, dict[str, str]] = config.ai.prompt_presets
     selected = templates.get(preset) or templates.get(config.ai.default_prompt_preset) or {}
     system_template = str(selected.get("system", config.ai.system_prompt))
     user_template = str(selected.get("user", ""))
-
+    environment = str((context_fields or {}).get("environment", "") or "").strip()
+    purpose = str((context_fields or {}).get("purpose", "") or "").strip()
+    view_context_summary = str((context_fields or {}).get("view_context_summary", "") or "").strip()
+    focus_notes = str((context_fields or {}).get("focus_notes", "") or "").strip()
+    expected_activity = str((context_fields or {}).get("expected_activity", "") or "").strip()
+    delivery_focus = str((context_fields or {}).get("delivery_focus", "") or "").strip()
     format_args = {
         "camera_name": camera_name,
+        "environment": environment,
+        "purpose": purpose,
+        "view_context_summary": view_context_summary,
+        "focus_notes": focus_notes,
+        "expected_activity": expected_activity,
+        "delivery_focus": delivery_focus,
         "allowed_actions": ", ".join(allowed_actions),
         "allowed_subject_types": ", ".join(allowed_subject_types),
+        "privacy_rules": str(config.ai.privacy_rules or ""),
     }
-    return (
-        system_template.format(**format_args),
-        user_template.format(**format_args),
-    )
+    camera_cfg = config.policy.cameras.get(camera_name)
+    security_overlay = ""
+    if (
+        camera_cfg is not None
+        and camera_cfg.security_capable
+        and camera_cfg.security_mode
+        and purpose != "child_room"
+    ):
+        security_overlay = str(config.ai.security_overlay_template or "")
+    format_args["security_overlay"] = security_overlay
+
+    system_prompt = system_template.format(**format_args)
+    user_prompt = user_template.format(**format_args)
+    _assert_no_placeholders(system_prompt, prompt_name="system")
+    _assert_no_placeholders(user_prompt, prompt_name="user")
+    return system_prompt, user_prompt
+
+
+def build_camera_context_fields(camera: str, config: ServiceConfig) -> dict[str, str]:
+    try:
+        profile = db_get_camera_profile(config.paths.db_file, camera) or {}
+        views = db_list_camera_views(config.paths.db_file, camera)
+    except Exception:
+        return {
+            "environment": "",
+            "purpose": "general",
+            "view_type": "",
+            "view_context_summary": "",
+            "focus_notes": "",
+            "expected_activity": "",
+            "delivery_focus": "",
+        }
+
+    default_view_id = str(profile.get("default_view_id") or "").strip()
+    selected_view: dict[str, Any] | None = None
+    if default_view_id:
+        selected_view = next(
+            (item for item in views if str(item.get("view_id", "")) == default_view_id),
+            None,
+        )
+    if selected_view is None and views:
+        selected_view = views[0]
+
+    expected_activity = []
+    if selected_view is not None:
+        raw = selected_view.get("expected_activity", [])
+        if isinstance(raw, list):
+            expected_activity = [str(item).strip() for item in raw if str(item).strip()]
+    raw_delivery_focus = profile.get("delivery_focus", [])
+    delivery_focus: list[str] = []
+    if isinstance(raw_delivery_focus, list):
+        delivery_focus = [str(item).strip() for item in raw_delivery_focus if str(item).strip()]
+    return {
+        "environment": str(profile.get("environment", "") or ""),
+        "purpose": str(profile.get("purpose", "general") or "general"),
+        "view_type": str(profile.get("view_type", "") or ""),
+        "view_context_summary": str((selected_view or {}).get("context_summary", "") or ""),
+        "focus_notes": str((selected_view or {}).get("focus_notes", "") or ""),
+        "expected_activity": ", ".join(expected_activity),
+        "delivery_focus": ", ".join(delivery_focus),
+    }
+
+
+def _assert_no_placeholders(text: str, *, prompt_name: str) -> None:
+    if _PLACEHOLDER_PATTERN.search(text):
+        raise ValueError(f"unresolved template placeholders in {prompt_name} prompt")
 
 
 def enforce_classification_result(

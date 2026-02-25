@@ -146,7 +146,7 @@ class SummaryStore:
             conn.execute("PRAGMA busy_timeout = 5000;")
             cameras = conn.execute(
                 """
-                SELECT camera_key, display_name, enabled, discovered_first_ts, last_seen_ts
+                SELECT camera_key, display_name, enabled, discovered_first_ts, last_seen_ts, setup_completed
                 FROM cameras
                 ORDER BY camera_key ASC
                 """
@@ -163,13 +163,14 @@ class SummaryStore:
             ).fetchall()
             cost_map = {str(camera): float(total) for camera, total in costs}
         items: list[dict[str, Any]] = []
-        for camera_key, display_name, enabled, first_ts, last_seen in cameras:
+        for camera_key, display_name, enabled, first_ts, last_seen, setup_completed in cameras:
             key = str(camera_key)
             items.append(
                 {
                     "camera_key": key,
                     "display_name": str(display_name),
                     "enabled": bool(int(enabled)),
+                    "setup_completed": bool(int(setup_completed or 0)),
                     "discovered_first_ts": str(first_ts),
                     "last_seen_ts": str(last_seen),
                     "monthly_cost": float(cost_map.get(key, 0.0)),
@@ -219,6 +220,8 @@ class SummaryStore:
         for item in cameras.get("items", []):
             if not isinstance(item, dict):
                 continue
+            if not bool(item.get("setup_completed", False)):
+                continue
             sanitized_items.append(
                 {
                     "camera_key": str(item.get("camera_key", "")),
@@ -229,7 +232,7 @@ class SummaryStore:
                 }
             )
         return {
-            "count": int(cameras.get("count", len(sanitized_items))),
+            "count": len(sanitized_items),
             "items": sanitized_items,
         }
 
@@ -265,6 +268,7 @@ class SummaryStore:
                   WHERE substr(e.ts, 1, 7) = ?
                   GROUP BY e.camera
                 ) cm ON cm.camera = c.camera_key
+                WHERE c.setup_completed = 1
                 ORDER BY c.camera_key ASC
                 """,
                 (datetime.now(timezone.utc).strftime("%Y-%m"),),
