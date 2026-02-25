@@ -32,8 +32,21 @@
                 <tr data-event-row data-event-id="{{ event.event_id }}">
                   <td>{{ event.ts or '—' }}</td>
                   <td>{{ event.camera or '—' }}</td>
-                  <td>{{ event.result_status or '—' }}</td>
-                  <td><a href="/ui/events/{{ event.event_id }}" data-event-link>{{ event.event_id }}</a></td>
+                  <td>
+                    {% set _status = (event.result_status or '—')|lower %}
+                    {% if _status == 'ok' %}
+                    <span class="pill"><span class="dot"></span> <span>OK</span></span>
+                    {% elif _status == 'suppressed' %}
+                    <span class="pill"><span class="dot warn"></span> <span>Suppressed</span></span>
+                    {% elif _status == 'skipped' %}
+                    <span class="pill"><span>Skipped</span></span>
+                    {% elif _status == 'error' %}
+                    <span class="pill"><span class="dot bad"></span> <span>Error</span></span>
+                    {% else %}
+                    <span class="pill"><span>{{ event.result_status or '—' }}</span></span>
+                    {% endif %}
+                  </td>
+                  <td><a href="/ui/events/{{ event.event_id }}" data-event-link title="{{ event.event_id }}">{{ (event.event_id or '—')[:10] }}{% if event.event_id and (event.event_id|length) > 10 %}…{% endif %}</a></td>
                 </tr>
                 {% endfor %}
                 {% if not events %}

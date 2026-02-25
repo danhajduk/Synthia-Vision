@@ -508,6 +508,28 @@
     const detailSnapshot = document.getElementById('events-detail-snapshot');
     const state = { limit: 50, offset: 0, total: 0, items: [] };
 
+    function statusPillHtml(statusRaw) {
+      const status = String(statusRaw || '').trim().toLowerCase();
+      if (status === 'ok') {
+        return '<span class="pill"><span class="dot"></span> <span>OK</span></span>';
+      }
+      if (status === 'suppressed') {
+        return '<span class="pill"><span class="dot warn"></span> <span>Suppressed</span></span>';
+      }
+      if (status === 'skipped') {
+        return '<span class="pill"><span>Skipped</span></span>';
+      }
+      if (status === 'error') {
+        return '<span class="pill"><span class="dot bad"></span> <span>Error</span></span>';
+      }
+      return '<span class="pill"><span>' + (statusRaw || '—') + '</span></span>';
+    }
+
+    function shortEventId(value) {
+      const full = String(value || '—');
+      return full.length > 10 ? (full.slice(0, 10) + '…') : full;
+    }
+
     function queryFilters() {
       const params = new URLSearchParams(window.location.search);
       const filter = {
@@ -531,8 +553,8 @@
         tr.innerHTML =
           '<td>' + formatLocalDateTime(item.ts) + '</td>' +
           '<td>' + (item.camera || '—') + '</td>' +
-          '<td>' + (item.result_status || '—') + '</td>' +
-          '<td><a href="#" data-event-link>' + (item.event_id || '—') + '</a></td>';
+          '<td>' + statusPillHtml(item.result_status) + '</td>' +
+          '<td><a href="#" data-event-link title="' + (item.event_id || '—') + '">' + shortEventId(item.event_id) + '</a></td>';
         tableBody.appendChild(tr);
       });
     }
