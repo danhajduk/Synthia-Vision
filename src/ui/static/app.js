@@ -141,7 +141,7 @@
         }
 
         const statusTextEl = card.querySelector('[data-status-text]');
-        const statusDotEl = card.querySelector('[data-status-dot]');
+        const statusDotEl = card.querySelector('[data-status-pill] .dot');
         const status = String(data.status || 'disabled');
         if (statusTextEl) {
           statusTextEl.textContent = status === 'ok' ? 'OK' : (status === 'degraded' ? 'Degraded' : 'Disabled');
@@ -397,26 +397,36 @@
     }
     const statusEl = document.getElementById('admin-summary-status');
     const fields = {
-      service_status: document.getElementById('admin-service-status'),
-      heartbeat_age_s: document.getElementById('admin-heartbeat-age'),
-      queue_depth: document.getElementById('admin-queue-depth'),
+      health_label: document.getElementById('admin-kpi-health-label'),
+      health_badge_text: document.getElementById('admin-kpi-health-badge-text'),
+      health_dot: (function () {
+        const pill = document.getElementById('admin-kpi-health-badge');
+        return pill ? pill.querySelector('.dot') : null;
+      })(),
+      heartbeat: document.getElementById('admin-kpi-heartbeat'),
+      queue_depth: document.getElementById('admin-kpi-queue-depth'),
+      queue_ratio: document.getElementById('admin-kpi-queue-ratio'),
       last_event_ts: document.getElementById('admin-last-event-ts'),
       events_total: document.getElementById('admin-events-total'),
       errors_total: document.getElementById('admin-errors-total'),
     };
+    const queueMax = 50;
 
-    function ageLabel(value) {
-      const seconds = Number(value);
-      if (!Number.isFinite(seconds)) {
-        return '—';
+    function healthInfo(statusRaw) {
+      const status = String(statusRaw || 'unknown').toLowerCase();
+      if (status === 'enabled') {
+        return { label: 'Healthy', badge: 'Enabled', dot: '' };
       }
-      if (seconds < 60) {
-        return String(seconds) + 's ago';
+      if (status === 'degraded') {
+        return { label: 'Degraded', badge: 'Degraded', dot: 'warn' };
       }
-      if (seconds < 3600) {
-        return String(Math.floor(seconds / 60)) + 'm ago';
+      if (status === 'disabled') {
+        return { label: 'Disabled', badge: 'Disabled', dot: 'bad' };
       }
-      return String(Math.floor(seconds / 3600)) + 'h ago';
+      if (status === 'budget_blocked') {
+        return { label: 'Budget Blocked', badge: 'Budget Blocked', dot: 'bad' };
+      }
+      return { label: 'Unknown', badge: 'Unknown', dot: '' };
     }
 
     async function loadSummary() {
@@ -429,14 +439,27 @@
           return;
         }
         const data = await resp.json();
-        if (fields.service_status) {
-          fields.service_status.textContent = String(data.service_status || '—');
+        const health = healthInfo(data.service_status);
+        if (fields.health_label) {
+          fields.health_label.textContent = health.label;
         }
-        if (fields.heartbeat_age_s) {
-          fields.heartbeat_age_s.textContent = ageLabel(data.heartbeat_age_s);
+        if (fields.health_badge_text) {
+          fields.health_badge_text.textContent = health.badge;
+        }
+        if (fields.health_dot) {
+          fields.health_dot.classList.remove('warn', 'bad');
+          if (health.dot) {
+            fields.health_dot.classList.add(health.dot);
+          }
+        }
+        if (fields.heartbeat) {
+          fields.heartbeat.textContent = formatLocalDateTime(data.heartbeat_ts);
         }
         if (fields.queue_depth) {
           fields.queue_depth.textContent = String(data.queue_depth ?? '—');
+        }
+        if (fields.queue_ratio) {
+          fields.queue_ratio.textContent = String(data.queue_depth ?? 0) + ' / ' + String(queueMax);
         }
         if (fields.last_event_ts) {
           fields.last_event_ts.textContent = formatLocalDateTime(data.last_event_ts);

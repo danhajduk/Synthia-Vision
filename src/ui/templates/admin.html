@@ -22,18 +22,62 @@
         </div>
       </div>
       <div class="content">
-        <div class="card">
-          <h3>Admin Console</h3>
-          <div class="sub">Runtime summary</div>
-          <div class="form-grid" style="margin-top:12px;">
-            <label class="field-label">Service status</label><div class="sub mono" id="admin-service-status">—</div>
-            <label class="field-label">Heartbeat age</label><div class="sub mono" id="admin-heartbeat-age">—</div>
-            <label class="field-label">Queue depth</label><div class="sub mono" id="admin-queue-depth">—</div>
-            <label class="field-label">Last event</label><div class="sub mono" id="admin-last-event-ts">—</div>
-            <label class="field-label">Events total</label><div class="sub mono" id="admin-events-total">—</div>
-            <label class="field-label">Errors total</label><div class="sub mono" id="admin-errors-total">—</div>
+        <div class="grid kpis">
+          <div class="card">
+            <div class="row">
+              <h3>Health</h3>
+              {% set tag = "span" %}
+              {% set pill_class = "pill" %}
+              {% set dot_class = "warn" if kpis.health_label == "Degraded" else ("bad" if kpis.health_label in ["Disabled", "Budget Blocked"] else "") %}
+              {% set label = '<span id="admin-kpi-health-badge-text">' ~ (kpis.health_badge or "Unknown") ~ '</span>' %}
+              {% set attrs = 'id="admin-kpi-health-badge"' %}
+              {% include "partials/pill.html" with context %}
+            </div>
+            <div class="big" id="admin-kpi-health-label">{{ kpis.health_label or "Unknown" }}</div>
+            <div class="sub">Heartbeat: <span class="mono" id="admin-kpi-heartbeat">{{ kpis.heartbeat_ts or "—" }}</span></div>
           </div>
-          <div class="sub" id="admin-summary-status" style="margin-top:10px;">Loading summary…</div>
+
+          <div class="card">
+            <div class="row">
+              <h3>Queue</h3>
+              {% set tag = "span" %}
+              {% set pill_class = "pill" %}
+              {% set dot_class = "warn" if kpis.queue_depth > 0 else "" %}
+              {% set label = '<span id="admin-kpi-queue-ratio">' ~ kpis.queue_depth ~ ' / ' ~ kpis.queue_max ~ '</span>' %}
+              {% set attrs = "" %}
+              {% include "partials/pill.html" with context %}
+            </div>
+            <div class="big" id="admin-kpi-queue-depth">{{ kpis.queue_depth }}</div>
+            <div class="sub">Events: <span class="mono" id="admin-events-total">—</span> • Errors: <span class="mono" id="admin-errors-total">—</span></div>
+          </div>
+
+          <div class="card">
+            <div class="row">
+              <h3>Cost Today</h3>
+              {% set tag = "span" %}
+              {% set pill_class = "pill" %}
+              {% set dot_class = "" %}
+              {% set label = "OK" %}
+              {% set attrs = "" %}
+              {% include "partials/pill.html" with context %}
+            </div>
+            <div class="big" id="admin-kpi-cost-today">{{ kpis.cost_today or "—" }}</div>
+            <div class="sub">Last event: <span class="mono" id="admin-last-event-ts">—</span></div>
+          </div>
+
+          <div class="card">
+            <div class="row">
+              <h3>AI Calls</h3>
+              {% set tag = "span" %}
+              {% set pill_class = "pill" %}
+              {% set dot_class = "" %}
+              {% set label = "Today" %}
+              {% set attrs = "" %}
+              {% include "partials/pill.html" with context %}
+            </div>
+            <div class="big" id="admin-kpi-ai-calls">{{ kpis.ai_calls_today }}</div>
+            <div class="sub" id="admin-summary-status">Loading summary…</div>
+          </div>
         </div>
       </div>
     </main>

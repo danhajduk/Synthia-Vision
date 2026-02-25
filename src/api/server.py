@@ -602,12 +602,14 @@ def create_guest_api_app(config: ServiceConfig):
         principal = _ui_admin_or_redirect(session_token)
         if principal is None:
             return RedirectResponse(url="/ui/login", status_code=303)
+        guest_context = _build_guest_dashboard_context()
         return templates.TemplateResponse(
             request=request,
             name="admin.html",
             context={
                 "title": config.service.name,
                 "username": principal.username,
+                "kpis": guest_context.get("kpis", {}),
             },
         )
 

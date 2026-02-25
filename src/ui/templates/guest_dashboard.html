@@ -107,11 +107,26 @@
             <div class="cam-head">
               <div class="cam-name">{{ camera.display_name or camera.camera_key }}</div>
               {% if camera.status == 'disabled' %}
-                <div class="pill pill-bad" data-status-pill><span class="dot bad" data-status-dot></span> <span data-status-text>Disabled</span></div>
+                {% set tag = "div" %}
+                {% set pill_class = "pill pill-bad" %}
+                {% set dot_class = "bad" %}
+                {% set label = '<span data-status-text>Disabled</span>' %}
+                {% set attrs = 'data-status-pill' %}
+                {% include "partials/pill.html" with context %}
               {% elif camera.status == 'degraded' %}
-                <div class="pill pill-warn" data-status-pill><span class="dot warn" data-status-dot></span> <span data-status-text>Degraded</span></div>
+                {% set tag = "div" %}
+                {% set pill_class = "pill pill-warn" %}
+                {% set dot_class = "warn" %}
+                {% set label = '<span data-status-text>Degraded</span>' %}
+                {% set attrs = 'data-status-pill' %}
+                {% include "partials/pill.html" with context %}
               {% else %}
-                <div class="pill pill-ok" data-status-pill><span class="dot" data-status-dot></span> <span data-status-text>OK</span></div>
+                {% set tag = "div" %}
+                {% set pill_class = "pill pill-ok" %}
+                {% set dot_class = "" %}
+                {% set label = '<span data-status-text>OK</span>' %}
+                {% set attrs = 'data-status-pill' %}
+                {% include "partials/pill.html" with context %}
               {% endif %}
             </div>
             <div class="cam-meta">
