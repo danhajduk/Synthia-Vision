@@ -26,12 +26,7 @@
           <div class="card">
             <div class="row">
               <h3>Health</h3>
-              {% set tag = "span" %}
-              {% set pill_class = "pill" %}
-              {% set dot_class = "warn" if kpis.health_label == "Degraded" else ("bad" if kpis.health_label in ["Disabled", "Budget Blocked"] else "") %}
-              {% set label = '<span id="admin-kpi-health-badge-text">' ~ (kpis.health_badge or "Unknown") ~ '</span>' %}
-              {% set attrs = 'id="admin-kpi-health-badge"' %}
-              {% include "partials/pill.html" with context %}
+              <span class="pill" id="admin-kpi-health-badge"><span class="dot {% if kpis.health_label == 'Degraded' %}warn{% elif kpis.health_label in ['Disabled', 'Budget Blocked'] %}bad{% endif %}"></span> <span id="admin-kpi-health-badge-text">{{ kpis.health_badge or 'Unknown' }}</span></span>
             </div>
             <div class="big" id="admin-kpi-health-label">{{ kpis.health_label or "Unknown" }}</div>
             <div class="sub">Heartbeat: <span class="mono" id="admin-kpi-heartbeat">{{ kpis.heartbeat_ts or "—" }}</span></div>
@@ -40,12 +35,7 @@
           <div class="card">
             <div class="row">
               <h3>Queue</h3>
-              {% set tag = "span" %}
-              {% set pill_class = "pill" %}
-              {% set dot_class = "warn" if kpis.queue_depth > 0 else "" %}
-              {% set label = '<span id="admin-kpi-queue-ratio">' ~ kpis.queue_depth ~ ' / ' ~ kpis.queue_max ~ '</span>' %}
-              {% set attrs = "" %}
-              {% include "partials/pill.html" with context %}
+              <span class="pill"><span class="dot warn"></span> <span id="admin-kpi-queue-ratio">{{ kpis.queue_depth }} / {{ kpis.queue_max }}</span></span>
             </div>
             <div class="big" id="admin-kpi-queue-depth">{{ kpis.queue_depth }}</div>
             <div class="sub">Events: <span class="mono" id="admin-events-total">—</span> • Errors: <span class="mono" id="admin-errors-total">—</span></div>
@@ -54,12 +44,7 @@
           <div class="card">
             <div class="row">
               <h3>Cost Today</h3>
-              {% set tag = "span" %}
-              {% set pill_class = "pill" %}
-              {% set dot_class = "" %}
-              {% set label = "OK" %}
-              {% set attrs = "" %}
-              {% include "partials/pill.html" with context %}
+              <span class="pill"><span class="dot"></span> <span>OK</span></span>
             </div>
             <div class="big" id="admin-kpi-cost-today">{{ kpis.cost_today or "—" }}</div>
             <div class="sub">Last event: <span class="mono" id="admin-last-event-ts">—</span></div>
@@ -68,12 +53,7 @@
           <div class="card">
             <div class="row">
               <h3>AI Calls</h3>
-              {% set tag = "span" %}
-              {% set pill_class = "pill" %}
-              {% set dot_class = "" %}
-              {% set label = "Today" %}
-              {% set attrs = "" %}
-              {% include "partials/pill.html" with context %}
+              <span class="pill"><span class="dot"></span> <span>Today</span></span>
             </div>
             <div class="big" id="admin-kpi-ai-calls">{{ kpis.ai_calls_today }}</div>
             <div class="sub" id="admin-summary-status">Loading summary…</div>
