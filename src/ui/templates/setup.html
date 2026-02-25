@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Setup — {{ title }}</title>
   <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
+  <script>
+    window.SYNTHIA_SETUP_GLOBALS = {{ setup_globals_json|safe }};
+  </script>
 </head>
 <body data-ui-page="setup">
   <div class="container">

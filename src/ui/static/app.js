@@ -760,6 +760,7 @@
     let serverUnsavedChanges = false;
     const settingsBaseline = {};
     const cameraDirty = {};
+    const globalRuntimeValues = Object.assign({}, window.SYNTHIA_SETUP_GLOBALS || {});
 
     const wizardState = { cameraKey: '', viewId: '', profile: null, currentView: null, currentStep: 1 };
 
@@ -775,6 +776,17 @@
       return input.type === 'checkbox' ? input.checked : input.value;
     }
 
+    function normalizeVisionDetail(value) {
+      const raw = String(value || '').trim().toLowerCase();
+      if (raw === 'high') {
+        return 'high';
+      }
+      if (raw === 'medium') {
+        return 'medium';
+      }
+      return 'low';
+    }
+
     function setFieldValue(id, value) {
       const input = qs(id);
       if (!input) {
@@ -783,14 +795,83 @@
       if (input.type === 'checkbox') {
         input.checked = value === true || value === '1' || String(value).toLowerCase() === 'true';
       } else {
+        if (id === 'setting-ai.defaults.vision_detail') {
+          input.value = normalizeVisionDetail(value);
+          return;
+        }
         input.value = value ?? '';
       }
     }
 
     function collectSettingsPayload() {
       const payload = {};
-      settingKeys.forEach((key) => { payload[key] = fieldValue('setting-' + key); });
+      settingKeys.forEach((key) => {
+        const id = 'setting-' + key;
+        if (key === 'ai.defaults.vision_detail') {
+          const current = normalizeVisionDetail(fieldValue(id));
+          payload[key] = current === 'medium' ? 'low' : current;
+          return;
+        }
+        payload[key] = fieldValue(id);
+      });
       return payload;
+    }
+
+    function getGlobalDefaultForField(fieldName) {
+      const mapping = {
+        confidence_threshold: 'policy.defaults.confidence_threshold',
+        cooldown_s: 'policy.defaults.cooldown_s',
+        vision_detail: 'ai.defaults.vision_detail',
+        phash_threshold: 'policy.smart_update.phash_threshold_default',
+      };
+      const settingKey = mapping[fieldName];
+      if (!settingKey) {
+        return '—';
+      }
+      const settingInputId = 'setting-' + settingKey;
+      const fromInput = fieldValue(settingInputId);
+      const normalizedInput = String(fromInput == null ? '' : fromInput).trim();
+      if (normalizedInput) {
+        return fieldName === 'vision_detail' ? normalizeVisionDetail(normalizedInput) : normalizedInput;
+      }
+      const runtimeValue = String(globalRuntimeValues[settingKey] || '').trim();
+      if (runtimeValue) {
+        return fieldName === 'vision_detail' ? normalizeVisionDetail(runtimeValue) : runtimeValue;
+      }
+      if (fieldName === 'cooldown_s') {
+        return 'global default';
+      }
+      return '—';
+    }
+
+    function effectiveOverrideLabel(fieldName, inputValue) {
+      const value = String(inputValue == null ? '' : inputValue).trim();
+      if (value) {
+        const rendered = fieldName === 'vision_detail' ? normalizeVisionDetail(value) : value;
+        return 'Effective: ' + rendered + ' (override)';
+      }
+      return 'Effective: ' + getGlobalDefaultForField(fieldName) + ' (global)';
+    }
+
+    function refreshCardOverrideState(card) {
+      ['confidence_threshold', 'cooldown_s', 'vision_detail', 'phash_threshold'].forEach((fieldName) => {
+        const input = card.querySelector('[data-field="' + fieldName + '"]');
+        if (!input) {
+          return;
+        }
+        const value = String(input.value || '').trim();
+        input.classList.toggle('is-override', Boolean(value));
+        const effectiveNode = card.querySelector('[data-effective-for="' + fieldName + '"]');
+        if (effectiveNode) {
+          effectiveNode.textContent = effectiveOverrideLabel(fieldName, value);
+        }
+      });
+    }
+
+    function refreshAllCameraEffectiveValues() {
+      container.querySelectorAll('[data-camera-key]').forEach((card) => {
+        refreshCardOverrideState(card);
+      });
     }
 
     function refreshGlobalDirtyBadge() {
@@ -982,6 +1063,9 @@
       }
       const data = await resp.json();
       const values = data.runtime || {};
+      Object.keys(values).forEach((key) => {
+        globalRuntimeValues[key] = values[key];
+      });
       settingKeys.forEach((key) => {
         const value = values[key] ?? '';
         setFieldValue('setting-' + key, value);
@@ -990,6 +1074,7 @@
       serverUnsavedChanges = Boolean(data.unsaved_changes);
       refreshGlobalDirtyBadge();
       refreshCameraDirtyBadge();
+      refreshAllCameraEffectiveValues();
     }
 
     async function wizardLoadProfile() {
@@ -1216,17 +1301,17 @@
       root.innerHTML =
         '<div class="row"><strong>' + (camera.display_name || camera.camera_key) + '</strong><span class="sub">' + camera.camera_key + ' • ' + setupLabel + '</span><span class="pill" data-camera-dirty>Saved</span></div>' +
         '<div class="form-grid" style="margin-top:10px;">' +
-        '<label class="field-label">Display name</label><input class="field" data-field="display_name" value="' + (camera.display_name || '') + '">' +
-        '<label class="field-label">Enabled</label><label class="toggle"><input type="checkbox" data-field="enabled"' + (camera.enabled ? ' checked' : '') + '><span>Process events for this camera</span></label>' +
-        '<label class="field-label">Prompt preset</label><input class="field" data-field="prompt_preset" value="' + (camera.prompt_preset || '') + '">' +
-        '<label class="field-label">Confidence threshold override (blank = global)</label><input class="field" data-field="confidence_threshold" value="' + confidenceValue + '">' +
-        '<label class="field-label">Cooldown override seconds (blank = global)</label><input class="field" data-field="cooldown_s" value="' + cooldownValue + '">' +
-        '<label class="field-label">Vision detail override (blank/low/high)</label><input class="field" data-field="vision_detail" value="' + (camera.vision_detail || '') + '">' +
-        '<label class="field-label">pHash threshold override (blank = global)</label><input class="field" data-field="phash_threshold" value="' + phashValue + '">' +
-        '<label class="field-label">Updates per event (1 or 2)</label><input class="field" data-field="updates_per_event" value="' + updatesValue + '">' +
-        '<label class="field-label">Guest preview</label><label class="toggle"><input type="checkbox" data-field="guest_preview_enabled"' + (camera.guest_preview_enabled ? ' checked' : '') + '><span>Allow preview image on guest dashboard</span></label>' +
-        '<label class="field-label">Security capable</label><label class="toggle"><input type="checkbox" data-field="security_capable"' + (camera.security_capable ? ' checked' : '') + '><span>Camera supports security overlay behavior</span></label>' +
-        '<label class="field-label">Security mode (runtime)</label><label class="toggle"><input type="checkbox" data-field="security_mode"' + (camera.security_mode ? ' checked' : '') + '><span>Enable conservative security overlay prompts</span></label>' +
+        '<div class="field-stack"><label class="field-label">Display name</label><input class="field" data-field="display_name" value="' + (camera.display_name || '') + '"></div>' +
+        '<div class="field-stack"><label class="field-label">Enabled</label><label class="toggle"><input type="checkbox" data-field="enabled"' + (camera.enabled ? ' checked' : '') + '><span>Process events for this camera</span></label></div>' +
+        '<div class="field-stack"><label class="field-label">Prompt preset</label><input class="field" data-field="prompt_preset" value="' + (camera.prompt_preset || '') + '"></div>' +
+        '<div class="field-stack"><label class="field-label">Confidence threshold override</label><input class="field' + (confidenceValue ? ' is-override' : '') + '" data-field="confidence_threshold" value="' + confidenceValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="confidence_threshold">' + effectiveOverrideLabel('confidence_threshold', confidenceValue) + '</div></div>' +
+        '<div class="field-stack"><label class="field-label">Cooldown override seconds</label><input class="field' + (cooldownValue ? ' is-override' : '') + '" data-field="cooldown_s" value="' + cooldownValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="cooldown_s">' + effectiveOverrideLabel('cooldown_s', cooldownValue) + '</div></div>' +
+        '<div class="field-stack"><label class="field-label">Vision detail override (blank/low/high)</label><input class="field' + (camera.vision_detail ? ' is-override' : '') + '" data-field="vision_detail" value="' + (camera.vision_detail || '') + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="vision_detail">' + effectiveOverrideLabel('vision_detail', camera.vision_detail || '') + '</div></div>' +
+        '<div class="field-stack"><label class="field-label">pHash threshold override</label><input class="field' + (phashValue ? ' is-override' : '') + '" data-field="phash_threshold" value="' + phashValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="phash_threshold">' + effectiveOverrideLabel('phash_threshold', phashValue) + '</div></div>' +
+        '<div class="field-stack"><label class="field-label">Updates per event (1 or 2)</label><input class="field" data-field="updates_per_event" value="' + updatesValue + '"></div>' +
+        '<div class="field-stack"><label class="field-label">Guest preview</label><label class="toggle"><input type="checkbox" data-field="guest_preview_enabled"' + (camera.guest_preview_enabled ? ' checked' : '') + '><span>Allow preview image on guest dashboard</span></label></div>' +
+        '<div class="field-stack"><label class="field-label">Security capable</label><label class="toggle"><input type="checkbox" data-field="security_capable"' + (camera.security_capable ? ' checked' : '') + '><span>Camera supports security overlay behavior</span></label></div>' +
+        '<div class="field-stack"><label class="field-label">Security mode (runtime)</label><label class="toggle"><input type="checkbox" data-field="security_mode"' + (camera.security_mode ? ' checked' : '') + '><span>Enable conservative security overlay prompts</span></label></div>' +
         '</div>' +
         '<div class="row" style="margin-top:10px;">' +
         '<button class="btn" data-action="apply">Apply (runtime)</button>' +
@@ -1259,11 +1344,14 @@
         card.querySelectorAll('[data-field]').forEach((input) => {
           input.addEventListener('change', function () {
             setCameraCardDirty(card, true);
+            refreshCardOverrideState(card);
           });
           input.addEventListener('input', function () {
             setCameraCardDirty(card, true);
+            refreshCardOverrideState(card);
           });
         });
+        refreshCardOverrideState(card);
         card.querySelector('[data-action="apply"]').addEventListener('click', async function (e) {
           e.preventDefault();
           const payload = payloadFromCameraCard(card);
@@ -1314,8 +1402,14 @@
       if (!input) {
         return;
       }
-      input.addEventListener('change', refreshGlobalDirtyBadge);
-      input.addEventListener('input', refreshGlobalDirtyBadge);
+      input.addEventListener('change', function () {
+        refreshGlobalDirtyBadge();
+        refreshAllCameraEffectiveValues();
+      });
+      input.addEventListener('input', function () {
+        refreshGlobalDirtyBadge();
+        refreshAllCameraEffectiveValues();
+      });
     });
 
     qs('settings-apply').addEventListener('click', async function (e) {
@@ -1329,12 +1423,17 @@
       if (resp.ok) {
         const data = await resp.json();
         serverUnsavedChanges = Boolean(data.unsaved_changes);
+        const runtime = data.runtime || {};
+        Object.keys(runtime).forEach((key) => {
+          globalRuntimeValues[key] = runtime[key];
+        });
         globalStatusEl.textContent = 'Applied runtime settings.';
       } else {
         globalStatusEl.textContent = 'Failed applying runtime settings.';
       }
       refreshGlobalDirtyBadge();
       refreshCameraDirtyBadge();
+      refreshAllCameraEffectiveValues();
     });
 
     qs('settings-save').addEventListener('click', async function (e) {
@@ -1348,6 +1447,10 @@
       if (resp.ok) {
         const data = await resp.json();
         serverUnsavedChanges = Boolean(data.unsaved_changes);
+        const runtime = data.runtime || {};
+        Object.keys(runtime).forEach((key) => {
+          globalRuntimeValues[key] = runtime[key];
+        });
         settingKeys.forEach((key) => {
           settingsBaseline[key] = String(fieldValue('setting-' + key));
         });
@@ -1357,6 +1460,7 @@
       }
       refreshGlobalDirtyBadge();
       refreshCameraDirtyBadge();
+      refreshAllCameraEffectiveValues();
     });
 
     qs('wizard-open-modal').addEventListener('click', function () {

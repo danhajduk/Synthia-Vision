@@ -620,10 +620,14 @@ def create_guest_api_app(config: ServiceConfig):
     ):
         if _ui_admin_or_redirect(session_token) is None:
             return RedirectResponse(url="/ui/login", status_code=303)
+        setup_globals = _get_admin_settings().get("runtime", {})
         return templates.TemplateResponse(
             request=request,
             name="setup.html",
-            context={"title": config.service.name},
+            context={
+                "title": config.service.name,
+                "setup_globals_json": json.dumps(setup_globals),
+            },
         )
 
     @app.get("/ui/events", response_class=HTMLResponse, include_in_schema=False)
