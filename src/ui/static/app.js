@@ -504,8 +504,20 @@
     const detailOverlay = document.getElementById('events-detail-overlay');
     const detailClose = document.getElementById('events-detail-close');
     const detailJson = document.getElementById('events-detail-json');
+    const detailCamera = document.getElementById('events-detail-camera');
+    const detailTs = document.getElementById('events-detail-ts');
+    const detailStatus = document.getElementById('events-detail-status');
     const detailReason = document.getElementById('events-detail-reason');
     const detailSnapshot = document.getElementById('events-detail-snapshot');
+    const detailSnapshotImage = document.getElementById('events-detail-snapshot-image');
+    const detailFrigateScore = document.getElementById('events-detail-frigate-score');
+    const detailDedupeHit = document.getElementById('events-detail-dedupe-hit');
+    const detailCooldown = document.getElementById('events-detail-cooldown');
+    const detailVisionDetail = document.getElementById('events-detail-vision-detail');
+    const detailLatencySnapshot = document.getElementById('events-detail-latency-snapshot');
+    const detailLatencyOpenai = document.getElementById('events-detail-latency-openai');
+    const detailLatencyTotal = document.getElementById('events-detail-latency-total');
+    const rawToggleBtn = document.getElementById('events-raw-toggle');
     const state = { limit: 50, offset: 0, total: 0, items: [] };
 
     function statusPillHtml(statusRaw) {
@@ -566,9 +578,26 @@
           return;
         }
         const data = await resp.json();
+        const snapshotUrl = '/api/events/' + eventId + '/snapshot.jpg';
+        const metrics = Array.isArray(data.metrics) ? data.metrics : [];
+        const latestMetric = metrics.length ? metrics[metrics.length - 1] : {};
+        detailCamera.textContent = String(data.camera || '—');
+        detailTs.textContent = formatLocalDateTime(data.ts);
+        detailStatus.innerHTML = statusPillHtml(data.result_status);
+        detailFrigateScore.textContent = data.frigate_score == null ? '—' : String(data.frigate_score);
+        detailDedupeHit.textContent = data.dedupe_hit == null ? '—' : (data.dedupe_hit ? 'Yes' : 'No');
+        detailCooldown.textContent = data.cooldown_remaining_s == null ? '—' : String(data.cooldown_remaining_s);
+        detailVisionDetail.textContent = String(data.vision_detail || '—');
+        detailLatencySnapshot.textContent = latestMetric.latency_snapshot_ms == null ? '—' : String(latestMetric.latency_snapshot_ms);
+        detailLatencyOpenai.textContent = latestMetric.latency_openai_ms == null ? '—' : String(latestMetric.latency_openai_ms);
+        detailLatencyTotal.textContent = latestMetric.latency_total_ms == null ? '—' : String(latestMetric.latency_total_ms);
         detailJson.textContent = JSON.stringify(data, null, 2);
-        detailReason.textContent = 'Status reason: ' + String(data.reject_reason || data.result_status || '—');
-        detailSnapshot.textContent = 'Snapshot URL: /api/events/' + eventId + '/snapshot.jpg';
+        detailJson.hidden = true;
+        rawToggleBtn.textContent = 'Show Raw JSON';
+        detailReason.textContent = 'Rejection reason: ' + String(data.reject_reason || '—');
+        detailSnapshot.textContent = 'Snapshot URL: ' + snapshotUrl;
+        detailSnapshotImage.src = snapshotUrl;
+        detailSnapshotImage.alt = 'Snapshot for event ' + eventId;
         detailOverlay.hidden = false;
       } catch (err) {
         // ignore
@@ -631,6 +660,11 @@
       }
     });
     detailClose.addEventListener('click', function () { detailOverlay.hidden = true; });
+    rawToggleBtn.addEventListener('click', function () {
+      const expanded = !detailJson.hidden;
+      detailJson.hidden = expanded;
+      rawToggleBtn.textContent = expanded ? 'Show Raw JSON' : 'Hide Raw JSON';
+    });
     detailOverlay.addEventListener('click', function (e) {
       if (e.target === detailOverlay) {
         detailOverlay.hidden = true;

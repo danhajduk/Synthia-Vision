@@ -72,9 +72,40 @@
         <h3>Event Details</h3>
         <button class="btn" id="events-detail-close" type="button">Close</button>
       </div>
-      <div class="sub mono" id="events-detail-reason">Status reason: —</div>
-      <div class="sub mono" id="events-detail-snapshot">Snapshot URL: —</div>
-      <pre class="json-block" id="events-detail-json">—</pre>
+      <div class="card" style="margin-top:10px;">
+        <h3>Summary</h3>
+        <div class="form-grid">
+          <div class="field-stack"><label class="field-label">Camera</label><div class="sub mono" id="events-detail-camera">—</div></div>
+          <div class="field-stack"><label class="field-label">Timestamp</label><div class="sub mono" id="events-detail-ts">—</div></div>
+          <div class="field-stack"><label class="field-label">Status</label><div id="events-detail-status">—</div></div>
+        </div>
+        <div class="sub mono" id="events-detail-reason" style="margin-top:8px;">Rejection reason: —</div>
+        <div class="sub mono" id="events-detail-snapshot">Snapshot URL: —</div>
+        <div class="wizard-preview-wrap" style="margin-top:8px; min-height:180px;">
+          <img id="events-detail-snapshot-image" class="wizard-preview-image" alt="Event snapshot preview" />
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:10px;">
+        <h3>Metrics</h3>
+        <div class="form-grid">
+          <div class="field-stack"><label class="field-label">Frigate score</label><div class="sub mono" id="events-detail-frigate-score">—</div></div>
+          <div class="field-stack"><label class="field-label">Dedupe hit</label><div class="sub mono" id="events-detail-dedupe-hit">—</div></div>
+          <div class="field-stack"><label class="field-label">Cooldown remaining</label><div class="sub mono" id="events-detail-cooldown">—</div></div>
+          <div class="field-stack"><label class="field-label">Vision detail</label><div class="sub mono" id="events-detail-vision-detail">—</div></div>
+          <div class="field-stack"><label class="field-label">Latency snapshot (ms)</label><div class="sub mono" id="events-detail-latency-snapshot">—</div></div>
+          <div class="field-stack"><label class="field-label">Latency OpenAI (ms)</label><div class="sub mono" id="events-detail-latency-openai">—</div></div>
+          <div class="field-stack"><label class="field-label">Latency total (ms)</label><div class="sub mono" id="events-detail-latency-total">—</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:10px;">
+        <div class="row">
+          <h3>Raw JSON</h3>
+          <button class="btn" id="events-raw-toggle" type="button">Show Raw JSON</button>
+        </div>
+        <pre class="json-block" id="events-detail-json" hidden>—</pre>
+      </div>
     </div>
   </div>
   <script src="{{ request.url_for('ui-static', path='app.js') }}"></script>
