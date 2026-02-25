@@ -529,7 +529,7 @@ body.is-embedded .content {
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
   gap: 16px;
 }
 
@@ -567,8 +567,59 @@ body.is-embedded .content {
 }
 
 .field.is-override {
-  border-color: rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.07);
+  filter: brightness(1.03);
+}
+
+.override-tag {
+  display: none;
+  margin-left: 6px;
+  color: var(--muted2);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.override-tag.is-visible {
+  display: inline;
+}
+
+.field-effective:empty {
+  display: none;
+}
+
+.camera-card-head {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.camera-header-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.camera-override-grid {
+  margin-top: 10px;
+}
+
+.camera-secondary-grid {
+  margin-top: 8px;
+}
+
+@media (max-width: 1120px) {
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .camera-card-head {
+    grid-template-columns: 1fr;
+  }
 }
 
 .toggle {

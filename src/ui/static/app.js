@@ -817,40 +817,13 @@
       return payload;
     }
 
-    function getGlobalDefaultForField(fieldName) {
-      const mapping = {
-        confidence_threshold: 'policy.defaults.confidence_threshold',
-        cooldown_s: 'policy.defaults.cooldown_s',
-        vision_detail: 'ai.defaults.vision_detail',
-        phash_threshold: 'policy.smart_update.phash_threshold_default',
-      };
-      const settingKey = mapping[fieldName];
-      if (!settingKey) {
-        return '—';
-      }
-      const settingInputId = 'setting-' + settingKey;
-      const fromInput = fieldValue(settingInputId);
-      const normalizedInput = String(fromInput == null ? '' : fromInput).trim();
-      if (normalizedInput) {
-        return fieldName === 'vision_detail' ? normalizeVisionDetail(normalizedInput) : normalizedInput;
-      }
-      const runtimeValue = String(globalRuntimeValues[settingKey] || '').trim();
-      if (runtimeValue) {
-        return fieldName === 'vision_detail' ? normalizeVisionDetail(runtimeValue) : runtimeValue;
-      }
-      if (fieldName === 'cooldown_s') {
-        return 'global default';
-      }
-      return '—';
-    }
-
     function effectiveOverrideLabel(fieldName, inputValue) {
       const value = String(inputValue == null ? '' : inputValue).trim();
       if (value) {
         const rendered = fieldName === 'vision_detail' ? normalizeVisionDetail(value) : value;
         return 'Effective: ' + rendered + ' (override)';
       }
-      return 'Effective: ' + getGlobalDefaultForField(fieldName) + ' (global)';
+      return '';
     }
 
     function refreshCardOverrideState(card) {
@@ -861,6 +834,10 @@
         }
         const value = String(input.value || '').trim();
         input.classList.toggle('is-override', Boolean(value));
+        const tag = card.querySelector('[data-override-tag-for="' + fieldName + '"]');
+        if (tag) {
+          tag.classList.toggle('is-visible', Boolean(value));
+        }
         const effectiveNode = card.querySelector('[data-effective-for="' + fieldName + '"]');
         if (effectiveNode) {
           effectiveNode.textContent = effectiveOverrideLabel(fieldName, value);
@@ -1298,17 +1275,23 @@
       const cooldownValue = camera.cooldown_s === null || camera.cooldown_s === undefined ? '' : String(camera.cooldown_s);
       const phashValue = camera.phash_threshold === null || camera.phash_threshold === undefined ? '' : String(camera.phash_threshold);
       const updatesValue = camera.updates_per_event === null || camera.updates_per_event === undefined ? '' : String(camera.updates_per_event);
+      const visionValue = String(camera.vision_detail || '');
       root.innerHTML =
-        '<div class="row"><strong>' + (camera.display_name || camera.camera_key) + '</strong><span class="sub">' + camera.camera_key + ' • ' + setupLabel + '</span><span class="pill" data-camera-dirty>Saved</span></div>' +
-        '<div class="form-grid" style="margin-top:10px;">' +
+        '<div class="camera-card-head">' +
+        '<div class="camera-header-meta"><strong>' + (camera.display_name || camera.camera_key) + '</strong><span class="sub">' + camera.camera_key + ' • ' + setupLabel + '</span></div>' +
+        '<label class="toggle"><input type="checkbox" data-field="enabled"' + (camera.enabled ? ' checked' : '') + '><span>Enabled</span></label>' +
+        '<span class="pill" data-camera-dirty>Saved</span>' +
+        '</div>' +
+        '<div class="form-grid camera-override-grid">' +
         '<div class="field-stack"><label class="field-label">Display name</label><input class="field" data-field="display_name" value="' + (camera.display_name || '') + '"></div>' +
-        '<div class="field-stack"><label class="field-label">Enabled</label><label class="toggle"><input type="checkbox" data-field="enabled"' + (camera.enabled ? ' checked' : '') + '><span>Process events for this camera</span></label></div>' +
         '<div class="field-stack"><label class="field-label">Prompt preset</label><input class="field" data-field="prompt_preset" value="' + (camera.prompt_preset || '') + '"></div>' +
-        '<div class="field-stack"><label class="field-label">Confidence threshold override</label><input class="field' + (confidenceValue ? ' is-override' : '') + '" data-field="confidence_threshold" value="' + confidenceValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="confidence_threshold">' + effectiveOverrideLabel('confidence_threshold', confidenceValue) + '</div></div>' +
-        '<div class="field-stack"><label class="field-label">Cooldown override seconds</label><input class="field' + (cooldownValue ? ' is-override' : '') + '" data-field="cooldown_s" value="' + cooldownValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="cooldown_s">' + effectiveOverrideLabel('cooldown_s', cooldownValue) + '</div></div>' +
-        '<div class="field-stack"><label class="field-label">Vision detail override (blank/low/high)</label><input class="field' + (camera.vision_detail ? ' is-override' : '') + '" data-field="vision_detail" value="' + (camera.vision_detail || '') + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="vision_detail">' + effectiveOverrideLabel('vision_detail', camera.vision_detail || '') + '</div></div>' +
-        '<div class="field-stack"><label class="field-label">pHash threshold override</label><input class="field' + (phashValue ? ' is-override' : '') + '" data-field="phash_threshold" value="' + phashValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="phash_threshold">' + effectiveOverrideLabel('phash_threshold', phashValue) + '</div></div>' +
         '<div class="field-stack"><label class="field-label">Updates per event (1 or 2)</label><input class="field" data-field="updates_per_event" value="' + updatesValue + '"></div>' +
+        '<div class="field-stack"><label class="field-label">Confidence threshold override <span class="override-tag' + (confidenceValue ? ' is-visible' : '') + '" data-override-tag-for="confidence_threshold">[Override]</span></label><input class="field' + (confidenceValue ? ' is-override' : '') + '" data-field="confidence_threshold" value="' + confidenceValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="confidence_threshold">' + effectiveOverrideLabel('confidence_threshold', confidenceValue) + '</div></div>' +
+        '<div class="field-stack"><label class="field-label">Cooldown override seconds <span class="override-tag' + (cooldownValue ? ' is-visible' : '') + '" data-override-tag-for="cooldown_s">[Override]</span></label><input class="field' + (cooldownValue ? ' is-override' : '') + '" data-field="cooldown_s" value="' + cooldownValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="cooldown_s">' + effectiveOverrideLabel('cooldown_s', cooldownValue) + '</div></div>' +
+        '<div class="field-stack"><label class="field-label">Vision detail override (blank/low/high) <span class="override-tag' + (visionValue ? ' is-visible' : '') + '" data-override-tag-for="vision_detail">[Override]</span></label><input class="field' + (visionValue ? ' is-override' : '') + '" data-field="vision_detail" value="' + visionValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="vision_detail">' + effectiveOverrideLabel('vision_detail', visionValue) + '</div></div>' +
+        '<div class="field-stack"><label class="field-label">pHash threshold override <span class="override-tag' + (phashValue ? ' is-visible' : '') + '" data-override-tag-for="phash_threshold">[Override]</span></label><input class="field' + (phashValue ? ' is-override' : '') + '" data-field="phash_threshold" value="' + phashValue + '"><div class="field-help">Blank = use global default.</div><div class="field-effective" data-effective-for="phash_threshold">' + effectiveOverrideLabel('phash_threshold', phashValue) + '</div></div>' +
+        '</div>' +
+        '<div class="form-grid camera-secondary-grid">' +
         '<div class="field-stack"><label class="field-label">Guest preview</label><label class="toggle"><input type="checkbox" data-field="guest_preview_enabled"' + (camera.guest_preview_enabled ? ' checked' : '') + '><span>Allow preview image on guest dashboard</span></label></div>' +
         '<div class="field-stack"><label class="field-label">Security capable</label><label class="toggle"><input type="checkbox" data-field="security_capable"' + (camera.security_capable ? ' checked' : '') + '><span>Camera supports security overlay behavior</span></label></div>' +
         '<div class="field-stack"><label class="field-label">Security mode (runtime)</label><label class="toggle"><input type="checkbox" data-field="security_mode"' + (camera.security_mode ? ' checked' : '') + '><span>Enable conservative security overlay prompts</span></label></div>' +
