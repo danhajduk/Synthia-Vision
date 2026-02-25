@@ -1,0 +1,11 @@
+{% set _tag = tag|default('span') %}
+{% if _tag not in ['span', 'div'] %}
+  {% set _tag = 'span' %}
+{% endif %}
+{% set _pill_class = pill_class|default('pill') %}
+{% set _dot_class = dot_class|default('') %}
+{% set _label = label|default('') %}
+{% set _attrs = attrs|default('') %}
+<{{ _tag }} class="{{ _pill_class }}" {{ _attrs|safe }}>
+  <span class="dot {{ _dot_class }}"></span> {{ _label|safe }}
+</{{ _tag }}>

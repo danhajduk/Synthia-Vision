@@ -55,7 +55,12 @@
           <div class="card">
             <div class="row">
               <h3>Queue</h3>
-              <span class="pill"><span class="dot warn"></span> <span data-kpi-queue-ratio>{{ kpis.queue_depth }} / {{ kpis.queue_max }}</span></span>
+              {% set tag = "span" %}
+              {% set pill_class = "pill" %}
+              {% set dot_class = "warn" %}
+              {% set label = '<span data-kpi-queue-ratio>' ~ kpis.queue_depth ~ ' / ' ~ kpis.queue_max ~ '</span>' %}
+              {% set attrs = "" %}
+              {% include "partials/pill.html" with context %}
             </div>
             <div class="big" data-kpi-queue-depth>{{ kpis.queue_depth }}</div>
             <div class="sub">Drops today: <span class="mono" data-kpi-drops>{{ kpis.drops_today }}</span></div>
@@ -64,7 +69,12 @@
           <div class="card">
             <div class="row">
               <h3>Cost Today</h3>
-              <span class="pill"><span class="dot"></span> OK</span>
+              {% set tag = "span" %}
+              {% set pill_class = "pill" %}
+              {% set dot_class = "" %}
+              {% set label = "OK" %}
+              {% set attrs = "" %}
+              {% include "partials/pill.html" with context %}
             </div>
             <div class="big" data-kpi-cost-today>{{ kpis.cost_today or '—' }}</div>
             <div class="sub">Month-to-date: <span class="mono" data-kpi-cost-mtd>{{ kpis.cost_mtd or '—' }}</span> • Avg/event: <span class="mono" data-kpi-cost-avg-event>{{ kpis.avg_cost_per_event or '—' }}</span></div>
@@ -73,7 +83,12 @@
           <div class="card">
             <div class="row">
               <h3>AI Calls</h3>
-              <span class="pill"><span class="dot"></span> Today</span>
+              {% set tag = "span" %}
+              {% set pill_class = "pill" %}
+              {% set dot_class = "" %}
+              {% set label = "Today" %}
+              {% set attrs = "" %}
+              {% include "partials/pill.html" with context %}
             </div>
             <div class="big" data-kpi-ai-calls>{{ kpis.ai_calls_today }}</div>
             <div class="sub">Tokens today: <span class="mono" data-kpi-tokens-today>{{ kpis.tokens_today_total }}</span></div>
