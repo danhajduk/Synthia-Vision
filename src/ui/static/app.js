@@ -497,9 +497,6 @@
       return;
     }
     const statusEl = document.getElementById('events-status');
-    const pageLabelEl = document.getElementById('events-page-label');
-    const prevBtn = document.getElementById('events-prev');
-    const nextBtn = document.getElementById('events-next');
     const refreshBtn = document.getElementById('events-refresh');
     const detailOverlay = document.getElementById('events-detail-overlay');
     const detailClose = document.getElementById('events-detail-close');
@@ -518,7 +515,6 @@
     const detailLatencyOpenai = document.getElementById('events-detail-latency-openai');
     const detailLatencyTotal = document.getElementById('events-detail-latency-total');
     const rawToggleBtn = document.getElementById('events-raw-toggle');
-    const state = { limit: 50, offset: 0, total: 0, items: [] };
 
     function statusPillHtml(statusRaw) {
       const status = String(statusRaw || '').trim().toLowerCase();
@@ -535,40 +531,6 @@
         return '<span class="pill"><span class="dot bad"></span> <span>Error</span></span>';
       }
       return '<span class="pill"><span>' + (statusRaw || '—') + '</span></span>';
-    }
-
-    function shortEventId(value) {
-      const full = String(value || '—');
-      return full.length > 10 ? (full.slice(0, 10) + '…') : full;
-    }
-
-    function queryFilters() {
-      const params = new URLSearchParams(window.location.search);
-      const filter = {
-        camera: String(params.get('camera') || '').trim(),
-        status: String(params.get('status') || '').trim().toLowerCase(),
-        since: String(params.get('since') || '').trim(),
-      };
-      return filter;
-    }
-
-    function renderRows(items) {
-      tableBody.innerHTML = '';
-      if (!items.length) {
-        tableBody.innerHTML = '<tr><td colspan="4">No events yet.</td></tr>';
-        return;
-      }
-      items.forEach(function (item) {
-        const tr = document.createElement('tr');
-        tr.setAttribute('data-event-row', '1');
-        tr.setAttribute('data-event-id', item.event_id || '');
-        tr.innerHTML =
-          '<td>' + formatLocalDateTime(item.ts) + '</td>' +
-          '<td>' + (item.camera || '—') + '</td>' +
-          '<td>' + statusPillHtml(item.result_status) + '</td>' +
-          '<td><a href="#" data-event-link title="' + (item.event_id || '—') + '">' + shortEventId(item.event_id) + '</a></td>';
-        tableBody.appendChild(tr);
-      });
     }
 
     async function openDetail(eventId) {
@@ -604,45 +566,6 @@
       }
     }
 
-    async function loadPage() {
-      const filters = queryFilters();
-      const params = new URLSearchParams({
-        limit: String(state.limit),
-        offset: String(state.offset),
-      });
-      if (filters.camera) {
-        params.set('camera', filters.camera);
-      }
-      if (filters.status === 'accepted' || filters.status === 'ok' || filters.status === 'approved') {
-        params.set('accepted', 'true');
-      } else if (filters.status === 'rejected' || filters.status === 'denied') {
-        params.set('accepted', 'false');
-      }
-      const resp = await fetch('/api/events?' + params.toString(), { credentials: 'same-origin' });
-      if (!resp.ok) {
-        statusEl.textContent = 'Failed loading events.';
-        return;
-      }
-      const payload = await resp.json();
-      let items = Array.isArray(payload.items) ? payload.items : [];
-      if (filters.since) {
-        const sinceTime = new Date(filters.since).getTime();
-        if (!Number.isNaN(sinceTime)) {
-          items = items.filter((item) => {
-            const ts = new Date(item.ts || '').getTime();
-            return !Number.isNaN(ts) && ts >= sinceTime;
-          });
-        }
-      }
-      state.items = items;
-      state.total = Number(payload.total || 0);
-      renderRows(items);
-      pageLabelEl.textContent = 'Page ' + String(Math.floor(state.offset / state.limit) + 1);
-      prevBtn.disabled = state.offset <= 0;
-      nextBtn.disabled = state.offset + state.limit >= state.total;
-      statusEl.textContent = items.length ? ('Showing ' + String(items.length) + ' events') : 'No events.';
-    }
-
     tableBody.addEventListener('click', function (e) {
       const link = e.target.closest('[data-event-link]');
       const row = e.target.closest('[data-event-row]');
@@ -670,18 +593,10 @@
         detailOverlay.hidden = true;
       }
     });
-    prevBtn.addEventListener('click', function () {
-      state.offset = Math.max(0, state.offset - state.limit);
-      loadPage();
-    });
-    nextBtn.addEventListener('click', function () {
-      state.offset += state.limit;
-      loadPage();
-    });
     refreshBtn.addEventListener('click', function () {
-      loadPage();
+      window.location.reload();
     });
-    loadPage();
+    statusEl.textContent = 'Filtered server-side results.';
   }
 
   function initErrorsPage() {

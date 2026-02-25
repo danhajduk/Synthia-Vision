@@ -21,7 +21,49 @@
       </div>
       <div class="content">
         <div class="card">
+          <form method="get" action="/ui/events" class="form-grid">
+            <div class="field-stack">
+              <label class="field-label" for="events-filter-camera">Camera</label>
+              <select class="field" id="events-filter-camera" name="camera">
+                <option value="">All</option>
+                {% for camera in available_cameras %}
+                <option value="{{ camera }}" {% if filters.camera == camera %}selected{% endif %}>{{ camera }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field-stack">
+              <label class="field-label" for="events-filter-status">Status</label>
+              <select class="field" id="events-filter-status" name="status">
+                <option value="">All</option>
+                {% for item in available_statuses %}
+                <option value="{{ item }}" {% if filters.status == item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field-stack">
+              <label class="field-label" for="events-filter-q">Search Event ID</label>
+              <input class="field" id="events-filter-q" name="q" value="{{ filters.q }}" placeholder="Search Event ID" />
+            </div>
+            <div class="field-stack">
+              <label class="field-label" for="events-filter-page-size">Page size</label>
+              <select class="field" id="events-filter-page-size" name="page_size">
+                <option value="25" {% if filters.page_size == 25 %}selected{% endif %}>25</option>
+                <option value="50" {% if filters.page_size == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if filters.page_size == 100 %}selected{% endif %}>100</option>
+              </select>
+            </div>
+            <div class="field-stack" style="align-self:end;">
+              <div class="row">
+                <button class="btn primary" type="submit">Apply</button>
+                <a class="btn" href="/ui/events">Clear</a>
+              </div>
+            </div>
+          </form>
+
           <h3>Recent Events</h3>
+          <div class="sub">
+            Showing {{ pagination.page_start }}–{{ pagination.page_end }} of {{ pagination.total_count }} • Page {{ pagination.page }} of {{ pagination.total_pages }}
+          </div>
           <div class="table-wrap">
             <table class="table">
               <thead>
@@ -50,17 +92,35 @@
                 </tr>
                 {% endfor %}
                 {% if not events %}
-                <tr><td colspan="4">No events yet.</td></tr>
+                <tr><td colspan="4">No matching events.</td></tr>
                 {% endif %}
               </tbody>
             </table>
           </div>
           <div class="row" style="margin-top:10px;">
-            <button class="btn" id="events-prev" type="button">Prev</button>
-            <span class="sub mono" id="events-page-label">Page 1</span>
-            <button class="btn" id="events-next" type="button">Next</button>
+            {% if pagination.prev_url %}
+            <a class="btn" href="{{ pagination.prev_url }}">Prev</a>
+            {% else %}
+            <button class="btn" type="button" disabled>Prev</button>
+            {% endif %}
+
+            {% for page_link in pagination.page_links %}
+            {% if page_link is none %}
+            <span class="sub mono">…</span>
+            {% elif page_link == pagination.page %}
+            <span class="pill">{{ page_link }}</span>
+            {% else %}
+            <a class="btn" href="{{ pagination.page_url_map[page_link] }}">{{ page_link }}</a>
+            {% endif %}
+            {% endfor %}
+
+            {% if pagination.next_url %}
+            <a class="btn" href="{{ pagination.next_url }}">Next</a>
+            {% else %}
+            <button class="btn" type="button" disabled>Next</button>
+            {% endif %}
           </div>
-          <div class="sub" id="events-status" style="margin-top:8px;">Loading…</div>
+          <div class="sub" id="events-status" style="margin-top:8px;">Filtered server-side results.</div>
         </div>
       </div>
     </main>
