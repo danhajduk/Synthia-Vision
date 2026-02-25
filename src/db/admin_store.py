@@ -21,6 +21,8 @@ class AdminStore:
         limit: int = 100,
         offset: int = 0,
         camera: str | None = None,
+        status: str | None = None,
+        event_id_query: str | None = None,
         accepted: bool | None = None,
     ) -> dict[str, Any]:
         limit = max(1, min(500, int(limit)))
@@ -30,6 +32,12 @@ class AdminStore:
         if camera:
             where.append("camera = ?")
             params.append(camera)
+        if status:
+            where.append("result_status = ?")
+            params.append(status)
+        if event_id_query:
+            where.append("event_id LIKE ?")
+            params.append(f"%{event_id_query}%")
         if accepted is not None:
             where.append("accepted = ?")
             params.append(1 if accepted else 0)
@@ -61,6 +69,19 @@ class AdminStore:
             "offset": offset,
             "items": [dict(row) for row in rows],
         }
+
+    def list_event_cameras(self) -> list[str]:
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            rows = conn.execute(
+                """
+                SELECT DISTINCT camera
+                FROM events
+                WHERE camera IS NOT NULL AND TRIM(camera) != ''
+                ORDER BY camera ASC
+                """
+            ).fetchall()
+        return [str(row[0]) for row in rows if row and str(row[0]).strip()]
 
     def get_event(self, event_id: str) -> dict[str, Any] | None:
         with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:

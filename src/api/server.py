@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 import logging
+import math
 import os
 import sqlite3
 import time
@@ -13,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
 try:
     from fastapi import Cookie, FastAPI, HTTPException, Request, Response
@@ -633,15 +634,107 @@ def create_guest_api_app(config: ServiceConfig):
     @app.get("/ui/events", response_class=HTMLResponse, include_in_schema=False)
     async def ui_events(
         request: Request,
+        camera: str | None = None,
+        status: str | None = None,
+        q: str | None = None,
+        page: int = 1,
+        page_size: int = 50,
         session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     ):
         if _ui_admin_or_redirect(session_token) is None:
             return RedirectResponse(url="/ui/login", status_code=303)
-        events = admin_store.list_events(limit=50, offset=0)
+        allowed_page_sizes = {25, 50, 100}
+        normalized_page_size = page_size if page_size in allowed_page_sizes else 50
+        normalized_page = max(1, int(page))
+        normalized_camera = str(camera or "").strip() or None
+        normalized_status = str(status or "").strip().lower() or None
+        normalized_query = str(q or "").strip() or None
+        offset = (normalized_page - 1) * normalized_page_size
+
+        events = admin_store.list_events(
+            limit=normalized_page_size,
+            offset=offset,
+            camera=normalized_camera,
+            status=normalized_status,
+            event_id_query=normalized_query,
+        )
+        total_count = int(events.get("total", 0) or 0)
+        total_pages = max(1, math.ceil(total_count / normalized_page_size))
+        current_page = min(normalized_page, total_pages)
+        if current_page != normalized_page:
+            offset = (current_page - 1) * normalized_page_size
+            events = admin_store.list_events(
+                limit=normalized_page_size,
+                offset=offset,
+                camera=normalized_camera,
+                status=normalized_status,
+                event_id_query=normalized_query,
+            )
+        page_start = 0 if total_count == 0 else offset + 1
+        page_end = min(offset + normalized_page_size, total_count) if total_count > 0 else 0
+
+        available_cameras = admin_store.list_event_cameras()
+        available_statuses = ["ok", "suppressed", "skipped", "error"]
+        query_base: dict[str, str] = {}
+        if normalized_camera:
+            query_base["camera"] = normalized_camera
+        if normalized_status:
+            query_base["status"] = normalized_status
+        if normalized_query:
+            query_base["q"] = normalized_query
+        if normalized_page_size != 50:
+            query_base["page_size"] = str(normalized_page_size)
+
+        def _events_url_for(page_value: int) -> str:
+            params = dict(query_base)
+            if page_value > 1:
+                params["page"] = str(page_value)
+            encoded = urlencode(params)
+            return f"/ui/events?{encoded}" if encoded else "/ui/events"
+
+        prev_url = _events_url_for(current_page - 1) if current_page > 1 else None
+        next_url = _events_url_for(current_page + 1) if current_page < total_pages else None
+
+        page_links: list[int | None] = []
+        candidate_pages: list[int] = [1]
+        for page_value in range(current_page - 2, current_page + 3):
+            if 1 <= page_value <= total_pages:
+                candidate_pages.append(page_value)
+        if total_pages > 1:
+            candidate_pages.append(total_pages)
+        deduped = sorted(set(candidate_pages))
+        for idx, page_value in enumerate(deduped):
+            if idx > 0 and page_value - deduped[idx - 1] > 1:
+                page_links.append(None)
+            page_links.append(page_value)
+
         return templates.TemplateResponse(
             request=request,
             name="events.html",
-            context={"title": config.service.name, "events": events.get("items", [])},
+            context={
+                "title": config.service.name,
+                "events": events.get("items", []),
+                "available_cameras": available_cameras,
+                "available_statuses": available_statuses,
+                "filters": {
+                    "camera": normalized_camera or "",
+                    "status": normalized_status or "",
+                    "q": normalized_query or "",
+                    "page": current_page,
+                    "page_size": normalized_page_size,
+                },
+                "pagination": {
+                    "total_count": total_count,
+                    "total_pages": total_pages,
+                    "page": current_page,
+                    "page_start": page_start,
+                    "page_end": page_end,
+                    "prev_url": prev_url,
+                    "next_url": next_url,
+                    "page_links": page_links,
+                    "page_url_map": {p: _events_url_for(p) for p in deduped},
+                },
+            },
         )
 
     @app.get("/ui/events/{event_id}", response_class=HTMLResponse, include_in_schema=False)
