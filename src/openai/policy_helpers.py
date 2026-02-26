@@ -176,7 +176,15 @@ def apply_outdoor_action_heuristic(
     event: FrigateEvent,
     action: str,
     config: ServiceConfig,
+    frame_size: tuple[int, int] | None = None,
 ) -> str:
+    if _should_force_person_at_door(
+        event=event,
+        action=action,
+        config=config,
+        frame_size=frame_size,
+    ):
+        return "person_at_door"
     if action != config.policy.actions.default_action:
         return action
     allowed_actions = set(resolve_allowed_actions(event.camera, config))
@@ -211,3 +219,40 @@ def _normalized_zone_tokens(zones: tuple[str, ...]) -> set[str]:
 def _looks_like_door_zone(tokens: set[str]) -> bool:
     door_tokens = {"door", "entry", "entrance", "threshold", "porch", "stoop"}
     return any(token in door_tokens for token in tokens)
+
+
+def _should_force_person_at_door(
+    *,
+    event: FrigateEvent,
+    action: str,
+    config: ServiceConfig,
+    frame_size: tuple[int, int] | None,
+) -> bool:
+    override_cfg = getattr(getattr(config, "ai", None), "proximity_override", None)
+    if not getattr(override_cfg, "enabled", False):
+        return False
+    if action == "person_leaving":
+        return False
+    if event.label != "person" or event.bbox is None or frame_size is None:
+        return False
+    allowed_actions = set(resolve_allowed_actions(event.camera, config))
+    if "person_at_door" not in allowed_actions:
+        return False
+
+    frame_w, frame_h = int(frame_size[0]), int(frame_size[1])
+    if frame_w <= 0 or frame_h <= 0:
+        return False
+    x, _y, w, h = event.bbox
+    if w <= 0 or h <= 0:
+        return False
+
+    area_ratio_threshold = float(getattr(override_cfg, "area_ratio_threshold", 0.25))
+    right_edge_touch_ratio = float(getattr(override_cfg, "right_edge_touch_ratio", 0.98))
+    area_ratio = (w * h) / float(frame_w * frame_h)
+    if area_ratio >= area_ratio_threshold:
+        return True
+
+    right_edge_x = x + w
+    touches_right_edge = right_edge_x >= int(frame_w * right_edge_touch_ratio)
+    mostly_on_right_side = x >= int(frame_w * 0.5)
+    return touches_right_edge and mostly_on_right_side

@@ -1334,6 +1334,7 @@ class MQTTClient:
             event=event,
             action=classification.action,
             config=self._config,
+            frame_size=usage.processed_size,
         )
         self._publish_camera_result(
             event=event,

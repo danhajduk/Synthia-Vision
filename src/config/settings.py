@@ -152,6 +152,13 @@ class AISetupConfig:
 
 
 @dataclass(slots=True)
+class AIProximityOverrideConfig:
+    enabled: bool = False
+    area_ratio_threshold: float = 0.25
+    right_edge_touch_ratio: float = 0.98
+
+
+@dataclass(slots=True)
 class AIConfig:
     provider: str = "openai"
     openai: OpenAIConfig | None = None
@@ -166,6 +173,9 @@ class AIConfig:
     prompt_presets: dict[str, dict[str, str]] = field(default_factory=dict)
     vision_detail: str = "low"
     image_preprocess: "AIImagePreprocessConfig" = field(default_factory=lambda: AIImagePreprocessConfig())
+    proximity_override: AIProximityOverrideConfig = field(
+        default_factory=lambda: AIProximityOverrideConfig()
+    )
     setup: AISetupConfig = field(default_factory=lambda: AISetupConfig())
 
 
@@ -316,6 +326,10 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
         ai_data.get("image_preprocess", {}),
         "ai.image_preprocess",
     )
+    proximity_override_data = _as_mapping(
+        ai_data.get("proximity_override", {}),
+        "ai.proximity_override",
+    )
     policy_data = _as_mapping(resolved_data.get("policy", {}), "policy")
     policy_defaults_data = _as_mapping(policy_data.get("defaults", {}), "policy.defaults")
     policy_actions_data = _as_mapping(policy_data.get("actions", {}), "policy.actions")
@@ -464,6 +478,15 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 max_side_px=int(image_preprocess_data.get("max_side_px", 512)),
                 jpeg_quality=int(image_preprocess_data.get("jpeg_quality", 75)),
                 strip_metadata=_as_bool(image_preprocess_data.get("strip_metadata", True)),
+            ),
+            proximity_override=AIProximityOverrideConfig(
+                enabled=_as_bool(proximity_override_data.get("enabled", False)),
+                area_ratio_threshold=float(
+                    proximity_override_data.get("area_ratio_threshold", 0.25)
+                ),
+                right_edge_touch_ratio=float(
+                    proximity_override_data.get("right_edge_touch_ratio", 0.98)
+                ),
             ),
             setup=AISetupConfig(
                 openai=AISetupOpenAIConfig(
@@ -785,6 +808,13 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("ai.image_preprocess.max_side_px must be >= 128")
     if config.ai.image_preprocess.jpeg_quality < 40 or config.ai.image_preprocess.jpeg_quality > 95:
         raise ConfigError("ai.image_preprocess.jpeg_quality must be between 40 and 95")
+    if config.ai.proximity_override.area_ratio_threshold <= 0 or config.ai.proximity_override.area_ratio_threshold > 1:
+        raise ConfigError("ai.proximity_override.area_ratio_threshold must be > 0 and <= 1")
+    if (
+        config.ai.proximity_override.right_edge_touch_ratio < 0
+        or config.ai.proximity_override.right_edge_touch_ratio > 1
+    ):
+        raise ConfigError("ai.proximity_override.right_edge_touch_ratio must be between 0 and 1")
     if config.ai.setup.structured_output.mode != "json_schema":
         raise ConfigError("ai.setup.structured_output.mode must be json_schema")
     if not config.ai.setup.structured_output.schema:

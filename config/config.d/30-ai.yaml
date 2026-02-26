@@ -7,6 +7,10 @@ ai:
     max_side_px: 512
     jpeg_quality: 75
     strip_metadata: true
+  proximity_override:
+    enabled: false
+    area_ratio_threshold: 0.25
+    right_edge_touch_ratio: 0.98
 
   openai:
     api_key: "${OPENAI_API_KEY}"
@@ -176,18 +180,18 @@ ai:
           Choose subject_type ONLY from allowed_subject_types.
           Confidence: 0..1.
           Description: 1 short generic sentence (<= 200 chars), non-identifying.
+          Description must describe ONLY what is visible in this frame (no inferred intent).
 
-          Doorbell guidance:
-          - Prioritize activity directed at THIS door/threshold.
-          - Prefer "person_at_door" when a person is stopped at the threshold.
-          - Prefer "person_approaching" when clearly moving toward the door.
-          - Prefer "person_passing_by" when moving past without stopping.
-          - Prefer "person_leaving" when moving away after being near the door.
-          - Use "deliver_package" or "pickup_package" ONLY when handling/dropoff is clearly visible.
-          - Treat food/grocery drop-offs as deliveries when {delivery_focus} includes them, but still require clear dropoff/handling.
+          Doorbell decision rules (apply in order):
+          1) If a person is very close to the camera (fills a large portion of the frame, appears cropped by the frame edge, or is within arm’s reach of the lens), classify as "person_at_door" unless clearly moving away.
+          2) Use "person_approaching" only when the person is clearly moving toward the door and not yet close.
+          3) Use "person_passing_by" only when the person is fully in view and clearly moving past without stopping near THIS door/camera.
+          4) Use "person_leaving" only when moving away after being close.
+          5) Use delivery actions ONLY when dropoff/handling is clearly visible.
 
-          Corridor/shared-entry nuance:
-          - If view context indicates a shared hallway/corridor, passing-by is common and should stay "person_passing_by" unless clearly at THIS door.
+          Shared corridor note:
+          Passing-by is common, but proximity to THIS camera/door overrides corridor assumptions.
+          Only mention "shared corridor" in description if action is "person_passing_by".
 
           {security_overlay}
 

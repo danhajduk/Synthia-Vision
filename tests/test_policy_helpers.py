@@ -56,6 +56,13 @@ def _build_test_config() -> SimpleNamespace:
     )
     ai = SimpleNamespace(
         default_prompt_preset="outdoor",
+        privacy_rules="",
+        security_overlay_template="",
+        proximity_override=SimpleNamespace(
+            enabled=False,
+            area_ratio_threshold=0.25,
+            right_edge_touch_ratio=0.98,
+        ),
         prompt_presets={
             "outdoor": {
                 "system": "sys {camera_name}",
@@ -219,6 +226,57 @@ class PolicyHelpersTests(unittest.TestCase):
             config=self.config,
         )
         self.assertEqual(action, "unknown")
+
+    def test_proximity_override_forces_person_at_door_on_large_bbox(self) -> None:
+        self.config.ai.proximity_override.enabled = True
+        event = FrigateEvent(
+            event_id="evt-3",
+            camera="front",
+            label="person",
+            event_type="update",
+            bbox=(0, 0, 180, 180),
+        )
+        action = apply_outdoor_action_heuristic(
+            event=event,
+            action="person_passing_by",
+            config=self.config,
+            frame_size=(300, 300),
+        )
+        self.assertEqual(action, "person_at_door")
+
+    def test_proximity_override_forces_person_at_door_on_right_edge_touch(self) -> None:
+        self.config.ai.proximity_override.enabled = True
+        event = FrigateEvent(
+            event_id="evt-4",
+            camera="front",
+            label="person",
+            event_type="update",
+            bbox=(160, 20, 140, 120),
+        )
+        action = apply_outdoor_action_heuristic(
+            event=event,
+            action="person_passing_by",
+            config=self.config,
+            frame_size=(300, 300),
+        )
+        self.assertEqual(action, "person_at_door")
+
+    def test_proximity_override_does_not_change_person_leaving(self) -> None:
+        self.config.ai.proximity_override.enabled = True
+        event = FrigateEvent(
+            event_id="evt-5",
+            camera="front",
+            label="person",
+            event_type="update",
+            bbox=(0, 0, 240, 240),
+        )
+        action = apply_outdoor_action_heuristic(
+            event=event,
+            action="person_leaving",
+            config=self.config,
+            frame_size=(300, 300),
+        )
+        self.assertEqual(action, "person_leaving")
 
 
 if __name__ == "__main__":
