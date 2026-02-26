@@ -72,7 +72,7 @@
               <tbody id="events-table-body">
                 {% for event in events %}
                 <tr data-event-row data-event-id="{{ event.event_id }}">
-                  <td>{{ event.ts or '—' }}</td>
+                  <td data-event-ts="{{ event.ts or '' }}">—</td>
                   <td>{{ event.camera or '—' }}</td>
                   <td>
                     {% set _status = (event.result_status or '—')|lower %}
@@ -139,6 +139,7 @@
           <div class="field-stack"><label class="field-label">Timestamp</label><div class="sub mono" id="events-detail-ts">—</div></div>
           <div class="field-stack"><label class="field-label">Status</label><div id="events-detail-status">—</div></div>
         </div>
+        <div class="sub" id="events-detail-description" style="margin-top:8px;">Description: —</div>
         <div class="sub mono" id="events-detail-reason" style="margin-top:8px;">Rejection reason: —</div>
         <div class="sub mono" id="events-detail-snapshot">Snapshot URL: —</div>
         <div class="wizard-preview-wrap" style="margin-top:8px; min-height:180px;">

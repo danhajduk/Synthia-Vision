@@ -504,6 +504,7 @@
     const detailCamera = document.getElementById('events-detail-camera');
     const detailTs = document.getElementById('events-detail-ts');
     const detailStatus = document.getElementById('events-detail-status');
+    const detailDescription = document.getElementById('events-detail-description');
     const detailReason = document.getElementById('events-detail-reason');
     const detailSnapshot = document.getElementById('events-detail-snapshot');
     const detailSnapshotImage = document.getElementById('events-detail-snapshot-image');
@@ -533,6 +534,13 @@
       return '<span class="pill"><span>' + (statusRaw || '—') + '</span></span>';
     }
 
+    function localizeEventTableTimes() {
+      tableBody.querySelectorAll('[data-event-ts]').forEach((node) => {
+        const raw = node.getAttribute('data-event-ts');
+        node.textContent = formatLocalDateTime(raw);
+      });
+    }
+
     async function openDetail(eventId) {
       try {
         const resp = await fetch('/api/events/' + encodeURIComponent(eventId), { credentials: 'same-origin' });
@@ -546,6 +554,7 @@
         detailCamera.textContent = String(data.camera || '—');
         detailTs.textContent = formatLocalDateTime(data.ts);
         detailStatus.innerHTML = statusPillHtml(data.result_status);
+        detailDescription.textContent = 'Description: ' + String(data.description || '—');
         detailFrigateScore.textContent = data.frigate_score == null ? '—' : String(data.frigate_score);
         detailDedupeHit.textContent = data.dedupe_hit == null ? '—' : (data.dedupe_hit ? 'Yes' : 'No');
         detailCooldown.textContent = data.cooldown_remaining_s == null ? '—' : String(data.cooldown_remaining_s);
@@ -596,6 +605,7 @@
     refreshBtn.addEventListener('click', function () {
       window.location.reload();
     });
+    localizeEventTableTimes();
     statusEl.textContent = 'Filtered server-side results.';
   }
 
