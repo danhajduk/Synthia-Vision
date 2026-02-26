@@ -504,6 +504,9 @@
     const detailCamera = document.getElementById('events-detail-camera');
     const detailTs = document.getElementById('events-detail-ts');
     const detailStatus = document.getElementById('events-detail-status');
+    const detailSubjectType = document.getElementById('events-detail-subject-type');
+    const detailAction = document.getElementById('events-detail-action');
+    const detailEventType = document.getElementById('events-detail-event-type');
     const detailDescription = document.getElementById('events-detail-description');
     const detailReason = document.getElementById('events-detail-reason');
     const detailSnapshot = document.getElementById('events-detail-snapshot');
@@ -554,6 +557,9 @@
         detailCamera.textContent = String(data.camera || '—');
         detailTs.textContent = formatLocalDateTime(data.ts);
         detailStatus.innerHTML = statusPillHtml(data.result_status);
+        detailSubjectType.textContent = String(data.subject_type || '—');
+        detailAction.textContent = String(data.action || '—');
+        detailEventType.textContent = String(data.event_type || '—');
         detailDescription.textContent = 'Description: ' + String(data.description || '—');
         detailFrigateScore.textContent = data.frigate_score == null ? '—' : String(data.frigate_score);
         detailDedupeHit.textContent = data.dedupe_hit == null ? '—' : (data.dedupe_hit ? 'Yes' : 'No');
