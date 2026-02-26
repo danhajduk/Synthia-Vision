@@ -155,7 +155,8 @@ class AISetupConfig:
 class AIProximityOverrideConfig:
     enabled: bool = False
     area_ratio_threshold: float = 0.25
-    right_edge_touch_ratio: float = 0.98
+    right_edge_touch_ratio: float = 0.95
+    min_edge_touch_area_ratio: float = 0.05
 
 
 @dataclass(slots=True)
@@ -485,7 +486,10 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                     proximity_override_data.get("area_ratio_threshold", 0.25)
                 ),
                 right_edge_touch_ratio=float(
-                    proximity_override_data.get("right_edge_touch_ratio", 0.98)
+                    proximity_override_data.get("right_edge_touch_ratio", 0.95)
+                ),
+                min_edge_touch_area_ratio=float(
+                    proximity_override_data.get("min_edge_touch_area_ratio", 0.05)
                 ),
             ),
             setup=AISetupConfig(
@@ -815,6 +819,11 @@ def _validate_config(config: ServiceConfig) -> None:
         or config.ai.proximity_override.right_edge_touch_ratio > 1
     ):
         raise ConfigError("ai.proximity_override.right_edge_touch_ratio must be between 0 and 1")
+    if (
+        config.ai.proximity_override.min_edge_touch_area_ratio <= 0
+        or config.ai.proximity_override.min_edge_touch_area_ratio > 1
+    ):
+        raise ConfigError("ai.proximity_override.min_edge_touch_area_ratio must be > 0 and <= 1")
     if config.ai.setup.structured_output.mode != "json_schema":
         raise ConfigError("ai.setup.structured_output.mode must be json_schema")
     if not config.ai.setup.structured_output.schema:

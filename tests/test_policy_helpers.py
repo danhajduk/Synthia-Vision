@@ -61,7 +61,8 @@ def _build_test_config() -> SimpleNamespace:
         proximity_override=SimpleNamespace(
             enabled=False,
             area_ratio_threshold=0.25,
-            right_edge_touch_ratio=0.98,
+            right_edge_touch_ratio=0.95,
+            min_edge_touch_area_ratio=0.05,
         ),
         prompt_presets={
             "outdoor": {
@@ -277,6 +278,23 @@ class PolicyHelpersTests(unittest.TestCase):
             frame_size=(300, 300),
         )
         self.assertEqual(action, "person_leaving")
+
+    def test_proximity_override_ignores_tiny_edge_touch_bbox(self) -> None:
+        self.config.ai.proximity_override.enabled = True
+        event = FrigateEvent(
+            event_id="evt-6",
+            camera="front",
+            label="person",
+            event_type="update",
+            bbox=(285, 5, 15, 15),
+        )
+        action = apply_outdoor_action_heuristic(
+            event=event,
+            action="person_passing_by",
+            config=self.config,
+            frame_size=(300, 300),
+        )
+        self.assertEqual(action, "person_passing_by")
 
 
 if __name__ == "__main__":

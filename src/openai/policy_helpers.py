@@ -247,7 +247,8 @@ def _should_force_person_at_door(
         return False
 
     area_ratio_threshold = float(getattr(override_cfg, "area_ratio_threshold", 0.25))
-    right_edge_touch_ratio = float(getattr(override_cfg, "right_edge_touch_ratio", 0.98))
+    right_edge_touch_ratio = float(getattr(override_cfg, "right_edge_touch_ratio", 0.95))
+    min_edge_touch_area_ratio = float(getattr(override_cfg, "min_edge_touch_area_ratio", 0.05))
     area_ratio = (w * h) / float(frame_w * frame_h)
     if area_ratio >= area_ratio_threshold:
         return True
@@ -255,4 +256,4 @@ def _should_force_person_at_door(
     right_edge_x = x + w
     touches_right_edge = right_edge_x >= int(frame_w * right_edge_touch_ratio)
     mostly_on_right_side = x >= int(frame_w * 0.5)
-    return touches_right_edge and mostly_on_right_side
+    return touches_right_edge and mostly_on_right_side and area_ratio >= min_edge_touch_area_ratio

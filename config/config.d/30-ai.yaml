@@ -10,7 +10,8 @@ ai:
   proximity_override:
     enabled: false
     area_ratio_threshold: 0.25
-    right_edge_touch_ratio: 0.98
+    right_edge_touch_ratio: 0.95
+    min_edge_touch_area_ratio: 0.05
 
   openai:
     api_key: "${OPENAI_API_KEY}"
