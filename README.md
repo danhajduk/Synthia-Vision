@@ -161,6 +161,7 @@ Runtime:
   - max active refreshers: `1` (`ui.preview_max_active`)
 - Preview refreshes only while card is visible in viewport, with small timing jitter.
 - Card metadata (`enabled/status/last seen/last action/MTD`) refreshes with the same cadence as preview for active cards.
+- Clicking a camera status pill on `/ui` attempts to toggle camera enabled state via `POST /api/cameras/{camera_key}` and requires an authenticated admin session cookie.
 - No MQTT topics were added for preview; snapshot preview is HTTP-only.
 
 ## Guest KPI Polling

@@ -85,6 +85,7 @@
     }
 
     const state = new Map();
+    const toggleInFlight = new Set();
     cards.forEach((card) => {
       state.set(card, {
         visible: false,
@@ -159,6 +160,31 @@
       }
     }
 
+    async function toggleCameraEnabled(card) {
+      const cameraKey = card.getAttribute('data-camera-key');
+      if (!cameraKey || toggleInFlight.has(cameraKey)) {
+        return;
+      }
+      const currentEnabled = card.getAttribute('data-camera-enabled') === '1';
+      toggleInFlight.add(cameraKey);
+      try {
+        const resp = await fetch('/api/cameras/' + encodeURIComponent(cameraKey), {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabled: !currentEnabled }),
+        });
+        if (!resp.ok) {
+          return;
+        }
+        await refreshCardData(card);
+      } catch (err) {
+        // Keep current status on toggle failure (e.g. auth/network).
+      } finally {
+        toggleInFlight.delete(cameraKey);
+      }
+    }
+
     function refreshCard(card) {
       const img = card.querySelector('[data-preview-img]');
       refreshCardData(card);
@@ -228,7 +254,18 @@
       rebalance();
     }, { threshold: 0.2 });
 
-    cards.forEach((card) => observer.observe(card));
+    cards.forEach((card) => {
+      observer.observe(card);
+      const statusPill = card.querySelector('[data-status-pill]');
+      if (!statusPill) {
+        return;
+      }
+      statusPill.classList.add('is-toggleable');
+      statusPill.setAttribute('title', 'Toggle camera enabled');
+      statusPill.addEventListener('click', function () {
+        toggleCameraEnabled(card);
+      });
+    });
     window.addEventListener('beforeunload', function () {
       cards.forEach(clearTimer);
       observer.disconnect();

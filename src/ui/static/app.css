@@ -258,6 +258,18 @@ body.is-embedded .content {
   font-size: 12px;
 }
 
+.pill.is-toggleable {
+  cursor: pointer;
+}
+
+.pill.is-toggleable:hover {
+  border-color: rgba(106, 168, 255, 0.42);
+}
+
+.pill.is-toggleable:active {
+  transform: translateY(1px);
+}
+
 .pill.warn {
   border-color: rgba(251, 191, 36, 0.35);
   background: rgba(251, 191, 36, 0.12);
