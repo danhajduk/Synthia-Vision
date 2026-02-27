@@ -61,6 +61,7 @@ def render_prompts(
     user_template = str(selected.get("user", ""))
     environment = str((context_fields or {}).get("environment", "") or "").strip()
     purpose = str((context_fields or {}).get("purpose", "") or "").strip()
+    mounting_location = str((context_fields or {}).get("mounting_location", "") or "").strip()
     view_context_summary = str((context_fields or {}).get("view_context_summary", "") or "").strip()
     focus_notes = str((context_fields or {}).get("focus_notes", "") or "").strip()
     expected_activity = str((context_fields or {}).get("expected_activity", "") or "").strip()
@@ -84,6 +85,7 @@ def render_prompts(
         "camera_name": camera_name,
         "environment": environment,
         "purpose": purpose,
+        "mounting_location": mounting_location,
         "view_context_summary": view_context_summary,
         "focus_notes": focus_notes,
         "expected_activity": expected_activity,
@@ -119,6 +121,7 @@ def build_camera_context_fields(camera: str, config: ServiceConfig) -> dict[str,
             "environment": "",
             "purpose": "general",
             "view_type": "",
+            "mounting_location": "",
             "view_context_summary": "",
             "focus_notes": "",
             "expected_activity": "",
@@ -148,6 +151,7 @@ def build_camera_context_fields(camera: str, config: ServiceConfig) -> dict[str,
         "environment": str(profile.get("environment", "") or ""),
         "purpose": str(profile.get("purpose", "general") or "general"),
         "view_type": str(profile.get("view_type", "") or ""),
+        "mounting_location": str(profile.get("mounting_location", "") or ""),
         "view_context_summary": str((selected_view or {}).get("context_summary", "") or ""),
         "focus_notes": str((selected_view or {}).get("focus_notes", "") or ""),
         "expected_activity": ", ".join(expected_activity),
@@ -204,8 +208,8 @@ def _apply_lean_rules(
     lean_delivery_focus = delivery_focus if purpose == "doorbell" else ""
     return (
         lean_environment,
-        _clip(view_context_summary, 180),
-        _clip(focus_notes, 160),
+        _clip(view_context_summary, 300),
+        _clip(focus_notes, 300),
         lean_expected_activity,
         lean_delivery_focus,
     )

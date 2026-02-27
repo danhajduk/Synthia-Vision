@@ -36,6 +36,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--print-prompts", action="store_true")
     parser.add_argument("--force-proximity-override", action="store_true")
     parser.add_argument("--write-results-log", action="store_true")
+    parser.add_argument("--save-snapshot", action="store_true")
+    parser.add_argument("--include-vision-notes", action="store_true")
     return parser.parse_args()
 
 
@@ -133,6 +135,62 @@ def _edge_touch_metrics(
     }
 
 
+def _save_snapshot(event_id: str, snapshot_bytes: bytes) -> str:
+    out_path = Path(f"event_snapshot_{event_id}.jpg")
+    out_path.write_bytes(snapshot_bytes)
+    return str(out_path.resolve())
+
+
+def _fetch_vision_notes(
+    client: OpenAIClient,
+    *,
+    image_bytes: bytes,
+    camera_name: str,
+) -> str:
+    detail = client._resolve_vision_detail(camera_name, force_low_budget=False)
+    import base64
+
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    payload = {
+        "model": client._openai_cfg.model,
+        "max_output_tokens": 220,
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "You are assisting a developer test run. "
+                            "Describe only visible details in this single frame, in 2-4 sentences."
+                        ),
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Testing-only vision notes. Include concrete scene details and positioning. "
+                            "Do not return JSON."
+                        ),
+                    },
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:image/jpeg;base64,{encoded}",
+                        "detail": detail,
+                    },
+                ],
+            },
+        ],
+    }
+    response = client._request_with_retry(payload=payload)
+    text = client._extract_text_response(response).strip()
+    return text
+
+
 def main() -> int:
     args = _parse_args()
     try:
@@ -148,6 +206,9 @@ def main() -> int:
         snapshot_manager = SnapshotManager(config)
         snapshot_bytes = snapshot_manager.fetch_event_snapshot(args.event_id, camera=camera_name)
         snapshot_identifier = f"frigate:event:{args.event_id}"
+        snapshot_saved_path = "n/a"
+        if args.save_snapshot:
+            snapshot_saved_path = _save_snapshot(args.event_id, snapshot_bytes)
 
         allowed_actions = resolve_allowed_actions(camera_name, config)
         allowed_subject_types = resolve_subject_types(config)
@@ -232,6 +293,7 @@ def main() -> int:
             "event_id": args.event_id,
             "camera_name": camera_name,
             "snapshot_identifier": snapshot_identifier,
+            "snapshot_saved_path": snapshot_saved_path,
             "system_prompt_chars": len(system_prompt),
             "user_prompt_chars": len(user_prompt),
             "raw_model_json": raw_model_json,
@@ -250,6 +312,12 @@ def main() -> int:
                 else "n/a"
             ),
         }
+        if args.include_vision_notes:
+            output["vision_notes"] = _fetch_vision_notes(
+                client,
+                image_bytes=processed.image_bytes,
+                camera_name=camera_name,
+            )
         print(json.dumps(output, ensure_ascii=True))
 
         if args.print_prompts:

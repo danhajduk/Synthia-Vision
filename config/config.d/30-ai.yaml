@@ -87,6 +87,7 @@ ai:
     #   {camera_name}
     #   {environment}            -> indoor|outdoor
     #   {purpose}                -> purpose token
+    #   {mounting_location}      -> mounting/location hint (may be empty)
     #   {view_context_summary}   -> per-view/camera setup context summary (may be empty)
     #   {focus_notes}            -> per-view setup focus notes (may be empty)
     #   {expected_activity}      -> optional list rendered as string (may be empty)
@@ -115,9 +116,15 @@ ai:
       - Keep description generic and non-identifying.
 
     # SYSTEM prompt for classification (shared across presets)
+    # system: &classify_system |
+    #   You are Synthia Vision. Classify ONE home camera snapshot for automation.
+    #   Return ONLY valid JSON matching the schema. No extra text.
+    #   <<PRIVACY>>
+    #   {privacy_rules}
     system: &classify_system |
       You are Synthia Vision. Classify ONE home camera snapshot for automation.
-      Return ONLY valid JSON matching the schema. No extra text.
+      Return valid JSON matching the schema. After the JSON, return a detailed explanation of the classification.
+      In the explanation include your reasoning process, especially how you decided on the action and subject_type.
       <<PRIVACY>>
       {privacy_rules}
 
@@ -172,6 +179,7 @@ ai:
           Camera: {camera_name}
           Environment: {environment}
           Purpose: doorbell
+          Mounting location: {mounting_location}
           View context: {view_context_summary}
           Focus notes: {focus_notes}
           Delivery focus: {delivery_focus}
