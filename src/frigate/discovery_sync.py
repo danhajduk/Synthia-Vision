@@ -88,7 +88,6 @@ def sync_discovered_cameras_from_config(
                 """
                 UPDATE cameras
                 SET display_name = ?,
-                    enabled = ?,
                     frigate_camera_id = ?,
                     detect_width = ?,
                     detect_height = ?,
@@ -104,7 +103,6 @@ def sync_discovered_cameras_from_config(
                 """,
                 (
                     record.display_name,
-                    1 if record.enabled else 0,
                     record.camera_id,
                     record.detect_width,
                     record.detect_height,
@@ -222,4 +220,3 @@ def _to_string_list(value: Any) -> list[str]:
         text = value.strip()
         return [text] if text else []
     return []
-
