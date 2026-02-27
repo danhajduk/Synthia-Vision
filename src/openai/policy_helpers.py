@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -64,6 +65,21 @@ def render_prompts(
     focus_notes = str((context_fields or {}).get("focus_notes", "") or "").strip()
     expected_activity = str((context_fields or {}).get("expected_activity", "") or "").strip()
     delivery_focus = str((context_fields or {}).get("delivery_focus", "") or "").strip()
+    (
+        environment,
+        view_context_summary,
+        focus_notes,
+        expected_activity,
+        delivery_focus,
+    ) = _apply_lean_rules(
+        purpose=purpose,
+        environment=environment,
+        view_context_summary=view_context_summary,
+        focus_notes=focus_notes,
+        expected_activity=expected_activity,
+        delivery_focus=delivery_focus,
+        include_expected_activity=bool(getattr(config.ai, "include_expected_activity", False)),
+    )
     format_args = {
         "camera_name": camera_name,
         "environment": environment,
@@ -72,8 +88,8 @@ def render_prompts(
         "focus_notes": focus_notes,
         "expected_activity": expected_activity,
         "delivery_focus": delivery_focus,
-        "allowed_actions": ", ".join(allowed_actions),
-        "allowed_subject_types": ", ".join(allowed_subject_types),
+        "allowed_actions": _compact_list(allowed_actions),
+        "allowed_subject_types": _compact_list(allowed_subject_types),
         "privacy_rules": str(config.ai.privacy_rules or ""),
     }
     camera_cfg = config.policy.cameras.get(camera_name)
@@ -87,8 +103,8 @@ def render_prompts(
         security_overlay = str(config.ai.security_overlay_template or "")
     format_args["security_overlay"] = security_overlay
 
-    system_prompt = system_template.format(**format_args)
-    user_prompt = user_template.format(**format_args)
+    system_prompt = _strip_blank_lines(system_template.format(**format_args))
+    user_prompt = _strip_blank_lines(user_template.format(**format_args))
     _assert_no_placeholders(system_prompt, prompt_name="system")
     _assert_no_placeholders(user_prompt, prompt_name="user")
     return system_prompt, user_prompt
@@ -142,6 +158,57 @@ def build_camera_context_fields(camera: str, config: ServiceConfig) -> dict[str,
 def _assert_no_placeholders(text: str, *, prompt_name: str) -> None:
     if _PLACEHOLDER_PATTERN.search(text):
         raise ValueError(f"unresolved template placeholders in {prompt_name} prompt")
+
+
+def _clip(text: str, max_chars: int) -> str:
+    value = str(text or "").strip()
+    if max_chars <= 0:
+        return ""
+    if len(value) <= max_chars:
+        return value
+    return value[:max_chars].rstrip()
+
+
+def _compact_list(items: list[str]) -> str:
+    compact = [str(item).strip() for item in items if str(item).strip()]
+    return json.dumps(compact, separators=(",", ":"))
+
+
+def _strip_blank_lines(text: str) -> str:
+    lines = text.splitlines()
+    compact: list[str] = []
+    previous_blank = False
+    for line in lines:
+        is_blank = not line.strip()
+        if is_blank and previous_blank:
+            continue
+        compact.append(line.rstrip())
+        previous_blank = is_blank
+    return "\n".join(compact).strip()
+
+
+def _apply_lean_rules(
+    *,
+    purpose: str,
+    environment: str,
+    view_context_summary: str,
+    focus_notes: str,
+    expected_activity: str,
+    delivery_focus: str,
+    include_expected_activity: bool,
+) -> tuple[str, str, str, str, str]:
+    lean_environment = environment
+    if purpose in {"doorbell", "perimeter_security", "driveway", "backyard"}:
+        lean_environment = ""
+    lean_expected_activity = expected_activity if include_expected_activity else ""
+    lean_delivery_focus = delivery_focus if purpose == "doorbell" else ""
+    return (
+        lean_environment,
+        _clip(view_context_summary, 180),
+        _clip(focus_notes, 160),
+        lean_expected_activity,
+        lean_delivery_focus,
+    )
 
 
 def enforce_classification_result(
