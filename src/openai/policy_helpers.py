@@ -298,7 +298,9 @@ def _should_force_person_at_door(
     override_cfg = getattr(getattr(config, "ai", None), "proximity_override", None)
     if not getattr(override_cfg, "enabled", False):
         return False
-    if action == "person_leaving":
+    if action in {"person_leaving", "deliver_package", "pickup_package"}:
+        return False
+    if _resolve_camera_purpose(event.camera, config) != "doorbell":
         return False
     if event.label != "person" or event.bbox is None or frame_size is None:
         return False
@@ -324,3 +326,19 @@ def _should_force_person_at_door(
     touches_right_edge = right_edge_x >= int(frame_w * right_edge_touch_ratio)
     mostly_on_right_side = x >= int(frame_w * 0.5)
     return touches_right_edge and mostly_on_right_side and area_ratio >= min_edge_touch_area_ratio
+
+
+def _resolve_camera_purpose(camera: str, config: ServiceConfig) -> str:
+    try:
+        db_path = getattr(getattr(config, "paths", None), "db_file", None)
+        if db_path:
+            profile = db_get_camera_profile(db_path, camera) or {}
+            purpose = str(profile.get("purpose", "") or "").strip()
+            if purpose:
+                return purpose
+    except Exception:
+        pass
+    camera_cfg = getattr(getattr(config, "policy", None), "cameras", {}).get(camera)
+    if camera_cfg is None:
+        return ""
+    return str(getattr(camera_cfg, "prompt_preset", "") or "").strip()

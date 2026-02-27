@@ -27,7 +27,7 @@ def _build_test_config() -> SimpleNamespace:
                 "person_leaving",
                 "deliver_package",
             ],
-            prompt_preset="outdoor",
+            prompt_preset="doorbell",
         ),
         "inside": SimpleNamespace(
             allowed_actions=[],
@@ -278,6 +278,23 @@ class PolicyHelpersTests(unittest.TestCase):
             frame_size=(300, 300),
         )
         self.assertEqual(action, "person_leaving")
+
+    def test_proximity_override_does_not_change_delivery_actions(self) -> None:
+        self.config.ai.proximity_override.enabled = True
+        event = FrigateEvent(
+            event_id="evt-7",
+            camera="front",
+            label="person",
+            event_type="update",
+            bbox=(0, 0, 260, 260),
+        )
+        action = apply_outdoor_action_heuristic(
+            event=event,
+            action="deliver_package",
+            config=self.config,
+            frame_size=(300, 300),
+        )
+        self.assertEqual(action, "deliver_package")
 
     def test_proximity_override_ignores_tiny_edge_touch_bbox(self) -> None:
         self.config.ai.proximity_override.enabled = True

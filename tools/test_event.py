@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -34,6 +35,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-action", default="person_at_door")
     parser.add_argument("--print-prompts", action="store_true")
     parser.add_argument("--force-proximity-override", action="store_true")
+    parser.add_argument("--write-results-log", action="store_true")
     return parser.parse_args()
 
 
@@ -82,6 +84,53 @@ def _area_ratio(payload: dict[str, Any], frame_size: tuple[int, int], bbox: tupl
     if fw <= 0 or fh <= 0:
         return "n/a"
     return f"{(bbox[2] * bbox[3]) / float(fw * fh):.6f}"
+
+
+def _write_results_log(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    raw_response_text: str,
+    raw_model_json: dict[str, Any],
+) -> None:
+    log_path = Path("results.log")
+    log_path.write_text(
+        "\n".join(
+            [
+                "=== SYSTEM PROMPT ===",
+                system_prompt,
+                "",
+                "=== USER PROMPT ===",
+                user_prompt,
+                "",
+                "=== AI RESPONSE (RAW TEXT) ===",
+                raw_response_text,
+                "",
+                "=== AI RESPONSE (PARSED JSON) ===",
+                json.dumps(raw_model_json, ensure_ascii=True),
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _edge_touch_metrics(
+    bbox: tuple[int, int, int, int] | None,
+    frame_size: tuple[int, int],
+    right_edge_touch_ratio: float,
+) -> dict[str, Any] | str:
+    if bbox is None:
+        return "n/a"
+    frame_w, _frame_h = frame_size
+    if frame_w <= 0:
+        return "n/a"
+    right_edge_ratio = (bbox[0] + bbox[2]) / float(frame_w)
+    return {
+        "right_edge_ratio": round(right_edge_ratio, 6),
+        "threshold": round(float(right_edge_touch_ratio), 6),
+        "touched": bool(right_edge_ratio >= float(right_edge_touch_ratio)),
+    }
 
 
 def main() -> int:
@@ -135,6 +184,13 @@ def main() -> int:
         raw_text = client._extract_text_response(response)
         raw_model_json = client._parse_json_payload(raw_text)
         classification = OpenAIClassification.from_dict(raw_model_json)
+        if args.write_results_log:
+            _write_results_log(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                raw_response_text=raw_text,
+                raw_model_json=raw_model_json,
+            )
 
         event = FrigateEvent(
             event_id=args.event_id,
@@ -180,8 +236,14 @@ def main() -> int:
             "user_prompt_chars": len(user_prompt),
             "raw_model_json": raw_model_json,
             "final_json": final_json,
+            "override_triggered": bool(proximity_override_triggered),
             "proximity_override_triggered": bool(proximity_override_triggered),
             "area_ratio": _area_ratio(event_payload, frame_size, bbox),
+            "edge_touch": _edge_touch_metrics(
+                bbox,
+                frame_size,
+                float(config.ai.proximity_override.right_edge_touch_ratio),
+            ),
             "right_edge_touch_ratio": (
                 f"{float(config.ai.proximity_override.right_edge_touch_ratio):.2f}"
                 if bbox is not None
