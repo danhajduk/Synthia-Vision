@@ -39,6 +39,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--save-snapshot", action="store_true")
     parser.add_argument("--include-vision-notes", action="store_true")
     parser.add_argument("--explain", action="store_true")
+    parser.add_argument("--print-parsed-yaml", action="store_true")
     return parser.parse_args()
 
 
@@ -114,7 +115,7 @@ def _write_results_log(
                 raw_response_text,
                 "",
                 "=== AI RESPONSE (PARSED JSON) ===",
-                json.dumps(raw_model_json, ensure_ascii=True),
+                _format_parsed_kv(raw_model_json),
                 "",
             ]
         ),
@@ -194,6 +195,57 @@ def _fetch_vision_notes(
     response = client._request_with_retry(payload=payload)
     text = client._extract_text_response(response).strip()
     return text
+
+
+def _yaml_scalar(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value)
+    if text == "" or any(ch in text for ch in [":", "#", "\n", '"', "'", "{", "}", "[", "]"]):
+        return json.dumps(text, ensure_ascii=True)
+    return text
+
+
+def _to_yaml_lines(value: Any, indent: int = 0) -> list[str]:
+    prefix = " " * indent
+    if isinstance(value, dict):
+        lines: list[str] = []
+        for key, item in value.items():
+            if isinstance(item, (dict, list)):
+                lines.append(f"{prefix}{key}:")
+                lines.extend(_to_yaml_lines(item, indent + 2))
+            else:
+                lines.append(f"{prefix}{key}: {_yaml_scalar(item)}")
+        return lines
+    if isinstance(value, list):
+        lines = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                lines.append(f"{prefix}-")
+                lines.extend(_to_yaml_lines(item, indent + 2))
+            else:
+                lines.append(f"{prefix}- {_yaml_scalar(item)}")
+        return lines
+    return [f"{prefix}{_yaml_scalar(value)}"]
+
+
+def _to_yaml(value: Any) -> str:
+    return "\n".join(_to_yaml_lines(value))
+
+
+def _format_parsed_kv(value: dict[str, Any]) -> str:
+    lines: list[str] = []
+    for key, item in value.items():
+        if isinstance(item, (dict, list)):
+            lines.append(f"{key}: {json.dumps(item, ensure_ascii=True)}")
+        else:
+            text = str(item).replace("\n", " ")
+            lines.append(f"{key}: {text}")
+    return "\n".join(lines)
 
 
 def main() -> int:
@@ -329,6 +381,11 @@ def main() -> int:
                 camera_name=camera_name,
             )
         print(json.dumps(output, ensure_ascii=True))
+        if args.print_parsed_yaml:
+            if isinstance(raw_model_json, dict):
+                print(_format_parsed_kv(raw_model_json))
+            else:
+                print(_to_yaml(raw_model_json))
         if debug_explain and isinstance(raw_model_json.get("explanation"), str):
             print(f"explanation: {raw_model_json['explanation']}")
 

@@ -68,6 +68,7 @@ class OpenAIClassification:
     subject_type: str
     confidence: float
     description: str
+    explanation: str | None = None
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "OpenAIClassification":
@@ -75,6 +76,7 @@ class OpenAIClassification:
         subject_type = payload.get("subject_type")
         confidence = payload.get("confidence")
         description = payload.get("description")
+        explanation = payload.get("explanation")
 
         if not isinstance(action, str) or not action:
             raise ValidationError("OpenAI payload missing action")
@@ -94,6 +96,7 @@ class OpenAIClassification:
             subject_type=subject_type,
             confidence=confidence_value,
             description=description,
+            explanation=explanation if isinstance(explanation, str) and explanation.strip() else None,
         )
 
 

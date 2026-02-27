@@ -1330,6 +1330,7 @@ class MQTTClient:
                 return
 
         confidence_percent = max(0, min(100, int(round(classification.confidence * 100.0))))
+        self._log_ai_response(event_id=event.event_id, classification=classification)
         action = apply_outdoor_action_heuristic(
             event=event,
             action=classification.action,
@@ -1418,6 +1419,18 @@ class MQTTClient:
             self._publish_sync(topics["confidence"], str(confidence_percent))
         if effective_description is not None:
             self._publish_sync(topics["description"], effective_description)
+
+    def _log_ai_response(self, *, event_id: str, classification: Any) -> None:
+        ai_json = {
+            "action": getattr(classification, "action", "unknown"),
+            "subject_type": getattr(classification, "subject_type", "unknown"),
+            "confidence": getattr(classification, "confidence", 0.0),
+            "description": getattr(classification, "description", ""),
+        }
+        explanation = getattr(classification, "explanation", None)
+        if isinstance(explanation, str) and explanation.strip():
+            ai_json["explanation"] = explanation
+        LOGGER.info("[%s] ai json: %s", event_id, json.dumps(ai_json, ensure_ascii=True))
 
     def _publish_camera_status_only(self, *, event: FrigateEvent, result_status: str) -> None:
         topics = self._resolve_camera_topics(event.camera)
