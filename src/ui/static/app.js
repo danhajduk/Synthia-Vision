@@ -165,14 +165,11 @@
       if (!cameraKey || toggleInFlight.has(cameraKey)) {
         return;
       }
-      const currentEnabled = card.getAttribute('data-camera-enabled') === '1';
       toggleInFlight.add(cameraKey);
       try {
-        const resp = await fetch('/api/cameras/' + encodeURIComponent(cameraKey), {
+        const resp = await fetch('/api/cameras/' + encodeURIComponent(cameraKey) + '/toggle', {
           method: 'POST',
           credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enabled: !currentEnabled }),
         });
         if (!resp.ok) {
           return;

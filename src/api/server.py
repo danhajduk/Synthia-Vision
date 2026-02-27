@@ -893,6 +893,23 @@ def create_guest_api_app(config: ServiceConfig):
             }
         raise HTTPException(status_code=404, detail="camera not found")
 
+    @app.post("/api/cameras/{camera_key}/toggle")
+    async def api_camera_toggle(camera_key: str):
+        try:
+            camera = _overlay_camera_runtime(admin_store.get_camera(camera_key))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="camera not found") from exc
+        next_enabled = not bool(camera.get("enabled", False))
+        try:
+            result = admin_store.update_camera(camera_key, {"enabled": next_enabled})
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            "camera_key": camera_key,
+            "enabled": bool(result.get("enabled", next_enabled)),
+        }
+
     @app.get("/api/cameras/{camera_key}/preview.jpg")
     async def api_camera_preview(camera_key: str):
         try:

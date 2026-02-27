@@ -202,6 +202,32 @@ class APIAuthzTests(unittest.TestCase):
             denied_global = client.get("/api/cameras/doorbell/preview.jpg")
             self.assertEqual(denied_global.status_code, 403)
 
+    def test_guest_camera_toggle_route_works_without_login(self) -> None:
+        if TestClient is None:
+            self.skipTest("fastapi not installed")
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            camera_store = CameraStore(db_path)
+            camera_store.upsert_discovered_camera("doorbell")
+            camera_store.set_camera_enabled("doorbell", True)
+            config = SimpleNamespace(
+                paths=SimpleNamespace(db_file=db_path),
+                service=SimpleNamespace(slug="synthia_vision"),
+            )
+            app = create_guest_api_app(config)
+            client = TestClient(app)
+
+            first = client.post("/api/cameras/doorbell/toggle")
+            self.assertEqual(first.status_code, 200)
+            self.assertTrue(first.json().get("ok"))
+            self.assertEqual(first.json().get("enabled"), False)
+
+            second = client.post("/api/cameras/doorbell/toggle")
+            self.assertEqual(second.status_code, 200)
+            self.assertTrue(second.json().get("ok"))
+            self.assertEqual(second.json().get("enabled"), True)
+
     def test_event_snapshot_route_requires_admin_and_handles_unavailable_snapshot_service(self) -> None:
         if TestClient is None:
             self.skipTest("fastapi not installed")
