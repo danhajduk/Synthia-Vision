@@ -261,6 +261,32 @@ class OpenAIClientTests(unittest.TestCase):
         self.assertEqual(content[1]["type"], "input_image")
         self.assertEqual(content[1]["detail"], "low")
 
+    def test_explain_mode_updates_prompt_schema_and_max_tokens(self) -> None:
+        captured: dict[str, object] = {}
+
+        def _create(**kwargs):
+            captured.update(kwargs)
+            return _FakeResponse(
+                '{"action":"person_at_door","subject_type":"adult","confidence":0.82,"description":"adult near doorway","explanation":"Rule 1 close-to-lens cues dominate over Rule 3 passing-by cues."}'
+            )
+
+        client = self._build_client(_create)
+        classification, _usage = client.classify(
+            snapshot_bytes=_jpeg_bytes(),
+            camera_name="front",
+            explain=True,
+        )
+        self.assertEqual(classification.action, "person_at_door")
+        input_payload = captured["input"]
+        self.assertIsInstance(input_payload, list)
+        system_text = input_payload[0]["content"][0]["text"]
+        self.assertIn("explanation must be a detailed but privacy-safe rationale.", system_text)
+        response_schema = captured["text"]["format"]["schema"]
+        self.assertIn("explanation", response_schema["required"])
+        self.assertIn("explanation", response_schema["properties"])
+        self.assertEqual(response_schema["properties"]["explanation"]["maxLength"], 1200)
+        self.assertGreaterEqual(int(captured["max_output_tokens"]), 800)
+
 
 if __name__ == "__main__":
     unittest.main()

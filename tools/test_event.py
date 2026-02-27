@@ -38,6 +38,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--write-results-log", action="store_true")
     parser.add_argument("--save-snapshot", action="store_true")
     parser.add_argument("--include-vision-notes", action="store_true")
+    parser.add_argument("--explain", action="store_true")
     return parser.parse_args()
 
 
@@ -90,6 +91,7 @@ def _area_ratio(payload: dict[str, Any], frame_size: tuple[int, int], bbox: tupl
 
 def _write_results_log(
     *,
+    request_payload: dict[str, Any],
     system_prompt: str,
     user_prompt: str,
     raw_response_text: str,
@@ -99,6 +101,9 @@ def _write_results_log(
     log_path.write_text(
         "\n".join(
             [
+                "=== AI REQUEST (FULL PAYLOAD) ===",
+                json.dumps(request_payload, ensure_ascii=True),
+                "",
                 "=== SYSTEM PROMPT ===",
                 system_prompt,
                 "",
@@ -232,6 +237,9 @@ def main() -> int:
         bbox = _event_bbox_pixels(event_payload, frame_size=processed.original_size)
 
         client = OpenAIClient(config)
+        debug_explain = client._debug_explain_enabled(args.explain)
+        if debug_explain:
+            system_prompt = client._debug_explain_system_prompt(system_prompt)
         detail = client._resolve_vision_detail(camera_name, force_low_budget=False)
         request_payload = client._build_request_payload(
             system_prompt=system_prompt,
@@ -240,6 +248,7 @@ def main() -> int:
             allowed_actions=allowed_actions,
             allowed_subject_types=allowed_subject_types,
             detail=detail,
+            debug_explain=debug_explain,
         )
         response = client._request_with_retry(payload=request_payload)
         raw_text = client._extract_text_response(response)
@@ -247,6 +256,7 @@ def main() -> int:
         classification = OpenAIClassification.from_dict(raw_model_json)
         if args.write_results_log:
             _write_results_log(
+                request_payload=request_payload,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 raw_response_text=raw_text,
@@ -319,6 +329,8 @@ def main() -> int:
                 camera_name=camera_name,
             )
         print(json.dumps(output, ensure_ascii=True))
+        if debug_explain and isinstance(raw_model_json.get("explanation"), str):
+            print(f"explanation: {raw_model_json['explanation']}")
 
         if args.print_prompts:
             print("----- SYSTEM PROMPT -----")

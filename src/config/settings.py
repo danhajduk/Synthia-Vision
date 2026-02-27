@@ -173,6 +173,7 @@ class AIConfig:
     default_prompt_preset: str = "outdoor"
     prompt_presets: dict[str, dict[str, str]] = field(default_factory=dict)
     include_expected_activity: bool = False
+    debug_reasoning: bool = False
     vision_detail: str = "low"
     image_preprocess: "AIImagePreprocessConfig" = field(default_factory=lambda: AIImagePreprocessConfig())
     proximity_override: AIProximityOverrideConfig = field(
@@ -475,6 +476,7 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 _as_mapping(prompts_data.get("presets", {}), "ai.prompts.presets")
             ),
             include_expected_activity=_as_bool(ai_data.get("include_expected_activity", False)),
+            debug_reasoning=_as_bool(ai_data.get("debug_reasoning", False)),
             vision_detail=str(ai_data.get("vision_detail", "low")).lower(),
             image_preprocess=AIImagePreprocessConfig(
                 enabled=_as_bool(image_preprocess_data.get("enabled", True)),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -79,6 +80,7 @@ class OpenAIClient:
         camera_name: str,
         bbox: tuple[int, int, int, int] | None = None,
         force_low_budget: bool = False,
+        explain: bool = False,
     ) -> tuple[OpenAIClassification, OpenAIUsage]:
         allowed_actions = resolve_allowed_actions(camera_name, self._config)
         allowed_subject_types = resolve_subject_types(self._config)
@@ -96,6 +98,9 @@ class OpenAIClient:
             config=self._config,
             context_fields=context_fields,
         )
+        debug_explain = self._debug_explain_enabled(explain)
+        if debug_explain:
+            system_prompt = self._debug_explain_system_prompt(system_prompt)
         _guard_prompt_text(system_prompt)
         _guard_prompt_text(user_prompt)
         LOGGER.debug(
@@ -121,6 +126,7 @@ class OpenAIClient:
             allowed_actions=allowed_actions,
             allowed_subject_types=allowed_subject_types,
             detail=detail,
+            debug_explain=debug_explain,
         )
         response = self._request_with_retry(payload=request_payload)
         payload_text = self._extract_text_response(response)
@@ -200,6 +206,7 @@ class OpenAIClient:
         self,
         allowed_actions: list[str],
         allowed_subject_types: list[str],
+        debug_explain: bool = False,
     ) -> dict[str, Any]:
         base_schema = dict(self._config.ai.schema or {})
         schema_props = dict(base_schema.get("properties", {})) if base_schema else {}
@@ -216,6 +223,13 @@ class OpenAIClient:
                 "description": {"type": "string", "minLength": 1, "maxLength": 200},
             },
         }
+        if debug_explain:
+            schema["required"].append("explanation")
+            schema["properties"]["explanation"] = {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1200,
+            }
         return {
             "type": "json_schema",
             "name": self._config.ai.schema_name,
@@ -232,12 +246,16 @@ class OpenAIClient:
         allowed_actions: list[str],
         allowed_subject_types: list[str],
         detail: str,
+        debug_explain: bool = False,
     ) -> dict[str, Any]:
         encoded = base64.b64encode(image_bytes).decode("ascii")
         image_data_url = f"data:image/jpeg;base64,{encoded}"
+        max_output_tokens = int(self._openai_cfg.max_output_tokens)
+        if debug_explain:
+            max_output_tokens = max(max_output_tokens, 800)
         return {
             "model": self._openai_cfg.model,
-            "max_output_tokens": int(self._openai_cfg.max_output_tokens),
+            "max_output_tokens": max_output_tokens,
             "input": [
                 {
                     "role": "system",
@@ -252,9 +270,32 @@ class OpenAIClient:
                 },
             ],
             "text": {
-                "format": self._build_response_format(allowed_actions, allowed_subject_types),
+                "format": self._build_response_format(
+                    allowed_actions,
+                    allowed_subject_types,
+                    debug_explain=debug_explain,
+                ),
             },
         }
+
+    def _debug_explain_enabled(self, explain: bool = False) -> bool:
+        if explain:
+            return True
+        if str(os.getenv("SV_EXPLAIN", "")).strip() in {"1", "true", "TRUE", "yes", "on"}:
+            return True
+        return bool(getattr(self._config.ai, "debug_reasoning", False))
+
+    @staticmethod
+    def _debug_explain_system_prompt(system_prompt: str) -> str:
+        return (
+            f"{system_prompt}\n"
+            "Return valid JSON matching the schema.\n"
+            "explanation must be a detailed but privacy-safe rationale.\n"
+            "explanation must not include identifying details (faces/clothes/text) "
+            "or guess sensitive attributes.\n"
+            "explanation must briefly reference decision rules (e.g., Rule 1 vs Rule 3) "
+            "and cite visible cues that led to the chosen action."
+        )
 
     def _extract_text_response(self, response: Any) -> str:
         output_text = getattr(response, "output_text", None)
