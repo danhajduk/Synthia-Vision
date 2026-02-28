@@ -124,7 +124,8 @@ class UIRouteTests(unittest.TestCase):
         response = client.get("/ui/heatmap")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Timeline Heatmap", response.text)
-        self.assertIn("id=\"heatmap-hours\"", response.text)
+        self.assertIn("id=\"heatmap-range\"", response.text)
+        self.assertIn("id=\"heatmap-camera\"", response.text)
 
     def test_event_detail_page_includes_snapshot_image_url(self) -> None:
         if TestClient is None:

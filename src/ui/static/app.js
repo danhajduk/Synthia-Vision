@@ -731,90 +731,194 @@
       return;
     }
     const statusEl = document.getElementById('heatmap-status');
-    const hoursEl = document.getElementById('heatmap-hours');
+    const rangeEl = document.getElementById('heatmap-range');
+    const cameraEl = document.getElementById('heatmap-camera');
+    const showGlobalEl = document.getElementById('heatmap-show-global');
+    const daysCoveredEl = document.getElementById('heatmap-days-covered');
+    const rangeSummaryEl = document.getElementById('heatmap-range-summary');
     const refreshBtn = document.getElementById('heatmap-refresh');
+    const knownCameras = new Set();
 
     function asInt(value, fallback) {
       const parsed = Number.parseInt(String(value), 10);
       return Number.isFinite(parsed) ? parsed : fallback;
     }
 
-    function buildCell(camera, hour, counts, maxEvents) {
-      const eventsCount = asInt(counts.events_count, 0);
-      const aiCalls = asInt(counts.ai_calls_count, 0);
-      const suppressed = asInt(counts.suppressed_count, 0);
+    function asNumber(value, fallback) {
+      const parsed = Number.parseFloat(String(value));
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function fmtCount(value) {
+      const num = asNumber(value, 0);
+      if (Math.abs(num - Math.round(num)) < 0.0005) {
+        return String(Math.round(num));
+      }
+      return num.toFixed(2);
+    }
+
+    function hourLabel(hour) {
+      const safeHour = Math.max(0, Math.min(23, asInt(hour, 0)));
+      const next = (safeHour + 1) % 24;
+      return String(safeHour).padStart(2, '0') + ':00–' + String(next).padStart(2, '0') + ':59';
+    }
+
+    function buildCell(rowLabel, hour, counts, maxEvents) {
+      const eventsCount = asNumber(counts.events, 0);
+      const aiCalls = asNumber(counts.ai_calls, 0);
+      const suppressed = asNumber(counts.suppressed, 0);
       const ratio = maxEvents > 0 ? Math.min(1, eventsCount / maxEvents) : 0;
       const shade = 0.08 + (ratio * 0.55);
       const cell = document.createElement('div');
       cell.className = 'heatmap-cell';
       cell.style.background = 'rgba(106, 168, 255, ' + shade.toFixed(3) + ')';
       cell.innerHTML =
-        '<div class="mono heatmap-value">' + String(eventsCount) + '</div>' +
+        '<div class="mono heatmap-value">' + fmtCount(eventsCount) + '</div>' +
         '<div class="heatmap-overlays">' +
-        '<span class="heatmap-chip">A ' + String(aiCalls) + '</span>' +
-        '<span class="heatmap-chip">S ' + String(suppressed) + '</span>' +
+        '<span class="heatmap-chip">A ' + fmtCount(aiCalls) + '</span>' +
+        '<span class="heatmap-chip">S ' + fmtCount(suppressed) + '</span>' +
         '</div>';
       cell.title =
-        camera +
-        ' @ ' + hour + ':00 UTC\n' +
-        'events: ' + String(eventsCount) + '\n' +
-        'ai calls: ' + String(aiCalls) + '\n' +
-        'suppressed: ' + String(suppressed);
+        rowLabel +
+        ' • ' + hourLabel(hour) + ' (Local Time)\n' +
+        'events: ' + fmtCount(eventsCount) + '\n' +
+        'ai calls: ' + fmtCount(aiCalls) + '\n' +
+        'suppressed: ' + fmtCount(suppressed);
       return cell;
     }
 
+    function normalizeBuckets(rawBuckets) {
+      const source = Array.isArray(rawBuckets) ? rawBuckets : [];
+      const map = {};
+      source.forEach(function (bucket) {
+        const hour = asInt(bucket.hour, -1);
+        if (hour < 0 || hour > 23) {
+          return;
+        }
+        map[hour] = {
+          events: asNumber(bucket.events, 0),
+          ai_calls: asNumber(bucket.ai_calls, 0),
+          suppressed: asNumber(bucket.suppressed, 0),
+        };
+      });
+      const normalized = [];
+      for (let hour = 0; hour < 24; hour += 1) {
+        normalized.push(
+          map[hour] || { events: 0, ai_calls: 0, suppressed: 0 }
+        );
+      }
+      return normalized;
+    }
+
+    function updateCameraOptions(payload) {
+      if (!cameraEl) {
+        return;
+      }
+      const perCamera = payload && typeof payload === 'object' && payload.per_camera
+        ? payload.per_camera
+        : {};
+      Object.keys(perCamera).forEach(function (cameraKey) {
+        if (String(cameraKey).trim()) {
+          knownCameras.add(String(cameraKey));
+        }
+      });
+      const previousValue = cameraEl.value || 'all';
+      cameraEl.innerHTML = '<option value="all">Global + Per Camera</option>';
+      Array.from(knownCameras).sort().forEach(function (cameraKey) {
+        const option = document.createElement('option');
+        option.value = cameraKey;
+        option.textContent = cameraKey;
+        cameraEl.appendChild(option);
+      });
+      if (
+        previousValue === 'all' ||
+        knownCameras.has(previousValue)
+      ) {
+        cameraEl.value = previousValue;
+      }
+    }
+
     function render(payload) {
-      const items = Array.isArray(payload.items) ? payload.items : [];
-      if (!items.length) {
+      const selectedCamera = cameraEl ? String(cameraEl.value || 'all') : 'all';
+      const showGlobal = selectedCamera === 'all' || !showGlobalEl || Boolean(showGlobalEl.checked);
+      const globalBuckets = normalizeBuckets(payload.buckets);
+      const perCamera = payload && typeof payload === 'object' && payload.per_camera
+        ? payload.per_camera
+        : {};
+
+      const rows = [];
+      if (showGlobal) {
+        rows.push({
+          label: 'Global',
+          buckets: globalBuckets,
+          daysCovered: payload.days_covered,
+        });
+      }
+      if (selectedCamera === 'all') {
+        Object.keys(perCamera).sort().forEach(function (cameraKey) {
+          rows.push({
+            label: cameraKey,
+            buckets: normalizeBuckets((perCamera[cameraKey] || {}).buckets),
+            daysCovered: (perCamera[cameraKey] || {}).days_covered,
+          });
+        });
+      } else if (perCamera[selectedCamera]) {
+        rows.push({
+          label: selectedCamera,
+          buckets: normalizeBuckets((perCamera[selectedCamera] || {}).buckets),
+          daysCovered: (perCamera[selectedCamera] || {}).days_covered,
+        });
+      } else {
+        rows.push({
+          label: selectedCamera,
+          buckets: globalBuckets,
+          daysCovered: payload.days_covered,
+        });
+      }
+      if (!rows.length) {
         wrapEl.innerHTML = '<div class="sub">No events in selected window.</div>';
         return;
       }
-      const cameras = Array.from(new Set(items.map((item) => String(item.camera || '—')))).sort();
-      const hours = Array.from(new Set(items.map((item) => String(item.hour_key || '')))).sort();
-      const byKey = {};
+
       let maxEvents = 0;
-      items.forEach(function (item) {
-        const camera = String(item.camera || '—');
-        const hour = String(item.hour_key || '');
-        const key = camera + '|' + hour;
-        byKey[key] = {
-          events_count: asInt(item.events_count, 0),
-          ai_calls_count: asInt(item.ai_calls_count, 0),
-          suppressed_count: asInt(item.suppressed_count, 0),
-        };
-        if (byKey[key].events_count > maxEvents) {
-          maxEvents = byKey[key].events_count;
-        }
+      rows.forEach(function (row) {
+        row.buckets.forEach(function (bucket) {
+          if (bucket.events > maxEvents) {
+            maxEvents = bucket.events;
+          }
+        });
       });
 
       const grid = document.createElement('div');
       grid.className = 'heatmap-grid';
-      grid.style.gridTemplateColumns = '180px repeat(' + String(hours.length) + ', minmax(48px, 1fr))';
+      grid.style.gridTemplateColumns = '180px repeat(24, minmax(48px, 1fr))';
 
       const corner = document.createElement('div');
       corner.className = 'heatmap-header heatmap-corner';
       corner.textContent = 'Camera / Hour';
       grid.appendChild(corner);
 
-      hours.forEach(function (hourKey) {
+      for (let hour = 0; hour < 24; hour += 1) {
         const header = document.createElement('div');
         header.className = 'heatmap-header mono';
-        const shortHour = hourKey.slice(11, 13);
-        header.textContent = shortHour + ':00';
-        header.title = hourKey + ':00 UTC';
+        header.textContent = String(hour).padStart(2, '0');
+        header.title = hourLabel(hour) + ' (Local Time)';
         grid.appendChild(header);
-      });
+      }
 
-      cameras.forEach(function (camera) {
+      rows.forEach(function (row) {
         const rowLabel = document.createElement('div');
         rowLabel.className = 'heatmap-row-label mono';
-        rowLabel.textContent = camera;
+        if (payload.is_complete_days_only) {
+          const covered = asInt(row.daysCovered, 0);
+          rowLabel.textContent = row.label + ' (Avg over ' + String(covered) + ' day' + (covered === 1 ? '' : 's') + ')';
+        } else {
+          rowLabel.textContent = row.label;
+        }
         grid.appendChild(rowLabel);
-        hours.forEach(function (hourKey) {
-          const key = camera + '|' + hourKey;
-          const counts = byKey[key] || { events_count: 0, ai_calls_count: 0, suppressed_count: 0 };
-          grid.appendChild(buildCell(camera, hourKey, counts, maxEvents));
-        });
+        for (let hour = 0; hour < 24; hour += 1) {
+          grid.appendChild(buildCell(row.label, hour, row.buckets[hour], maxEvents));
+        }
       });
 
       wrapEl.innerHTML = '';
@@ -822,12 +926,16 @@
     }
 
     async function load() {
-      const hours = asInt(hoursEl ? hoursEl.value : 24, 24) >= 168 ? 168 : 24;
+      const rangeType = rangeEl ? String(rangeEl.value || '24h') : '24h';
+      const camera = cameraEl ? String(cameraEl.value || 'all') : 'all';
       if (statusEl) {
         statusEl.textContent = 'Loading heatmap…';
       }
       try {
-        const resp = await fetch('/api/admin/heatmap?hours=' + String(hours), { credentials: 'same-origin' });
+        const resp = await fetch(
+          '/api/metrics/heatmap?range=' + encodeURIComponent(rangeType) + '&camera=' + encodeURIComponent(camera),
+          { credentials: 'same-origin' }
+        );
         if (!resp.ok) {
           if (statusEl) {
             statusEl.textContent = 'Failed loading heatmap.';
@@ -835,9 +943,26 @@
           return;
         }
         const payload = await resp.json();
+        updateCameraOptions(payload);
         render(payload);
+        if (daysCoveredEl) {
+          if (payload.is_complete_days_only) {
+            const daysCovered = asInt(payload.days_covered, 0);
+            daysCoveredEl.textContent = 'Avg over ' + String(daysCovered) + ' day' + (daysCovered === 1 ? '' : 's');
+          } else {
+            daysCoveredEl.textContent = 'N/A (rolling)';
+          }
+        }
+        if (rangeSummaryEl) {
+          const tzName = String(payload.timezone || 'local');
+          const rangeLabel =
+            rangeType === 'avg7d'
+              ? 'Average (Last 7 Full Days)'
+              : (rangeType === 'avg30d' ? 'Average (Last 30 Full Days)' : 'Last 24 Hours');
+          rangeSummaryEl.textContent = rangeLabel + ' • TZ: ' + tzName;
+        }
         if (statusEl) {
-          statusEl.textContent = 'Window ' + String(hours) + 'h • Updated ' + formatLocalDateTime(new Date().toISOString());
+          statusEl.textContent = 'Updated ' + formatLocalDateTime(new Date().toISOString());
         }
       } catch (err) {
         if (statusEl) {
@@ -846,8 +971,14 @@
       }
     }
 
-    if (hoursEl) {
-      hoursEl.addEventListener('change', load);
+    if (rangeEl) {
+      rangeEl.addEventListener('change', load);
+    }
+    if (cameraEl) {
+      cameraEl.addEventListener('change', load);
+    }
+    if (showGlobalEl) {
+      showGlobalEl.addEventListener('change', load);
     }
     if (refreshBtn) {
       refreshBtn.addEventListener('click', load);

@@ -138,6 +138,9 @@ Auth/setup:
   - month-to-date cost and projected month cost
   - rolling 24h and month-to-date token totals
 - `/ui/heatmap` (admin only) renders hourly event density with AI-call/suppressed overlays for `24h`, `avg7d`, and `avg30d` via `/api/metrics/heatmap`.
+  - range labels: `Last 24 Hours`, `Average (Last 7 Full Days)`, `Average (Last 30 Full Days)`
+  - tooltip label format: `HH:00–HH:59 (Local Time)` with `events` / `ai_calls` / `suppressed`
+  - shows `days_covered` indicator for average ranges
 
 ## Heatmap aggregation contract
 

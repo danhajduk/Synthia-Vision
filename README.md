@@ -309,6 +309,11 @@ Mode controls/UI:
 - `/ui/setup` global settings includes `modes.current` selector (`normal`, `delivery_watch`, `guest_expected`, `high_alert`).
 - `/ui/admin` header/health card display current mode from admin summary status.
 - `/ui/admin` budget widgets now show rolling 24h cost, 24h burn rate, MTD cost, projected month cost, and 24h/MTD token totals.
+- `/ui/heatmap` supports:
+  - range selector: `Last 24 Hours`, `Average (Last 7 Full Days)`, `Average (Last 30 Full Days)`
+  - camera selector (`all` global/per-camera or specific camera)
+  - local-time hourly tooltips with `events`, `ai_calls`, and `suppressed`
+  - days-covered indicator for average ranges
 
 Admin events UI:
 - Events list includes AI confidence percent and short `ai_reason` snippet.
