@@ -390,6 +390,7 @@ Key current settings:
 - `policy.cameras.<camera>.actions.allowed`
 - `ai.prompts.default_preset`
 - `ai.prompts.presets`
+- `ai.provider` (currently `openai` only; provider abstraction is in place for future implementations)
 - `ai.openai.retry_attempts`
 - `ai.openai.retry_backoff_s`
 - `ai.vision_detail`

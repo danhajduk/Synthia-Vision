@@ -935,6 +935,8 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("suppression.window_seconds must be >= 0")
     if config.suppression.max_suppressed_log < 0:
         raise ConfigError("suppression.max_suppressed_log must be >= 0")
+    if str(config.ai.provider or "").strip().lower() != "openai":
+        raise ConfigError("ai.provider must be 'openai' (only active provider currently)")
     if not str(config.embeddings.model).strip():
         raise ConfigError("embeddings.model must not be empty")
     if config.embeddings.retention_days < 1:

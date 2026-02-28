@@ -17,6 +17,12 @@ import paho.mqtt.client as mqtt
 
 from src.config import ServiceConfig
 from src.config.settings import PolicyCameraConfig
+from src.ai.providers import (
+    ClassificationProvider,
+    EmbeddingProvider,
+    create_classification_provider,
+    create_embedding_provider,
+)
 from src.db import CameraStore, EmbeddingStore, EventStore
 from src.db.summary_store import SummaryStore
 from src.db.kv_store import kv_set
@@ -25,13 +31,7 @@ from src.ha_discovery import HADiscoveryPublisher
 from src.errors import ExternalServiceError, ValidationError
 from src.models import FrigateEvent
 from src.policy_engine import should_process
-from src.openai import (
-    OpenAIClient,
-    OpenAIEmbeddingClient,
-    OpenAIUsage,
-    apply_outdoor_action_heuristic,
-    enforce_classification_result,
-)
+from src.openai import OpenAIUsage, apply_outdoor_action_heuristic, enforce_classification_result
 from src.pipeline import compute_dhash_hex, hamming_distance_hex
 from src.runtime_controls import (
     EventControlSettings,
@@ -93,15 +93,15 @@ class MQTTClient:
         self._summary_store = SummaryStore(config.paths.db_file)
         self._embedding_store = EmbeddingStore(config.paths.db_file)
         self._snapshot_manager = SnapshotManager(config)
-        self._openai_client: OpenAIClient | None = None
-        self._embedding_client: OpenAIEmbeddingClient | None = None
+        self._openai_client: ClassificationProvider | None = None
+        self._embedding_client: EmbeddingProvider | None = None
         try:
-            self._openai_client = OpenAIClient(config)
+            self._openai_client = create_classification_provider(config)
         except ExternalServiceError as exc:
             LOGGER.warning("OpenAI client unavailable at startup: %s", exc)
         if bool(getattr(self._config.embeddings, "enabled", False)):
             try:
-                self._embedding_client = OpenAIEmbeddingClient(config)
+                self._embedding_client = create_embedding_provider(config)
             except ExternalServiceError as exc:
                 LOGGER.warning("OpenAI embedding client unavailable at startup: %s", exc)
         self._ha_discovery = HADiscoveryPublisher(config)

@@ -53,6 +53,10 @@ Embedding cache hooks:
   - vector payload is stored only when `embeddings.store_vectors=true`
   - retention pruning runs on write using day and max-row limits
 
+Provider abstraction:
+- Runtime AI calls are routed through provider interfaces in `src/ai/providers.py`.
+- Active provider remains OpenAI only (`ai.provider=openai`).
+
 ## Status/KV keys used by API + UI
 
 - `service.status`
