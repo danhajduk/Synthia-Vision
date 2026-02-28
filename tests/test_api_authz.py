@@ -48,6 +48,8 @@ class APIAuthzTests(unittest.TestCase):
 
             denied = client.get("/api/events")
             self.assertEqual(denied.status_code, 401)
+            denied_heatmap = client.get("/api/metrics/heatmap")
+            self.assertEqual(denied_heatmap.status_code, 401)
 
             login = client.post(
                 "/api/auth/login",
@@ -59,6 +61,9 @@ class APIAuthzTests(unittest.TestCase):
             allowed = client.get("/api/events")
             self.assertEqual(allowed.status_code, 200)
             self.assertIn("items", allowed.json())
+            allowed_heatmap = client.get("/api/metrics/heatmap")
+            self.assertEqual(allowed_heatmap.status_code, 200)
+            self.assertIn("buckets", allowed_heatmap.json())
 
     def test_guest_routes_remain_accessible_without_login(self) -> None:
         if TestClient is None:

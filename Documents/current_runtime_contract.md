@@ -84,6 +84,7 @@ Guest:
 Admin (session required):
 - `GET /api/events` (`sort_by=ts|risk_score|ai_confidence`, `sort_dir=asc|desc`)
 - `GET /api/events/{event_id}`
+- `GET /api/metrics/heatmap` (`range=24h|avg7d|avg30d`, `camera=<key|all>`)
 - `GET /api/cameras`
 - `GET /api/admin/heatmap` (`hours=24|168`)
 - `POST /api/cameras/{camera_key}`
@@ -136,7 +137,25 @@ Auth/setup:
   - rolling 24h cost and burn rate
   - month-to-date cost and projected month cost
   - rolling 24h and month-to-date token totals
-- `/ui/heatmap` (admin only) renders hourly per-camera event density with AI-call and suppressed overlays for `24h` or `7d` windows via `/api/admin/heatmap`.
+- `/ui/heatmap` (admin only) renders hourly event density with AI-call/suppressed overlays for `24h`, `avg7d`, and `avg30d` via `/api/metrics/heatmap`.
+
+## Heatmap aggregation contract
+
+- Endpoint: `GET /api/metrics/heatmap` (admin session required)
+- Query:
+  - `range=24h|avg7d|avg30d`
+  - `camera=<key|all>`
+- Response fields:
+  - `timezone` (local timezone identifier used for bucketing)
+  - `range_type`, `start_local`, `end_local`
+  - `is_complete_days_only` (`true` for avg ranges)
+  - `days_covered` (avg ranges)
+  - `buckets` (24 local-hour entries with `events`, `ai_calls`, `suppressed`)
+  - `totals`
+  - `per_camera` (present when `camera=all`)
+- Boundary rules:
+  - `24h` is rolling last 24 local hours
+  - `avg7d` and `avg30d` use completed local days only (exclude current partial day)
 
 ## Common status/result strings
 

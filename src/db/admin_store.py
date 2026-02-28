@@ -196,6 +196,111 @@ class AdminStore:
             "items": [dict(row) for row in rows],
         }
 
+    def get_metrics_heatmap(
+        self,
+        *,
+        range_type: str = "24h",
+        camera: str = "all",
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        normalized_range = str(range_type or "24h").strip().lower()
+        if normalized_range not in {"24h", "avg7d", "avg30d"}:
+            normalized_range = "24h"
+        normalized_camera = str(camera or "all").strip()
+        if not normalized_camera:
+            normalized_camera = "all"
+        local_tz = datetime.now().astimezone().tzinfo
+        timezone_name = str(getattr(local_tz, "key", "") or str(local_tz or "local"))
+        now_utc_value = now_utc or datetime.now(timezone.utc)
+        if now_utc_value.tzinfo is None:
+            now_utc_value = now_utc_value.replace(tzinfo=timezone.utc)
+        now_local = now_utc_value.astimezone(local_tz) if local_tz is not None else now_utc_value
+        is_complete_days_only = normalized_range in {"avg7d", "avg30d"}
+        if normalized_range == "24h":
+            start_local = now_local - timedelta(hours=24)
+            end_local = now_local
+        else:
+            full_days = 7 if normalized_range == "avg7d" else 30
+            local_midnight = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_local = local_midnight - timedelta(days=full_days)
+            end_local = local_midnight
+        start_utc = start_local.astimezone(timezone.utc).isoformat()
+        end_utc = end_local.astimezone(timezone.utc).isoformat()
+
+        where: list[str] = ["e.ts >= ?", "e.ts < ?"]
+        params: list[Any] = [start_utc, end_utc]
+        if normalized_camera != "all":
+            where.append("e.camera = ?")
+            params.append(normalized_camera)
+        where_sql = " AND ".join(where)
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            rows = conn.execute(
+                f"""
+                WITH metric_events AS (
+                  SELECT DISTINCT event_id
+                  FROM metrics
+                )
+                SELECT
+                  e.camera AS camera,
+                  strftime('%Y-%m-%d', datetime(e.ts, 'localtime')) AS local_day,
+                  CAST(strftime('%H', datetime(e.ts, 'localtime')) AS INTEGER) AS local_hour,
+                  COUNT(*) AS events_count,
+                  SUM(CASE WHEN me.event_id IS NOT NULL THEN 1 ELSE 0 END) AS ai_calls_count,
+                  SUM(
+                    CASE
+                      WHEN e.result_status='suppressed' AND e.reject_reason='suppressed_duplicate' THEN 1
+                      ELSE 0
+                    END
+                  ) AS suppressed_count
+                FROM events e
+                LEFT JOIN metric_events me ON me.event_id = e.event_id
+                WHERE {where_sql}
+                GROUP BY e.camera, local_day, local_hour
+                ORDER BY e.camera ASC, local_day ASC, local_hour ASC
+                """,
+                tuple(params),
+            ).fetchall()
+        items = [dict(row) for row in rows]
+        per_camera_rows: dict[str, list[dict[str, Any]]] = {}
+        for row in items:
+            camera_key = str(row.get("camera", "") or "")
+            per_camera_rows.setdefault(camera_key, []).append(row)
+        global_rows = _merge_rows_across_cameras(items)
+        global_series = _series_from_rows(
+            global_rows,
+            average=is_complete_days_only,
+        )
+
+        response: dict[str, Any] = {
+            "timezone": timezone_name,
+            "range_type": normalized_range,
+            "camera": normalized_camera,
+            "start_local": start_local.isoformat(),
+            "end_local": end_local.isoformat(),
+            "is_complete_days_only": is_complete_days_only,
+            "days_covered": global_series["days_covered"] if is_complete_days_only else None,
+            "buckets": global_series["buckets"],
+            "totals": global_series["totals"],
+        }
+        if normalized_camera == "all":
+            per_camera_payload: dict[str, Any] = {}
+            for camera_key, camera_rows in sorted(per_camera_rows.items()):
+                camera_series = _series_from_rows(
+                    camera_rows,
+                    average=is_complete_days_only,
+                )
+                per_camera_payload[camera_key] = {
+                    "days_covered": camera_series["days_covered"]
+                    if is_complete_days_only
+                    else None,
+                    "buckets": camera_series["buckets"],
+                    "totals": camera_series["totals"],
+                }
+            response["per_camera"] = per_camera_payload
+        return response
+
     def list_cameras(self) -> dict[str, Any]:
         with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
             conn.row_factory = sqlite3.Row
@@ -366,3 +471,88 @@ def _normalize_control(name: str, value: Any) -> tuple[str, str]:
             raise ValueError("updates_per_event must be 1 or 2")
         return key, str(parsed)
     raise ValueError(f"unsupported control name: {name}")
+
+
+def _merge_rows_across_cameras(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[tuple[str, int], dict[str, Any]] = {}
+    for row in rows:
+        local_day = str(row.get("local_day", ""))
+        local_hour = int(row.get("local_hour", 0) or 0)
+        key = (local_day, local_hour)
+        target = merged.setdefault(
+            key,
+            {
+                "local_day": local_day,
+                "local_hour": local_hour,
+                "events_count": 0,
+                "ai_calls_count": 0,
+                "suppressed_count": 0,
+            },
+        )
+        target["events_count"] += int(row.get("events_count", 0) or 0)
+        target["ai_calls_count"] += int(row.get("ai_calls_count", 0) or 0)
+        target["suppressed_count"] += int(row.get("suppressed_count", 0) or 0)
+    return list(merged.values())
+
+
+def _series_from_rows(rows: list[dict[str, Any]], *, average: bool) -> dict[str, Any]:
+    by_hour: dict[int, dict[str, float]] = {
+        hour: {"events": 0.0, "ai_calls": 0.0, "suppressed": 0.0}
+        for hour in range(24)
+    }
+    covered_days: set[str] = set()
+    for row in rows:
+        local_day = str(row.get("local_day", "")).strip()
+        hour = int(row.get("local_hour", 0) or 0)
+        if local_day:
+            covered_days.add(local_day)
+        if hour < 0 or hour > 23:
+            continue
+        bucket = by_hour[hour]
+        bucket["events"] += float(row.get("events_count", 0) or 0)
+        bucket["ai_calls"] += float(row.get("ai_calls_count", 0) or 0)
+        bucket["suppressed"] += float(row.get("suppressed_count", 0) or 0)
+    days_covered = len(covered_days)
+    divisor = float(days_covered) if average and days_covered > 0 else 1.0
+    buckets: list[dict[str, Any]] = []
+    totals = {"events": 0.0, "ai_calls": 0.0, "suppressed": 0.0}
+    for hour in range(24):
+        events_value = by_hour[hour]["events"] / divisor
+        ai_calls_value = by_hour[hour]["ai_calls"] / divisor
+        suppressed_value = by_hour[hour]["suppressed"] / divisor
+        if average:
+            events_value = round(events_value, 3)
+            ai_calls_value = round(ai_calls_value, 3)
+            suppressed_value = round(suppressed_value, 3)
+        else:
+            events_value = int(events_value)
+            ai_calls_value = int(ai_calls_value)
+            suppressed_value = int(suppressed_value)
+        totals["events"] += float(events_value)
+        totals["ai_calls"] += float(ai_calls_value)
+        totals["suppressed"] += float(suppressed_value)
+        buckets.append(
+            {
+                "hour": hour,
+                "events": events_value,
+                "ai_calls": ai_calls_value,
+                "suppressed": suppressed_value,
+            }
+        )
+    if average:
+        totals = {
+            "events": round(totals["events"], 3),
+            "ai_calls": round(totals["ai_calls"], 3),
+            "suppressed": round(totals["suppressed"], 3),
+        }
+    else:
+        totals = {
+            "events": int(totals["events"]),
+            "ai_calls": int(totals["ai_calls"]),
+            "suppressed": int(totals["suppressed"]),
+        }
+    return {
+        "days_covered": days_covered,
+        "buckets": buckets,
+        "totals": totals,
+    }

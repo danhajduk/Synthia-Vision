@@ -196,6 +196,11 @@ python -m src.main
   - per-camera map: `ai.prompts.per_camera_mode_profiles`
   - precedence: camera-mode override -> global mode map -> `default` profile -> in-config prompt presets
   - profile `output_rules` enforce JSON-only model output for classification calls
+- Heatmap metrics API (`/api/metrics/heatmap`, admin only):
+  - uses local timezone for bucket/day boundaries
+  - `24h`: rolling last 24 hours (local hour buckets)
+  - `avg7d` / `avg30d`: averages over completed local days only (current partial day excluded)
+  - response includes `timezone`, `range_type`, `start_local`, `end_local`, `is_complete_days_only`, `days_covered`, 24 hourly buckets (`events`/`ai_calls`/`suppressed`), and totals
 
 ## Guest HTTP APIs
 
@@ -210,6 +215,7 @@ Guest endpoints are now exposed by the built-in API server:
 Admin endpoints currently available:
 - `GET /api/events` (`sort_by=ts|risk_score|ai_confidence`, `sort_dir=asc|desc`)
 - `GET /api/events/{id}`
+- `GET /api/metrics/heatmap` (`range=24h|avg7d|avg30d`, `camera=<key|all>`)
 - `GET /api/cameras`
 - `POST /api/cameras/{camera_key}`
 - `POST /api/control/{name}`

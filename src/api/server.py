@@ -930,6 +930,18 @@ def create_guest_api_app(config: ServiceConfig):
     async def api_metrics_summary():
         return {"metrics": summary_store.get_guest_metrics_payload()}
 
+    @app.get("/api/metrics/heatmap")
+    async def api_metrics_heatmap(
+        range: str = "24h",
+        camera: str = "all",
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        return admin_store.get_metrics_heatmap(
+            range_type=range,
+            camera=camera,
+        )
+
     @app.get("/api/cameras/summary")
     async def api_cameras_summary():
         return summary_store.get_guest_cameras_payload()
