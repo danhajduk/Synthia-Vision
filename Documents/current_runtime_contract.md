@@ -85,6 +85,7 @@ Admin (session required):
 - `GET /api/events`
 - `GET /api/events/{event_id}`
 - `GET /api/cameras`
+- `GET /api/admin/heatmap` (`hours=24|168`)
 - `POST /api/cameras/{camera_key}`
 - `POST /api/control/{name}`
 - `GET /api/errors`

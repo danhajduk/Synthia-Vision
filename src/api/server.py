@@ -881,6 +881,14 @@ def create_guest_api_app(config: ServiceConfig):
             "errors_total": int(errors.get("total", 0) or 0),
         }
 
+    @app.get("/api/admin/heatmap")
+    async def api_admin_heatmap(
+        hours: int = 24,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        _require_admin(session_token)
+        return admin_store.get_timeline_heatmap(hours=hours)
+
     @app.get("/api/status")
     async def api_status():
         return summary_store.get_guest_status_payload()

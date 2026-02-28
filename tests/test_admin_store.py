@@ -68,6 +68,13 @@ class AdminStoreTests(unittest.TestCase):
             self.assertEqual(control["kv_key"], "runtime.enabled")
             self.assertEqual(control["value"], "1")
 
+            heatmap = store.get_timeline_heatmap(hours=24)
+            self.assertEqual(heatmap["window_hours"], 24)
+            self.assertGreaterEqual(len(heatmap["items"]), 1)
+            first = heatmap["items"][0]
+            self.assertEqual(first["camera"], "doorbell")
+            self.assertGreaterEqual(int(first["events_count"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

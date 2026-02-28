@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -136,6 +137,43 @@ class AdminStore:
             "total": total,
             "limit": limit,
             "offset": offset,
+            "items": [dict(row) for row in rows],
+        }
+
+    def get_timeline_heatmap(self, *, hours: int = 24) -> dict[str, Any]:
+        window_hours = 168 if int(hours) >= 168 else 24
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
+        with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            rows = conn.execute(
+                """
+                WITH metric_events AS (
+                  SELECT DISTINCT event_id
+                  FROM metrics
+                )
+                SELECT
+                  substr(e.ts, 1, 13) AS hour_key,
+                  e.camera AS camera,
+                  COUNT(*) AS events_count,
+                  SUM(CASE WHEN me.event_id IS NOT NULL THEN 1 ELSE 0 END) AS ai_calls_count,
+                  SUM(
+                    CASE
+                      WHEN e.result_status='suppressed' AND e.reject_reason='suppressed_duplicate' THEN 1
+                      ELSE 0
+                    END
+                  ) AS suppressed_count
+                FROM events e
+                LEFT JOIN metric_events me ON me.event_id = e.event_id
+                WHERE e.ts >= ?
+                GROUP BY hour_key, e.camera
+                ORDER BY hour_key ASC, e.camera ASC
+                """,
+                (cutoff_iso,),
+            ).fetchall()
+        return {
+            "window_hours": window_hours,
+            "cutoff_ts": cutoff_iso,
             "items": [dict(row) for row in rows],
         }
 

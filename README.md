@@ -204,6 +204,7 @@ Admin endpoints currently available:
 - `POST /api/control/{name}`
 - `GET /api/errors`
 - `GET /api/admin/settings`
+- `GET /api/admin/heatmap` (`hours=24|168`)
 - `POST /api/admin/settings/apply`
 - `POST /api/admin/settings/save`
 - `GET /api/admin/cameras`
