@@ -2,6 +2,89 @@
 
 Synthia Vision is a standalone, event-aware AI service for Frigate + OpenAI + MQTT + Home Assistant.
 
+## Quick Start
+
+### 1) Minimal `.env`
+
+```bash
+cp .env.example .env
+```
+
+If `.env.example` is not present, create `.env` with safe placeholders:
+
+```env
+OPENAI_API_KEY=sk-REPLACE_ME
+MQTT_PASSWORD=REPLACE_ME
+SYNTHIA_API_HOST=0.0.0.0
+SYNTHIA_API_PORT=8080
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=REPLACE_WITH_STRONG_PASSWORD
+```
+
+### 2) Minimal config files
+
+`config/config.yaml`:
+
+```yaml
+schema_version: 1
+
+service:
+  name: "Synthia Vision"
+  slug: "synthia_vision"
+  mqtt_prefix: "home/synthiavision"
+  paths:
+    state_file: "/app/state/state.json"
+    config_file: "/app/config/config.yaml"
+    snapshots_dir: "/app/state/snapshots"
+    db_file: "/app/state/synthia_vision.db"
+
+includes:
+  - "config.d/*.yaml"
+```
+
+`config/config.d/99-local.yaml`:
+
+```yaml
+mqtt:
+  host: "10.0.0.100"
+  port: 1883
+  username: "synthia_vision"
+  password: "${MQTT_PASSWORD}"
+
+frigate:
+  api_base_url: "http://10.0.0.100:5000"
+
+ai:
+  openai:
+    api_key: "${OPENAI_API_KEY}"
+    model: "gpt-4o-mini"
+```
+
+### 3) Run with Docker Compose
+
+```bash
+docker compose up -d --build
+docker compose logs -f synthia-vision
+```
+
+### 4) Run locally (no Docker)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m src.main
+```
+
+### 5) Verify it works
+
+- API status returns service state:
+  - `curl -s http://127.0.0.1:8080/api/status`
+- MQTT retained status exists on your configured prefix:
+  - `mosquitto_sub -h <mqtt-host> -t 'home/synthiavision/status' -C 1 -v`
+- UI loads:
+  - open `http://127.0.0.1:8080/ui`
+
 ## Current Status
 
 - Foundation is complete.
@@ -110,6 +193,7 @@ Guest endpoints are now exposed by the built-in API server:
 - `GET /api/metrics/summary`
 - `GET /api/cameras/summary`
 - `GET /api/cameras/{camera_key}/card`
+- `POST /api/cameras/{camera_key}/toggle`
 - `GET /api/cameras/{camera_key}/preview.jpg`
 
 Admin endpoints currently available:
@@ -346,6 +430,18 @@ Env overrides supported:
 - `SYNTHIA_MONTHLY_BUDGET_LIMIT`
 - `SYNTHIA_CONFIDENCE_THRESHOLD`
 
+## Security & Privacy
+
+- No identity recognition by design:
+  - output contract is action + subject category + confidence + short generic description.
+  - the service does not do person identification, naming, or profiling.
+- Guest vs admin exposure boundaries:
+  - guest API/UI provides sanitized operational summaries for dashboard use.
+  - admin routes require authenticated admin session and expose operational controls/history.
+- OpenAI data exposure (high-level):
+  - snapshot image bytes and constrained prompt context are sent for classification.
+  - no secrets (tokens/passwords/keys) are intentionally included in request payloads.
+
 ## Logging
 
 Logging is now configurable globally and per component through `config/config.yaml`.
@@ -407,6 +503,19 @@ Run local tooling:
 ```bash
 python tools/publish_sample_event.py --host 127.0.0.1 --topic frigate/events
 python tools/run_pipeline_once.py --camera livingroom --event-type end
+```
+
+## Architecture (high-level)
+
+```text
+Frigate
+  -> MQTT intake (frigate/events)
+    -> policy + queue gate
+      -> snapshot fetch
+        -> OpenAI classification
+          -> journal (SQLite)
+            -> MQTT publish
+              -> UI / Home Assistant
 ```
 
 ## State Persistence
@@ -478,21 +587,21 @@ Prompt context injection:
   - `typical_activities` (derived from setup view `expected_activity`)
 - Policy decision behavior is unchanged.
 
+## Release Engineering
+
+- Versioning convention:
+  - use semantic versioning tags: `vMAJOR.MINOR.PATCH` (example: `v0.3.1`).
+- Tagging flow:
+  - update `CHANGELOG.md` for the release
+  - create annotated tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
+  - push tag: `git push origin vX.Y.Z`
+
 ## Troubleshooting
 
-- No logs in expected files:
-  - Current component files are `logs/core.log`, `logs/mqtt.log`, `logs/policy.log`, `logs/config.log`, `logs/ai.log`.
-  - Ensure host `logs/` is writable by the container user.
-- `status=budget_blocked`:
-  - Raise `home/synthiavision/control/monthly_budget/set` or lower model usage settings (`ai.vision_detail`, `ai.image_preprocess.max_side_px`).
-- High token usage:
-  - Keep `ai.vision_detail=low` and `ai.image_preprocess.max_side_px=512`.
-  - Check `synthia_vision.ai` logs for `total_tokens`, `detail`, image sizes, and bytes.
-- No OpenAI results:
-  - Ensure `OPENAI_API_KEY` is set in env and container.
-  - Check `last_error` topic for `openai_failed` / `schema_failed`.
-- Cannot log in as admin on first run:
-  - Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env`.
-  - Admin bootstrap runs only when no users exist in SQLite.
-- Time/date rollover surprises:
-  - Daily counters reset on date change, monthly totals reset when month key changes.
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `status=budget_blocked` | Monthly budget cap reached | Raise `.../control/monthly_budget/set` or lower `ai.vision_detail` / `ai.image_preprocess.max_side_px`. |
+| Guest preview is blank | Preview not allowed globally or per camera | Ensure `ui.preview_enabled=1` and camera `guest_preview_enabled=1`; verify `GET /api/cameras/{camera_key}/preview.jpg`. |
+| No AI results on events | OpenAI key/config missing or provider failure | Confirm `OPENAI_API_KEY` in env/container and check `last_error` plus `synthia_vision.ai` logs. |
+| First-run setup/admin creation denied | Existing admin already present or remote call missing `FIRST_RUN_TOKEN` | Use `POST /api/setup/first-run` only when no admin exists; provide token for non-localhost setup. |
+| Logs missing or no recent entries | Log paths/permissions not writable | Confirm `logs/` mount is writable and review `logs/core.log`, `logs/mqtt.log`, `logs/policy.log`, `logs/config.log`, `logs/ai.log`. |
