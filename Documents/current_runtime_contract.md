@@ -1,6 +1,6 @@
 # Synthia Vision Current Runtime Contract
 
-Last updated: 2026-02-23
+Last updated: 2026-02-28
 
 This file is the practical source of truth for active development. It reflects current code behavior (not historical phase notes).
 
@@ -51,6 +51,7 @@ Guest:
 - `GET /api/metrics/summary`
 - `GET /api/cameras/summary`
 - `GET /api/cameras/{camera_key}/card`
+- `POST /api/cameras/{camera_key}/toggle`
 - `GET /api/cameras/{camera_key}/preview.jpg`
 
 Admin (session required):
@@ -89,6 +90,15 @@ Auth/setup:
   - enabled camera: `ui.preview_enabled_interval_s` (default `2`)
   - disabled camera: `ui.preview_disabled_interval_s` (default `60`)
 - Max concurrent refreshing cards: `ui.preview_max_active` (default `1`)
+
+## Guest camera status toggle behavior
+
+- Route: `POST /api/cameras/{camera_key}/toggle`
+- Behavior:
+  - flips camera `enabled` state
+  - returns updated enabled value
+- Intended use:
+  - guest dashboard status-pill click interaction
 
 ## Common status/result strings
 
