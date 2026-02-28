@@ -64,6 +64,10 @@
             </div>
             <div class="big" data-kpi-queue-depth>{{ kpis.queue_depth }}</div>
             <div class="sub">Drops today: <span class="mono" data-kpi-drops>{{ kpis.drops_today }}</span></div>
+            <div class="sub">
+              Suppressed today: <span class="mono" data-kpi-suppressed-today>{{ kpis.suppressed_today or 0 }}</span>
+              (<span class="mono" data-kpi-suppressed-rate>{{ kpis.suppressed_rate or '0.0%' }}</span>)
+            </div>
           </div>
 
           <div class="card">

@@ -463,6 +463,8 @@ def create_guest_api_app(config: ServiceConfig):
                 "queue_depth": int(metrics.get("queue_depth", status.get("queue_depth", 0)) or 0),
                 "queue_max": 50,
                 "drops_today": int(metrics.get("dropped_events_total", 0)),
+                "suppressed_today": int(metrics.get("suppressed_count_today", 0)),
+                "suppressed_rate": f"{float(metrics.get('suppressed_rate_today', 0.0)) * 100:.1f}%",
                 "cost_today": _format_money(metrics.get("cost_daily_total", 0.0)),
                 "cost_mtd": _format_money(metrics.get("cost_month2day_total", 0.0)),
                 "ai_calls_today": int(metrics.get("count_today", 0)),

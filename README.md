@@ -253,6 +253,9 @@ Runtime:
 - Guest top KPI cards poll every `2s`:
   - `GET /api/status`
   - `GET /api/metrics/summary`
+- Queue KPI also shows suppression telemetry:
+  - `suppressed_count_today`
+  - `suppressed_rate_today`
 - Heartbeat is rendered in browser local time as:
   - `MM/DD/YYYY HH:MM:SS`
 - Cost values in guest UI are rendered with 4 decimals:

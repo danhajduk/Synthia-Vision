@@ -80,6 +80,9 @@
                     <span class="pill"><span class="dot"></span> <span>OK</span></span>
                     {% elif _status == 'suppressed' %}
                     <span class="pill"><span class="dot warn"></span> <span>Suppressed</span></span>
+                    {% if (event.reject_reason or '') == 'suppressed_duplicate' %}
+                    <div class="sub mono">duplicate window</div>
+                    {% endif %}
                     {% elif _status == 'skipped' %}
                     <span class="pill"><span>Skipped</span></span>
                     {% elif _status == 'error' %}
@@ -144,6 +147,7 @@
         </div>
         <div class="sub" id="events-detail-description" style="margin-top:8px;">Description: —</div>
         <div class="sub mono" id="events-detail-reason" style="margin-top:8px;">Rejection reason: —</div>
+        <div class="sub mono" id="events-detail-suppressed-by" style="margin-top:8px;">Suppressed by: —</div>
         <div class="sub mono" id="events-detail-snapshot">Snapshot URL: —</div>
         <div class="wizard-preview-wrap" style="margin-top:8px; min-height:180px;">
           <img id="events-detail-snapshot-image" class="wizard-preview-image" alt="Event snapshot preview" />

@@ -292,6 +292,8 @@
     const queueRatioEl = document.querySelector('[data-kpi-queue-ratio]');
     const queueDepthEl = document.querySelector('[data-kpi-queue-depth]');
     const dropsEl = document.querySelector('[data-kpi-drops]');
+    const suppressedTodayEl = document.querySelector('[data-kpi-suppressed-today]');
+    const suppressedRateEl = document.querySelector('[data-kpi-suppressed-rate]');
     const costTodayEl = document.querySelector('[data-kpi-cost-today]');
     const costMtdEl = document.querySelector('[data-kpi-cost-mtd]');
     const costAvgEventEl = document.querySelector('[data-kpi-cost-avg-event]');
@@ -377,6 +379,14 @@
         if (dropsEl) {
           dropsEl.textContent = String(asInt(metrics.dropped_events_total, 0));
         }
+        const suppressedToday = asInt(metrics.suppressed_count_today, 0);
+        const suppressedRate = asFloat(metrics.suppressed_rate_today, 0.0);
+        if (suppressedTodayEl) {
+          suppressedTodayEl.textContent = String(suppressedToday);
+        }
+        if (suppressedRateEl) {
+          suppressedRateEl.textContent = (suppressedRate * 100).toFixed(1) + '%';
+        }
 
         if (costTodayEl) {
           costTodayEl.textContent = money(metrics.cost_daily_total);
@@ -443,6 +453,8 @@
       last_event_ts: document.getElementById('admin-last-event-ts'),
       events_total: document.getElementById('admin-events-total'),
       errors_total: document.getElementById('admin-errors-total'),
+      suppressed_today: document.getElementById('admin-suppressed-today'),
+      suppressed_rate: document.getElementById('admin-suppressed-rate'),
     };
     const queueMax = 50;
 
@@ -504,6 +516,13 @@
         if (fields.errors_total) {
           fields.errors_total.textContent = String(data.errors_total ?? '0');
         }
+        if (fields.suppressed_today) {
+          fields.suppressed_today.textContent = String(data.suppressed_count_today ?? '0');
+        }
+        if (fields.suppressed_rate) {
+          const suppressedRate = asFloat(data.suppressed_rate_today, 0.0);
+          fields.suppressed_rate.textContent = (suppressedRate * 100).toFixed(1) + '%';
+        }
         if (statusEl) {
           statusEl.textContent = 'Updated ' + formatLocalDateTime(new Date().toISOString());
         }
@@ -543,6 +562,7 @@
     const detailEventType = document.getElementById('events-detail-event-type');
     const detailDescription = document.getElementById('events-detail-description');
     const detailReason = document.getElementById('events-detail-reason');
+    const detailSuppressedBy = document.getElementById('events-detail-suppressed-by');
     const detailSnapshot = document.getElementById('events-detail-snapshot');
     const detailSnapshotImage = document.getElementById('events-detail-snapshot-image');
     const detailFrigateScore = document.getElementById('events-detail-frigate-score');
@@ -606,6 +626,7 @@
         detailJson.hidden = true;
         rawToggleBtn.textContent = 'Show Raw JSON';
         detailReason.textContent = 'Rejection reason: ' + String(data.reject_reason || '—');
+        detailSuppressedBy.textContent = 'Suppressed by: ' + String(data.suppressed_by_event_id || '—');
         detailSnapshot.textContent = 'Snapshot URL: ' + snapshotUrl;
         detailSnapshotImage.src = snapshotUrl;
         detailSnapshotImage.alt = 'Snapshot for event ' + eventId;
