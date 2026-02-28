@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Heatmap — {{ title }}</title>
+  <link rel="stylesheet" href="{{ request.url_for('ui-static', path='app.css') }}" />
+</head>
+<body data-ui-page="heatmap">
+  <div class="container">
+    <main class="main">
+      <div class="topbar">
+        <div class="brand">
+          <div class="title">Timeline Heatmap</div>
+          <div class="subtitle">Hourly activity density by camera</div>
+        </div>
+        <div class="row">
+          <button class="btn" id="heatmap-refresh" type="button">Refresh</button>
+          <a class="btn" href="/ui/admin">Back</a>
+        </div>
+      </div>
+      <div class="content">
+        <div class="card">
+          <div class="row">
+            <div class="field-stack">
+              <label class="field-label" for="heatmap-hours">Window</label>
+              <select class="field" id="heatmap-hours">
+                <option value="24">Last 24h</option>
+                <option value="168">Last 7d</option>
+              </select>
+            </div>
+            <div class="sub" id="heatmap-status">Loading heatmap…</div>
+          </div>
+          <div class="sub heatmap-legend">
+            Cell shade: total events density.
+            <span class="mono">A</span> = AI calls,
+            <span class="mono">S</span> = suppressed.
+          </div>
+          <div class="heatmap-wrap" id="heatmap-wrap">
+            <div class="sub">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="{{ request.url_for('ui-static', path='app.js') }}"></script>
+</body>
+</html>

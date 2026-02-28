@@ -136,6 +136,7 @@ Auth/setup:
   - rolling 24h cost and burn rate
   - month-to-date cost and projected month cost
   - rolling 24h and month-to-date token totals
+- `/ui/heatmap` (admin only) renders hourly per-camera event density with AI-call and suppressed overlays for `24h` or `7d` windows via `/api/admin/heatmap`.
 
 ## Common status/result strings
 

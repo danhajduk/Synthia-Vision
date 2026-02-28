@@ -285,6 +285,7 @@ Admin UI pages (require admin session):
 - `GET /ui/setup`
 - `GET /ui/events`
 - `GET /ui/events/{id}`
+- `GET /ui/heatmap`
 - `GET /ui/errors`
 
 Mode controls/UI:

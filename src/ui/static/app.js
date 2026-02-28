@@ -419,7 +419,7 @@
 
   async function guardAdminUiRoute() {
     const page = document.body.getAttribute('data-ui-page') || '';
-    if (['admin', 'setup', 'events', 'errors'].indexOf(page) < 0) {
+    if (['admin', 'setup', 'events', 'heatmap', 'errors'].indexOf(page) < 0) {
       return true;
     }
     try {
@@ -714,6 +714,136 @@
     });
     localizeEventTableTimes();
     statusEl.textContent = 'Filtered server-side results.';
+  }
+
+  function initHeatmapPage() {
+    const wrapEl = document.getElementById('heatmap-wrap');
+    if (!wrapEl) {
+      return;
+    }
+    const statusEl = document.getElementById('heatmap-status');
+    const hoursEl = document.getElementById('heatmap-hours');
+    const refreshBtn = document.getElementById('heatmap-refresh');
+
+    function asInt(value, fallback) {
+      const parsed = Number.parseInt(String(value), 10);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function buildCell(camera, hour, counts, maxEvents) {
+      const eventsCount = asInt(counts.events_count, 0);
+      const aiCalls = asInt(counts.ai_calls_count, 0);
+      const suppressed = asInt(counts.suppressed_count, 0);
+      const ratio = maxEvents > 0 ? Math.min(1, eventsCount / maxEvents) : 0;
+      const shade = 0.08 + (ratio * 0.55);
+      const cell = document.createElement('div');
+      cell.className = 'heatmap-cell';
+      cell.style.background = 'rgba(106, 168, 255, ' + shade.toFixed(3) + ')';
+      cell.innerHTML =
+        '<div class="mono heatmap-value">' + String(eventsCount) + '</div>' +
+        '<div class="heatmap-overlays">' +
+        '<span class="heatmap-chip">A ' + String(aiCalls) + '</span>' +
+        '<span class="heatmap-chip">S ' + String(suppressed) + '</span>' +
+        '</div>';
+      cell.title =
+        camera +
+        ' @ ' + hour + ':00 UTC\n' +
+        'events: ' + String(eventsCount) + '\n' +
+        'ai calls: ' + String(aiCalls) + '\n' +
+        'suppressed: ' + String(suppressed);
+      return cell;
+    }
+
+    function render(payload) {
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      if (!items.length) {
+        wrapEl.innerHTML = '<div class="sub">No events in selected window.</div>';
+        return;
+      }
+      const cameras = Array.from(new Set(items.map((item) => String(item.camera || '—')))).sort();
+      const hours = Array.from(new Set(items.map((item) => String(item.hour_key || '')))).sort();
+      const byKey = {};
+      let maxEvents = 0;
+      items.forEach(function (item) {
+        const camera = String(item.camera || '—');
+        const hour = String(item.hour_key || '');
+        const key = camera + '|' + hour;
+        byKey[key] = {
+          events_count: asInt(item.events_count, 0),
+          ai_calls_count: asInt(item.ai_calls_count, 0),
+          suppressed_count: asInt(item.suppressed_count, 0),
+        };
+        if (byKey[key].events_count > maxEvents) {
+          maxEvents = byKey[key].events_count;
+        }
+      });
+
+      const grid = document.createElement('div');
+      grid.className = 'heatmap-grid';
+      grid.style.gridTemplateColumns = '180px repeat(' + String(hours.length) + ', minmax(48px, 1fr))';
+
+      const corner = document.createElement('div');
+      corner.className = 'heatmap-header heatmap-corner';
+      corner.textContent = 'Camera / Hour';
+      grid.appendChild(corner);
+
+      hours.forEach(function (hourKey) {
+        const header = document.createElement('div');
+        header.className = 'heatmap-header mono';
+        const shortHour = hourKey.slice(11, 13);
+        header.textContent = shortHour + ':00';
+        header.title = hourKey + ':00 UTC';
+        grid.appendChild(header);
+      });
+
+      cameras.forEach(function (camera) {
+        const rowLabel = document.createElement('div');
+        rowLabel.className = 'heatmap-row-label mono';
+        rowLabel.textContent = camera;
+        grid.appendChild(rowLabel);
+        hours.forEach(function (hourKey) {
+          const key = camera + '|' + hourKey;
+          const counts = byKey[key] || { events_count: 0, ai_calls_count: 0, suppressed_count: 0 };
+          grid.appendChild(buildCell(camera, hourKey, counts, maxEvents));
+        });
+      });
+
+      wrapEl.innerHTML = '';
+      wrapEl.appendChild(grid);
+    }
+
+    async function load() {
+      const hours = asInt(hoursEl ? hoursEl.value : 24, 24) >= 168 ? 168 : 24;
+      if (statusEl) {
+        statusEl.textContent = 'Loading heatmap…';
+      }
+      try {
+        const resp = await fetch('/api/admin/heatmap?hours=' + String(hours), { credentials: 'same-origin' });
+        if (!resp.ok) {
+          if (statusEl) {
+            statusEl.textContent = 'Failed loading heatmap.';
+          }
+          return;
+        }
+        const payload = await resp.json();
+        render(payload);
+        if (statusEl) {
+          statusEl.textContent = 'Window ' + String(hours) + 'h • Updated ' + formatLocalDateTime(new Date().toISOString());
+        }
+      } catch (err) {
+        if (statusEl) {
+          statusEl.textContent = 'Failed loading heatmap.';
+        }
+      }
+    }
+
+    if (hoursEl) {
+      hoursEl.addEventListener('change', load);
+    }
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', load);
+    }
+    load();
   }
 
   function initErrorsPage() {
@@ -1612,7 +1742,7 @@
   document.addEventListener('DOMContentLoaded', async function () {
     initEmbeddedMode();
     const allowed = await guardAdminUiRoute();
-    if (!allowed && ['admin', 'setup', 'events', 'errors'].indexOf(document.body.getAttribute('data-ui-page') || '') >= 0) {
+    if (!allowed && ['admin', 'setup', 'events', 'heatmap', 'errors'].indexOf(document.body.getAttribute('data-ui-page') || '') >= 0) {
       return;
     }
     initGuestTimestamps();
@@ -1621,6 +1751,7 @@
     initAdminPage();
     initSetupPage();
     initEventsPage();
+    initHeatmapPage();
     initErrorsPage();
   });
 })();

@@ -101,6 +101,30 @@ class UIRouteTests(unittest.TestCase):
         admin = client.get("/ui/admin")
         self.assertEqual(admin.status_code, 200)
         self.assertIn("Admin", admin.text)
+        self.assertIn("/ui/heatmap", admin.text)
+
+    def test_heatmap_page_requires_admin_session(self) -> None:
+        if TestClient is None:
+            self.skipTest("fastapi not installed")
+        client = self._build_client()
+        response = client.get("/ui/heatmap", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("/ui/login", response.headers.get("location", ""))
+
+    def test_heatmap_page_renders_for_authenticated_admin(self) -> None:
+        if TestClient is None:
+            self.skipTest("fastapi not installed")
+        client = self._build_client()
+        login = client.post(
+            "/ui/login",
+            data={"username": "admin", "password": "supersecurepass"},
+            follow_redirects=False,
+        )
+        self.assertEqual(login.status_code, 303)
+        response = client.get("/ui/heatmap")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Timeline Heatmap", response.text)
+        self.assertIn("id=\"heatmap-hours\"", response.text)
 
     def test_event_detail_page_includes_snapshot_image_url(self) -> None:
         if TestClient is None:

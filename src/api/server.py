@@ -780,6 +780,19 @@ def create_guest_api_app(config: ServiceConfig):
             context={"title": config.service.name, "errors": errors.get("items", [])},
         )
 
+    @app.get("/ui/heatmap", response_class=HTMLResponse, include_in_schema=False)
+    async def ui_heatmap(
+        request: Request,
+        session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ):
+        if _ui_admin_or_redirect(session_token) is None:
+            return RedirectResponse(url="/ui/login", status_code=303)
+        return templates.TemplateResponse(
+            request=request,
+            name="heatmap.html",
+            context={"title": config.service.name},
+        )
+
     @app.post("/api/auth/login")
     async def api_auth_login(payload: dict, response: Response):
         username = str(payload.get("username", "")).strip()

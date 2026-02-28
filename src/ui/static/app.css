@@ -676,6 +676,79 @@ body.is-embedded .content {
   overflow: auto;
 }
 
+.heatmap-wrap {
+  margin-top: 12px;
+  overflow: auto;
+}
+
+.heatmap-legend {
+  margin-top: 10px;
+}
+
+.heatmap-grid {
+  display: grid;
+  gap: 4px;
+  min-width: 920px;
+}
+
+.heatmap-header,
+.heatmap-row-label,
+.heatmap-cell {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.heatmap-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+.heatmap-corner {
+  justify-content: flex-start;
+  padding: 0 10px;
+}
+
+.heatmap-row-label {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+}
+
+.heatmap-cell {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  padding: 4px;
+}
+
+.heatmap-value {
+  font-size: 12px;
+}
+
+.heatmap-overlays {
+  display: flex;
+  gap: 4px;
+}
+
+.heatmap-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 1px 5px;
+  font-size: 10px;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
