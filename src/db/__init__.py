@@ -4,6 +4,7 @@ from src.db.camera_store import CameraStore
 from src.db.admin_store import AdminStore
 from src.db.db import DatabaseBootstrap
 from src.db.event_store import EventStore
+from src.db.embedding_store import EmbeddingStore
 from src.db.summary_store import SummaryStore
 from src.db.camera_setup_store import (
     db_get_camera_profile,
@@ -17,6 +18,7 @@ __all__ = [
     "DatabaseBootstrap",
     "CameraStore",
     "EventStore",
+    "EmbeddingStore",
     "SummaryStore",
     "AdminStore",
     "db_get_camera_profile",

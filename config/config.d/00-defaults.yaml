@@ -5,3 +5,10 @@ ui:
   preview_enabled_interval_s: 2
   preview_disabled_interval_s: 60
   preview_max_active: 1
+
+embeddings:
+  enabled: false
+  model: "text-embedding-3-small"
+  retention_days: 30
+  retention_max_rows: 5000
+  store_vectors: false

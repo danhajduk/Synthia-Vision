@@ -223,5 +223,26 @@ class DatabaseBootstrap:
                 cur.execute("ALTER TABLE events ADD COLUMN ai_confidence REAL")
             if "ai_reason" not in event_column_names:
                 cur.execute("ALTER TABLE events ADD COLUMN ai_reason TEXT")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS embeddings_cache (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  event_id TEXT NOT NULL,
+                  camera TEXT NOT NULL,
+                  model TEXT NOT NULL,
+                  snapshot_sha256 TEXT,
+                  embedding_dim INTEGER,
+                  vector_json TEXT,
+                  vector_stored INTEGER NOT NULL DEFAULT 0,
+                  created_ts TEXT NOT NULL,
+                  FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE CASCADE
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_event_id ON embeddings_cache(event_id)")
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_embeddings_camera_created ON embeddings_cache(camera, created_ts)"
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_created_ts ON embeddings_cache(created_ts)")
         finally:
             cur.close()

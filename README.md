@@ -432,6 +432,11 @@ Key current settings:
 - `modes.intent.default`
 - `modes.intent.profiles.<mode>.{confidence_threshold,monthly_budget,updates_per_event,prompt_preset,doorbell_only_mode,high_precision_mode}`
 - `modes.intent.camera_profiles.<camera>.<mode>.<same fields>`
+- `embeddings.enabled`
+- `embeddings.model`
+- `embeddings.retention_days`
+- `embeddings.retention_max_rows`
+- `embeddings.store_vectors`
 - `policy.cameras.<camera>.suppression_enabled`
 - `policy.cameras.<camera>.suppression_window_seconds`
 - `logging.level`
@@ -593,6 +598,7 @@ SQLite bootstrap:
 - Worker-path journaling writes to SQLite:
   - `events`: one row per handled event (accepted or rejected) with latest result fields
   - `metrics`: processing-path rows for OpenAI usage or skip reasons
+  - `embeddings_cache`: optional embedding metadata per event with retention pruning (vector payload stored only when enabled)
   - `errors`: runtime component errors with short detail + optional event/camera linkage
 - Phase 8 bootstrap:
   - if `ADMIN_PASSWORD` is set and `users` is empty, startup creates one `admin` user (default username `admin`, override `ADMIN_USERNAME`)

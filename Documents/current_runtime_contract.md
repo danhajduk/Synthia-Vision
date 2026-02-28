@@ -41,6 +41,18 @@ Budget intelligence fields (admin summary + MQTT):
 - `tokens_24h_total`
 - `tokens_month2day_total`
 
+Embedding cache hooks:
+- Config knobs:
+  - `embeddings.enabled`
+  - `embeddings.model`
+  - `embeddings.retention_days`
+  - `embeddings.retention_max_rows`
+  - `embeddings.store_vectors`
+- Runtime behavior:
+  - when enabled, service writes `embeddings_cache` rows linked to `event_id`
+  - vector payload is stored only when `embeddings.store_vectors=true`
+  - retention pruning runs on write using day and max-row limits
+
 ## Status/KV keys used by API + UI
 
 - `service.status`

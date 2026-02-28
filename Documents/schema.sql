@@ -174,6 +174,26 @@ CREATE INDEX IF NOT EXISTS idx_metrics_event_id ON metrics(event_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_created_ts ON metrics(created_ts);
 
 -- =========================
+-- embeddings_cache
+-- =========================
+CREATE TABLE IF NOT EXISTS embeddings_cache (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT NOT NULL,
+  camera TEXT NOT NULL,
+  model TEXT NOT NULL,
+  snapshot_sha256 TEXT,
+  embedding_dim INTEGER,
+  vector_json TEXT,
+  vector_stored INTEGER NOT NULL DEFAULT 0,
+  created_ts TEXT NOT NULL,
+  FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_event_id ON embeddings_cache(event_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_camera_created ON embeddings_cache(camera, created_ts);
+CREATE INDEX IF NOT EXISTS idx_embeddings_created_ts ON embeddings_cache(created_ts);
+
+-- =========================
 -- errors
 -- =========================
 CREATE TABLE IF NOT EXISTS errors (

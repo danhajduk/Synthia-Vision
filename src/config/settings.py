@@ -292,6 +292,15 @@ class SuppressionConfig:
 
 
 @dataclass(slots=True)
+class EmbeddingsConfig:
+    enabled: bool = False
+    model: str = "text-embedding-3-small"
+    retention_days: int = 30
+    retention_max_rows: int = 5000
+    store_vectors: bool = False
+
+
+@dataclass(slots=True)
 class ServiceConfig:
     app: AppConfig
     logging: LoggingConfig
@@ -307,6 +316,7 @@ class ServiceConfig:
     budget: BudgetConfig
     dedupe: DedupeConfig
     suppression: SuppressionConfig
+    embeddings: EmbeddingsConfig
     topics: dict[str, Any]
 
     @property
@@ -388,6 +398,7 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
     budget_data = _as_mapping(resolved_data.get("budget", {}), "budget")
     dedupe_data = _as_mapping(resolved_data.get("dedupe", {}), "dedupe")
     suppression_data = _as_mapping(resolved_data.get("suppression", {}), "suppression")
+    embeddings_data = _as_mapping(resolved_data.get("embeddings", {}), "embeddings")
     topics_data = _as_mapping(resolved_data.get("topics", {}), "topics")
     logging_data = _as_mapping(resolved_data.get("logging", {}), "logging")
     logging_components_data = _as_mapping(
@@ -655,6 +666,13 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
             window_seconds=max(0, int(suppression_data.get("window_seconds", 15))),
             max_suppressed_log=max(0, int(suppression_data.get("max_suppressed_log", 200))),
         ),
+        embeddings=EmbeddingsConfig(
+            enabled=_as_bool(embeddings_data.get("enabled", False)),
+            model=str(embeddings_data.get("model", "text-embedding-3-small")),
+            retention_days=max(1, int(embeddings_data.get("retention_days", 30))),
+            retention_max_rows=max(1, int(embeddings_data.get("retention_max_rows", 5000))),
+            store_vectors=_as_bool(embeddings_data.get("store_vectors", False)),
+        ),
         topics=topics_data,
     )
 
@@ -917,6 +935,12 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("suppression.window_seconds must be >= 0")
     if config.suppression.max_suppressed_log < 0:
         raise ConfigError("suppression.max_suppressed_log must be >= 0")
+    if not str(config.embeddings.model).strip():
+        raise ConfigError("embeddings.model must not be empty")
+    if config.embeddings.retention_days < 1:
+        raise ConfigError("embeddings.retention_days must be >= 1")
+    if config.embeddings.retention_max_rows < 1:
+        raise ConfigError("embeddings.retention_max_rows must be >= 1")
     if not config.modes.intent_available:
         raise ConfigError("modes.intent.available must not be empty")
     if config.modes.intent_default not in set(config.modes.intent_available):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from datetime import datetime, timezone
+import hashlib
 import json
 import logging
 import re
@@ -16,7 +17,7 @@ import paho.mqtt.client as mqtt
 
 from src.config import ServiceConfig
 from src.config.settings import PolicyCameraConfig
-from src.db import CameraStore, EventStore
+from src.db import CameraStore, EmbeddingStore, EventStore
 from src.db.summary_store import SummaryStore
 from src.db.kv_store import kv_set
 from src.event_router import EventRouter
@@ -26,6 +27,7 @@ from src.models import FrigateEvent
 from src.policy_engine import should_process
 from src.openai import (
     OpenAIClient,
+    OpenAIEmbeddingClient,
     OpenAIUsage,
     apply_outdoor_action_heuristic,
     enforce_classification_result,
@@ -89,12 +91,19 @@ class MQTTClient:
         self._camera_store = CameraStore(config.paths.db_file)
         self._event_store = EventStore(config.paths.db_file)
         self._summary_store = SummaryStore(config.paths.db_file)
+        self._embedding_store = EmbeddingStore(config.paths.db_file)
         self._snapshot_manager = SnapshotManager(config)
         self._openai_client: OpenAIClient | None = None
+        self._embedding_client: OpenAIEmbeddingClient | None = None
         try:
             self._openai_client = OpenAIClient(config)
         except ExternalServiceError as exc:
             LOGGER.warning("OpenAI client unavailable at startup: %s", exc)
+        if bool(getattr(self._config.embeddings, "enabled", False)):
+            try:
+                self._embedding_client = OpenAIEmbeddingClient(config)
+            except ExternalServiceError as exc:
+                LOGGER.warning("OpenAI embedding client unavailable at startup: %s", exc)
         self._ha_discovery = HADiscoveryPublisher(config)
         self._event_router = EventRouter()
         self._policy_runtime_state: dict[str, Any] = {
@@ -1597,6 +1606,14 @@ class MQTTClient:
                 LOGGER.warning("Failed to persist last_phash camera=%s error=%s", event.camera, exc)
         self._record_ai_confidence(confidence=classification.confidence)
         self._record_openai_usage_metrics(usage=usage, camera=event.camera)
+        self._cache_snapshot_embedding(
+            event=event,
+            snapshot=snapshot,
+            action=action,
+            subject_type=classification.subject_type,
+            description=classification.description,
+            confidence=classification.confidence,
+        )
 
     def _publish_camera_result(
         self,
@@ -1866,6 +1883,60 @@ class MQTTClient:
         self._runtime_metrics["avg_ai_confidence_today"] = (
             sum_value / float(count_value) if count_value > 0 else 0.0
         )
+
+    def _cache_snapshot_embedding(
+        self,
+        *,
+        event: FrigateEvent,
+        snapshot: bytes,
+        action: str,
+        subject_type: str,
+        description: str,
+        confidence: float,
+    ) -> None:
+        if not bool(getattr(self._config.embeddings, "enabled", False)):
+            return
+        if self._embedding_client is None:
+            return
+        summary_text = (
+            f"camera={event.camera}; action={action}; subject={subject_type}; "
+            f"confidence={confidence:.3f}; description={description}"
+        )
+        vector: list[float] | None = None
+        model_name = str(self._config.embeddings.model)
+        try:
+            result = self._embedding_client.embed_text(text=summary_text)
+            model_name = result.model
+            if bool(getattr(self._config.embeddings, "store_vectors", False)):
+                vector = result.vector
+        except ExternalServiceError as exc:
+            self._journal_error(
+                component="embeddings",
+                message="embedding_failed",
+                detail=str(exc),
+                event=event,
+            )
+            return
+        snapshot_sha256 = hashlib.sha256(snapshot).hexdigest()
+        try:
+            self._embedding_store.insert_embedding_cache(
+                event_id=event.event_id,
+                camera=event.camera,
+                model=model_name,
+                snapshot_sha256=snapshot_sha256,
+                vector=vector,
+            )
+            self._embedding_store.prune(
+                retention_days=int(self._config.embeddings.retention_days),
+                max_rows=int(self._config.embeddings.retention_max_rows),
+            )
+        except Exception as exc:
+            self._journal_error(
+                component="embeddings",
+                message="embedding_store_failed",
+                detail=str(exc),
+                event=event,
+            )
 
     def _is_budget_blocked(self) -> bool:
         if not self._config.budget.enabled:
