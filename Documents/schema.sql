@@ -127,6 +127,8 @@ CREATE TABLE IF NOT EXISTS events (
   subject_type TEXT,
   frigate_score REAL,
   confidence REAL,
+  ai_confidence REAL,
+  ai_reason TEXT,
   description TEXT,
 
   snapshot_bytes INTEGER,

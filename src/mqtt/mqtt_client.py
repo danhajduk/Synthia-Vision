@@ -110,6 +110,9 @@ class MQTTClient:
                 "count_today": 0,
                 "count_today_date": datetime.now().date().isoformat(),
                 "count_month_key": datetime.now().strftime("%Y-%m"),
+                "ai_confidence_today_sum": 0.0,
+                "ai_confidence_today_count": 0,
+                "avg_ai_confidence_today": 0.0,
                 "suppressed_count_total": 0,
                 "suppressed_count_today": 0,
                 "suppressed_count_by_camera": {},
@@ -1006,6 +1009,9 @@ class MQTTClient:
             "count_today": int(metrics_data.get("count_today", 0)),
             "count_today_date": str(metrics_data.get("count_today_date", today_key)),
             "count_month_key": str(metrics_data.get("count_month_key", datetime.now().strftime("%Y-%m"))),
+            "ai_confidence_today_sum": float(metrics_data.get("ai_confidence_today_sum", 0.0)),
+            "ai_confidence_today_count": int(metrics_data.get("ai_confidence_today_count", 0)),
+            "avg_ai_confidence_today": float(metrics_data.get("avg_ai_confidence_today", 0.0)),
             "suppressed_count_total": int(metrics_data.get("suppressed_count_total", 0)),
             "suppressed_count_today": int(metrics_data.get("suppressed_count_today", 0)),
             "suppressed_count_by_camera": {},
@@ -1407,6 +1413,7 @@ class MQTTClient:
                 return
 
         confidence_percent = max(0, min(100, int(round(classification.confidence * 100.0))))
+        ai_reason = self._derive_ai_reason(classification=classification)
         self._log_ai_response(event_id=event.event_id, classification=classification)
         action = apply_outdoor_action_heuristic(
             event=event,
@@ -1429,6 +1436,8 @@ class MQTTClient:
             action=action,
             subject_type=classification.subject_type,
             confidence=classification.confidence,
+            ai_confidence=classification.confidence,
+            ai_reason=ai_reason,
             description=classification.description,
             snapshot_bytes=len(snapshot),
             image_width=usage.processed_size[0],
@@ -1449,6 +1458,7 @@ class MQTTClient:
                 self._camera_store.set_last_phash(event.camera, phash_hex)
             except Exception as exc:
                 LOGGER.warning("Failed to persist last_phash camera=%s error=%s", event.camera, exc)
+        self._record_ai_confidence(confidence=classification.confidence)
         self._record_openai_usage_metrics(usage=usage, camera=event.camera)
 
     def _publish_camera_result(
@@ -1509,6 +1519,23 @@ class MQTTClient:
             ai_json["explanation"] = explanation
         LOGGER.info("[%s] ai json: %s", event_id, json.dumps(ai_json, ensure_ascii=True))
 
+    def _derive_ai_reason(self, *, classification: Any) -> str | None:
+        candidate = getattr(classification, "explanation", None)
+        if not isinstance(candidate, str) or not candidate.strip():
+            candidate = getattr(classification, "description", None)
+        if not isinstance(candidate, str):
+            return None
+        normalized = " ".join(candidate.strip().split())
+        if not normalized:
+            return None
+        sentence_parts = [part.strip() for part in re.split(r"(?<=[.!?])\s+", normalized) if part.strip()]
+        reason = " ".join(sentence_parts[:2]) if sentence_parts else normalized
+        reason = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "[redacted]", reason)
+        reason = re.sub(r"\+?\d[\d\-\s().]{7,}\d", "[redacted]", reason)
+        if len(reason) > 220:
+            reason = f"{reason[:217].rstrip()}..."
+        return reason or None
+
     def _publish_camera_status_only(self, *, event: FrigateEvent, result_status: str) -> None:
         topics = self._resolve_camera_topics(event.camera)
         last_event_ts_iso = self._to_iso_timestamp(event.event_ts)
@@ -1532,6 +1559,7 @@ class MQTTClient:
             "events_suppressed_total": str(int(self._runtime_metrics.get("suppressed_count_total", 0))),
             "events_suppressed_today": str(int(self._runtime_metrics.get("suppressed_count_today", 0))),
             "events_suppressed_rate_today": "0.0000",
+            "events_avg_confidence_today": "0.0000",
             "control_enabled": bool_to_on_off(self._service_enabled),
             "control_monthly_budget": f"{self._monthly_budget_limit:.2f}",
             "control_confidence_threshold": str(self._confidence_threshold_percent),
@@ -1564,11 +1592,13 @@ class MQTTClient:
             if (suppressed_today + count_today) > 0
             else 0.0
         )
+        avg_confidence_today = float(self._runtime_metrics.get("avg_ai_confidence_today", 0.0))
         self._publish_sync(topics["events_count_total"], str(count_total))
         self._publish_sync(topics["events_count_today"], str(count_today))
         self._publish_sync(topics["events_suppressed_total"], str(suppressed_total))
         self._publish_sync(topics["events_suppressed_today"], str(suppressed_today))
         self._publish_sync(topics["events_suppressed_rate_today"], f"{suppressed_rate_today:.4f}")
+        self._publish_sync(topics["events_avg_confidence_today"], f"{avg_confidence_today:.4f}")
         self._publish_sync(topics["cost_last"], f"{float(self._runtime_metrics.get('cost_last', 0.0)):.4f}")
         self._publish_sync(
             topics["cost_daily_total"],
@@ -1662,6 +1692,17 @@ class MQTTClient:
         self._publish_camera_monthly_cost(camera)
         self._publish_status_sync(self._effective_runtime_status())
 
+    def _record_ai_confidence(self, *, confidence: float) -> None:
+        self._apply_metric_rollovers(self._runtime_metrics)
+        confidence_value = max(0.0, min(1.0, float(confidence)))
+        sum_value = float(self._runtime_metrics.get("ai_confidence_today_sum", 0.0)) + confidence_value
+        count_value = int(self._runtime_metrics.get("ai_confidence_today_count", 0)) + 1
+        self._runtime_metrics["ai_confidence_today_sum"] = sum_value
+        self._runtime_metrics["ai_confidence_today_count"] = count_value
+        self._runtime_metrics["avg_ai_confidence_today"] = (
+            sum_value / float(count_value) if count_value > 0 else 0.0
+        )
+
     def _is_budget_blocked(self) -> bool:
         if not self._config.budget.enabled:
             return False
@@ -1674,6 +1715,9 @@ class MQTTClient:
         if str(metrics.get("count_today_date", today_key)) != today_key:
             metrics["count_today"] = 0
             metrics["count_today_date"] = today_key
+            metrics["ai_confidence_today_sum"] = 0.0
+            metrics["ai_confidence_today_count"] = 0
+            metrics["avg_ai_confidence_today"] = 0.0
             metrics["suppressed_count_today"] = 0
             metrics["cost_daily_total"] = 0.0
         if str(metrics.get("count_month_key", month_key)) != month_key:
@@ -1802,6 +1846,8 @@ class MQTTClient:
         action: str | None = None,
         subject_type: str | None = None,
         confidence: float | None = None,
+        ai_confidence: float | None = None,
+        ai_reason: str | None = None,
         description: str | None = None,
         snapshot_bytes: int | None = None,
         image_width: int | None = None,
@@ -1820,6 +1866,8 @@ class MQTTClient:
                 action=action,
                 subject_type=subject_type,
                 confidence=confidence,
+                ai_confidence=ai_confidence,
+                ai_reason=ai_reason,
                 description=description,
                 snapshot_bytes=snapshot_bytes,
                 image_width=image_width,
@@ -1944,6 +1992,7 @@ class MQTTClient:
             "events_suppressed_total": self._resolve_topic_path("events.suppressed_total", "events/suppressed_total"),
             "events_suppressed_today": self._resolve_topic_path("events.suppressed_today", "events/suppressed_today"),
             "events_suppressed_rate_today": self._resolve_topic_path("events.suppressed_rate_today", "events/suppressed_rate_today"),
+            "events_avg_confidence_today": self._resolve_topic_path("events.avg_confidence_today", "events/avg_confidence_today"),
             "control_enabled": self._resolve_topic_path("control.enabled", "control/enabled"),
             "control_monthly_budget": self._resolve_topic_path("control.monthly_budget", "control/monthly_budget"),
             "control_confidence_threshold": self._resolve_topic_path("control.confidence_threshold", "control/confidence_threshold"),

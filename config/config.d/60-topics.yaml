@@ -36,6 +36,7 @@ topics:
     suppressed_total: "{mqtt_prefix}/events/suppressed_total"
     suppressed_today: "{mqtt_prefix}/events/suppressed_today"
     suppressed_rate_today: "{mqtt_prefix}/events/suppressed_rate_today"
+    avg_confidence_today: "{mqtt_prefix}/events/avg_confidence_today"
 
   control:
     enabled: "{mqtt_prefix}/control/enabled"

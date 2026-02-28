@@ -141,6 +141,12 @@ class HADiscoveryPublisher:
                 "state_topic": self._core_topic("events.suppressed_rate_today", "events/suppressed_rate_today"),
                 "unit_of_measurement": "ratio",
             }),
+            ("events_avg_confidence_today", "sensor", {
+                "name": "Synthia Vision Avg Confidence Today",
+                "icon": "mdi:chart-line",
+                "state_topic": self._core_topic("events.avg_confidence_today", "events/avg_confidence_today"),
+                "unit_of_measurement": "ratio",
+            }),
             ("control_enabled", "switch", {
                 "name": "Synthia Vision Enabled",
                 "icon": "mdi:power",

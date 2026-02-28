@@ -48,6 +48,8 @@ class SummaryStoreTests(unittest.TestCase):
                 action="person_at_door",
                 subject_type="human",
                 confidence=0.91,
+                ai_confidence=0.91,
+                ai_reason="A person remained at the front door and appeared to wait.",
                 description="someone at door",
             )
             event_store.insert_metric(
@@ -88,6 +90,7 @@ class SummaryStoreTests(unittest.TestCase):
             self.assertEqual(metrics["suppressed_count_total"], 1)
             self.assertEqual(metrics["suppressed_count_today"], 1)
             self.assertIn("doorbell", metrics["suppressed_count_by_camera"])
+            self.assertAlmostEqual(metrics["avg_ai_confidence_today"], 0.91, places=6)
 
             cameras = store.get_cameras_summary()
             self.assertEqual(cameras["count"], 1)
@@ -112,6 +115,7 @@ class SummaryStoreTests(unittest.TestCase):
             self.assertEqual(guest_metrics["ai_calls_today"], guest_metrics["count_today"])
             self.assertEqual(guest_metrics["suppressed_count_total"], 1)
             self.assertEqual(guest_metrics["suppressed_count_today"], 1)
+            self.assertAlmostEqual(guest_metrics["avg_ai_confidence_today"], 0.91, places=6)
 
             guest_cameras = store.get_guest_cameras_payload()
             self.assertEqual(guest_cameras["count"], 1)

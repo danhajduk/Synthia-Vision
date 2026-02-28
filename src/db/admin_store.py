@@ -54,7 +54,7 @@ class AdminStore:
             rows = conn.execute(
                 f"""
                 SELECT event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit, suppressed_by_event_id,
-                       result_status, action, subject_type, frigate_score, confidence, description,
+                       result_status, action, subject_type, frigate_score, confidence, ai_confidence, ai_reason, description,
                        snapshot_bytes, image_width, image_height, vision_detail, created_ts
                 FROM events
                 {where_sql}
@@ -90,7 +90,7 @@ class AdminStore:
             event = conn.execute(
                 """
                 SELECT event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit, suppressed_by_event_id,
-                       result_status, action, subject_type, frigate_score, confidence, description,
+                       result_status, action, subject_type, frigate_score, confidence, ai_confidence, ai_reason, description,
                        snapshot_bytes, image_width, image_height, vision_detail, created_ts
                 FROM events
                 WHERE event_id = ?

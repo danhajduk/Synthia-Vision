@@ -101,6 +101,15 @@ class SummaryStore:
                 """,
                 (today,),
             )
+            avg_ai_confidence_today = _single_float(
+                conn,
+                """
+                SELECT COALESCE(AVG(ai_confidence), 0)
+                FROM events
+                WHERE ai_confidence IS NOT NULL AND substr(ts,1,10)=?
+                """,
+                (today,),
+            )
             monthly_by_camera_rows = conn.execute(
                 """
                 SELECT e.camera, COALESCE(SUM(m.cost_usd), 0)
@@ -176,6 +185,7 @@ class SummaryStore:
             "tokens_avg_per_request": float(tokens_avg_per_request),
             "tokens_today_total": int(tokens_today_total),
             "avg_tokens_per_event": float(avg_tokens_per_event),
+            "avg_ai_confidence_today": float(avg_ai_confidence_today),
         }
 
     def get_cameras_summary(self) -> dict[str, Any]:
@@ -253,6 +263,7 @@ class SummaryStore:
             "tokens_avg_per_day": float(metrics.get("tokens_avg_per_day", 0.0)),
             "tokens_today_total": int(metrics.get("tokens_today_total", 0)),
             "avg_tokens_per_event": float(metrics.get("avg_tokens_per_event", 0.0)),
+            "avg_ai_confidence_today": float(metrics.get("avg_ai_confidence_today", 0.0)),
             "cost_monthly_by_camera": dict(metrics.get("cost_monthly_by_camera", {})),
         }
 

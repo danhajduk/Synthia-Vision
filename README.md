@@ -256,6 +256,7 @@ Runtime:
 - Queue KPI also shows suppression telemetry:
   - `suppressed_count_today`
   - `suppressed_rate_today`
+- Guest metrics remain sanitized and do not expose per-event `ai_reason` text.
 - Heartbeat is rendered in browser local time as:
   - `MM/DD/YYYY HH:MM:SS`
 - Cost values in guest UI are rendered with 4 decimals:
@@ -314,6 +315,7 @@ Setup wizard:
   - `.../events/suppressed_total`
   - `.../events/suppressed_today`
   - `.../events/suppressed_rate_today`
+  - `.../events/avg_confidence_today`
   - `.../cost/last`
   - `.../cost/daily_total`
   - `.../cost/month2day_total`
@@ -333,7 +335,7 @@ Setup wizard:
   - `.../camera/{camera}/result_status`
   - `.../camera/{camera}/action`
   - `.../camera/{camera}/subject_type`
-  - `.../camera/{camera}/confidence` (0-100 integer)
+  - `.../camera/{camera}/confidence` (0-100 integer, last AI confidence)
   - `.../camera/{camera}/description`
   - `.../cost/monthly_by_camera/{camera}`
   - Camera idle defaults at startup:

@@ -31,6 +31,7 @@ This file is the practical source of truth for active development. It reflects c
   - `count_today` / `ai_calls_today`
   - `tokens_today_total`
   - `avg_tokens_per_event`
+  - `avg_ai_confidence_today` (ratio 0.0-1.0)
 
 ## Status/KV keys used by API + UI
 
@@ -113,6 +114,13 @@ Per-camera `result_status` examples:
 Suppression-specific:
 - `reject_reason=suppressed_duplicate`
 - `suppressed_by_event_id` links suppressed event to the kept event in admin journal APIs
+
+AI explainability (admin event APIs only):
+- `ai_confidence` stores normalized model confidence (`0.0` to `1.0`)
+- `ai_reason` stores a short sanitized reason snippet (1-2 sentences, no guest exposure)
+
+MQTT metrics:
+- `.../events/avg_confidence_today` publishes rolling daily average AI confidence (ratio)
 
 ## Camera setup context
 

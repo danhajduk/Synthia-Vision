@@ -33,6 +33,8 @@ class EventStoreTests(unittest.TestCase):
                 action="person_at_door",
                 subject_type="human",
                 confidence=0.88,
+                ai_confidence=0.88,
+                ai_reason="Person approached the doorway and paused near the entrance.",
                 description="visitor at the door",
                 snapshot_bytes=12345,
                 image_width=1280,
@@ -44,7 +46,7 @@ class EventStoreTests(unittest.TestCase):
                 row = conn.execute(
                     """
                     SELECT accepted, result_status, action, subject_type, frigate_score, confidence, description,
-                           snapshot_bytes, image_width, image_height, vision_detail, suppressed_by_event_id
+                           ai_confidence, ai_reason, snapshot_bytes, image_width, image_height, vision_detail, suppressed_by_event_id
                     FROM events WHERE event_id = 'evt-1'
                     """
                 ).fetchone()
@@ -56,11 +58,13 @@ class EventStoreTests(unittest.TestCase):
             self.assertAlmostEqual(float(row[4]), 0.84, places=6)
             self.assertAlmostEqual(float(row[5]), 0.88, places=6)
             self.assertEqual(row[6], "visitor at the door")
-            self.assertEqual(row[7], 12345)
-            self.assertEqual(row[8], 1280)
-            self.assertEqual(row[9], 720)
-            self.assertEqual(row[10], "low")
-            self.assertIsNone(row[11])
+            self.assertAlmostEqual(float(row[7]), 0.88, places=6)
+            self.assertEqual(row[8], "Person approached the doorway and paused near the entrance.")
+            self.assertEqual(row[9], 12345)
+            self.assertEqual(row[10], 1280)
+            self.assertEqual(row[11], 720)
+            self.assertEqual(row[12], "low")
+            self.assertIsNone(row[13])
 
     def test_upsert_event_persists_suppressed_by_link(self) -> None:
         with tempfile.TemporaryDirectory() as td:
