@@ -115,6 +115,10 @@ Auth/setup:
 
 - `/ui/setup` exposes global `modes.current` control.
 - `/ui/admin` displays `current_mode` in header and health card.
+- `/ui/admin` displays budget intelligence widgets:
+  - rolling 24h cost and burn rate
+  - month-to-date cost and projected month cost
+  - rolling 24h and month-to-date token totals
 
 ## Common status/result strings
 

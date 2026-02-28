@@ -289,6 +289,7 @@ Admin UI pages (require admin session):
 Mode controls/UI:
 - `/ui/setup` global settings includes `modes.current` selector (`normal`, `delivery_watch`, `guest_expected`, `high_alert`).
 - `/ui/admin` header/health card display current mode from admin summary status.
+- `/ui/admin` budget widgets now show rolling 24h cost, 24h burn rate, MTD cost, projected month cost, and 24h/MTD token totals.
 
 Admin events UI:
 - Events list includes AI confidence percent and short `ai_reason` snippet.

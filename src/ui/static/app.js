@@ -457,8 +457,19 @@
       errors_total: document.getElementById('admin-errors-total'),
       suppressed_today: document.getElementById('admin-suppressed-today'),
       suppressed_rate: document.getElementById('admin-suppressed-rate'),
+      cost_24h: document.getElementById('admin-cost-24h'),
+      burn_rate_24h: document.getElementById('admin-burn-rate-24h'),
+      cost_mtd: document.getElementById('admin-cost-mtd'),
+      projected_month: document.getElementById('admin-projected-month'),
+      tokens_24h: document.getElementById('admin-tokens-24h'),
+      tokens_mtd: document.getElementById('admin-tokens-mtd'),
     };
     const queueMax = 50;
+    function money(value) {
+      const parsed = Number.parseFloat(String(value));
+      const safe = Number.isFinite(parsed) ? parsed : 0;
+      return '$' + safe.toFixed(4);
+    }
 
     function healthInfo(statusRaw) {
       const status = String(statusRaw || 'unknown').toLowerCase();
@@ -517,6 +528,24 @@
         }
         if (fields.last_event_ts) {
           fields.last_event_ts.textContent = formatLocalDateTime(data.last_event_ts);
+        }
+        if (fields.cost_24h) {
+          fields.cost_24h.textContent = money(data.cost_24h_total);
+        }
+        if (fields.burn_rate_24h) {
+          fields.burn_rate_24h.textContent = money(data.burn_rate_24h) + '/day';
+        }
+        if (fields.cost_mtd) {
+          fields.cost_mtd.textContent = money(data.cost_month2day_total);
+        }
+        if (fields.projected_month) {
+          fields.projected_month.textContent = money(data.projected_month_total);
+        }
+        if (fields.tokens_24h) {
+          fields.tokens_24h.textContent = String(data.tokens_24h_total ?? '0');
+        }
+        if (fields.tokens_mtd) {
+          fields.tokens_mtd.textContent = String(data.tokens_month2day_total ?? '0');
         }
         if (fields.events_total) {
           fields.events_total.textContent = String(data.events_total ?? '0');

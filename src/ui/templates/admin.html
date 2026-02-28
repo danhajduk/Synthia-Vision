@@ -49,6 +49,8 @@
               <span class="pill"><span class="dot"></span> <span>OK</span></span>
             </div>
             <div class="big" id="admin-kpi-cost-today">{{ kpis.cost_today or "—" }}</div>
+            <div class="sub">24h cost: <span class="mono" id="admin-cost-24h">—</span> • Burn: <span class="mono" id="admin-burn-rate-24h">—</span></div>
+            <div class="sub">MTD: <span class="mono" id="admin-cost-mtd">—</span> • Projected: <span class="mono" id="admin-projected-month">—</span></div>
             <div class="sub">Last event: <span class="mono" id="admin-last-event-ts">—</span></div>
           </div>
 
@@ -58,6 +60,7 @@
               <span class="pill"><span class="dot"></span> <span>Today</span></span>
             </div>
             <div class="big" id="admin-kpi-ai-calls">{{ kpis.ai_calls_today }}</div>
+            <div class="sub">Tokens 24h: <span class="mono" id="admin-tokens-24h">—</span> • Tokens MTD: <span class="mono" id="admin-tokens-mtd">—</span></div>
             <div class="sub" id="admin-summary-status">Loading summary…</div>
           </div>
         </div>
