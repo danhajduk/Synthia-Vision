@@ -36,7 +36,8 @@ def preprocess_image_bytes(
     preprocess_cfg = config.ai.image_preprocess
     camera_cfg = config.policy.cameras.get(camera_name)
     enabled = bool(preprocess_cfg.enabled)
-    target_max_side = int(camera_cfg.max_side_px or preprocess_cfg.max_side_px)
+    camera_max_side = camera_cfg.max_side_px if camera_cfg is not None else None
+    target_max_side = int(camera_max_side or preprocess_cfg.max_side_px)
     quality = int(preprocess_cfg.jpeg_quality)
     keep_metadata = not bool(preprocess_cfg.strip_metadata)
     if force_low_budget:
