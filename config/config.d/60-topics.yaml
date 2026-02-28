@@ -22,6 +22,9 @@ topics:
   cost:
     last: "{mqtt_prefix}/cost/last"
     daily_total: "{mqtt_prefix}/cost/daily_total"
+    rolling_24h_total: "{mqtt_prefix}/cost/rolling_24h_total"
+    burn_rate_24h: "{mqtt_prefix}/cost/burn_rate_24h"
+    projected_month_total: "{mqtt_prefix}/cost/projected_month_total"
     month2day_total: "{mqtt_prefix}/cost/month2day_total"
     avg_per_event: "{mqtt_prefix}/cost/avg_per_event"
     monthly_by_camera: "{mqtt_prefix}/cost/monthly_by_camera/{camera}"
@@ -29,6 +32,8 @@ topics:
   tokens:
     avg_per_request: "{mqtt_prefix}/tokens/avg_per_request"
     avg_per_day: "{mqtt_prefix}/tokens/avg_per_day"
+    rolling_24h_total: "{mqtt_prefix}/tokens/rolling_24h_total"
+    month2day_total: "{mqtt_prefix}/tokens/month2day_total"
 
   events:
     count_total: "{mqtt_prefix}/events/count_total"

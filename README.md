@@ -327,10 +327,15 @@ Setup wizard:
   - `.../events/avg_confidence_today`
   - `.../cost/last`
   - `.../cost/daily_total`
+  - `.../cost/rolling_24h_total`
+  - `.../cost/burn_rate_24h`
+  - `.../cost/projected_month_total`
   - `.../cost/month2day_total`
   - `.../cost/avg_per_event`
   - `.../tokens/avg_per_request`
   - `.../tokens/avg_per_day`
+  - `.../tokens/rolling_24h_total`
+  - `.../tokens/month2day_total`
 - Per-camera output:
   - `.../camera/{camera}/enabled` (`ON`/`OFF`)
   - `.../camera/{camera}/enabled/set` (`ON`/`OFF` command)
@@ -414,6 +419,10 @@ Key current settings:
 - `topics.events.suppressed_rate_today`
 - `topics.cost.*`
 - `topics.tokens.*`
+- Budget intelligence metrics:
+  - rolling 24h token usage and cost
+  - month-to-date tokens and cost
+  - projected end-of-month cost based on current month burn trend
 - `topics.camera.suppressed_count`
 - `suppression.enabled`
 - `suppression.window_seconds`

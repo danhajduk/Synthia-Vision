@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
+import calendar
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -34,8 +35,16 @@ class SummaryStore:
         }
 
     def get_metrics_summary(self) -> dict[str, Any]:
-        today = datetime.now(timezone.utc).date().isoformat()
-        month_prefix = datetime.now(timezone.utc).strftime("%Y-%m")
+        now_utc = datetime.now(timezone.utc)
+        today = now_utc.date().isoformat()
+        month_prefix = now_utc.strftime("%Y-%m")
+        rolling_24h_start = (now_utc - timedelta(hours=24)).isoformat()
+        month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        elapsed_days_in_month = max(
+            1.0 / 24.0,
+            (now_utc - month_start).total_seconds() / 86400.0,
+        )
+        days_in_month = float(calendar.monthrange(now_utc.year, now_utc.month)[1])
         with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
             conn.execute("PRAGMA busy_timeout = 5000;")
             accepted_total = _single_int(
@@ -103,6 +112,36 @@ class SummaryStore:
                 """,
                 (today,),
             )
+            cost_24h_total = _single_float(
+                conn,
+                """
+                SELECT COALESCE(SUM(m.cost_usd), 0)
+                FROM metrics m
+                JOIN events e ON e.event_id = m.event_id
+                WHERE e.ts >= ?
+                """,
+                (rolling_24h_start,),
+            )
+            tokens_24h_total = _single_int(
+                conn,
+                """
+                SELECT COALESCE(SUM(COALESCE(m.prompt_tokens,0) + COALESCE(m.completion_tokens,0)), 0)
+                FROM metrics m
+                JOIN events e ON e.event_id = m.event_id
+                WHERE e.ts >= ?
+                """,
+                (rolling_24h_start,),
+            )
+            tokens_month2day_total = _single_int(
+                conn,
+                """
+                SELECT COALESCE(SUM(COALESCE(m.prompt_tokens,0) + COALESCE(m.completion_tokens,0)), 0)
+                FROM metrics m
+                JOIN events e ON e.event_id = m.event_id
+                WHERE substr(e.ts,1,7)=?
+                """,
+                (month_prefix,),
+            )
             avg_ai_confidence_today = _single_float(
                 conn,
                 """
@@ -163,6 +202,12 @@ class SummaryStore:
         cost_avg_per_event = (cost_month2day_total / count_total) if count_total > 0 else 0.0
         tokens_avg_per_day = float(tokens_avg_per_request) * float(count_today)
         avg_tokens_per_event = (float(tokens_today_total) / float(count_today)) if count_today > 0 else 0.0
+        burn_rate_24h = float(cost_24h_total)
+        projected_month_total = (
+            (float(cost_month2day_total) / float(elapsed_days_in_month)) * float(days_in_month)
+            if elapsed_days_in_month > 0
+            else float(cost_month2day_total)
+        )
         suppressed_count_by_camera = {
             str(camera): int(total) for camera, total in suppressed_by_camera_rows
         }
@@ -187,6 +232,11 @@ class SummaryStore:
             "tokens_avg_per_request": float(tokens_avg_per_request),
             "tokens_today_total": int(tokens_today_total),
             "avg_tokens_per_event": float(avg_tokens_per_event),
+            "tokens_24h_total": int(tokens_24h_total),
+            "tokens_month2day_total": int(tokens_month2day_total),
+            "cost_24h_total": float(cost_24h_total),
+            "burn_rate_24h": float(burn_rate_24h),
+            "projected_month_total": float(projected_month_total),
             "avg_ai_confidence_today": float(avg_ai_confidence_today),
         }
 
@@ -265,6 +315,11 @@ class SummaryStore:
             "tokens_avg_per_day": float(metrics.get("tokens_avg_per_day", 0.0)),
             "tokens_today_total": int(metrics.get("tokens_today_total", 0)),
             "avg_tokens_per_event": float(metrics.get("avg_tokens_per_event", 0.0)),
+            "tokens_24h_total": int(metrics.get("tokens_24h_total", 0)),
+            "tokens_month2day_total": int(metrics.get("tokens_month2day_total", 0)),
+            "cost_24h_total": float(metrics.get("cost_24h_total", 0.0)),
+            "burn_rate_24h": float(metrics.get("burn_rate_24h", 0.0)),
+            "projected_month_total": float(metrics.get("projected_month_total", 0.0)),
             "avg_ai_confidence_today": float(metrics.get("avg_ai_confidence_today", 0.0)),
             "cost_monthly_by_camera": dict(metrics.get("cost_monthly_by_camera", {})),
         }

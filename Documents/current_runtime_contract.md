@@ -34,6 +34,13 @@ This file is the practical source of truth for active development. It reflects c
   - `avg_tokens_per_event`
   - `avg_ai_confidence_today` (ratio 0.0-1.0)
 
+Budget intelligence fields (admin summary + MQTT):
+- `cost_24h_total`
+- `burn_rate_24h`
+- `projected_month_total`
+- `tokens_24h_total`
+- `tokens_month2day_total`
+
 ## Status/KV keys used by API + UI
 
 - `service.status`

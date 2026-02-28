@@ -17,6 +17,7 @@ import paho.mqtt.client as mqtt
 from src.config import ServiceConfig
 from src.config.settings import PolicyCameraConfig
 from src.db import CameraStore, EventStore
+from src.db.summary_store import SummaryStore
 from src.db.kv_store import kv_set
 from src.event_router import EventRouter
 from src.ha_discovery import HADiscoveryPublisher
@@ -87,6 +88,7 @@ class MQTTClient:
         self._state_manager = StateManager(config.state_file)
         self._camera_store = CameraStore(config.paths.db_file)
         self._event_store = EventStore(config.paths.db_file)
+        self._summary_store = SummaryStore(config.paths.db_file)
         self._snapshot_manager = SnapshotManager(config)
         self._openai_client: OpenAIClient | None = None
         try:
@@ -1695,6 +1697,11 @@ class MQTTClient:
             "events_suppressed_today": str(int(self._runtime_metrics.get("suppressed_count_today", 0))),
             "events_suppressed_rate_today": "0.0000",
             "events_avg_confidence_today": "0.0000",
+            "cost_24h_total": "0.0000",
+            "cost_burn_rate_24h": "0.0000",
+            "cost_projected_month_total": "0.0000",
+            "tokens_24h_total": "0",
+            "tokens_month2day_total": "0",
             "control_enabled": bool_to_on_off(self._service_enabled),
             "control_monthly_budget": f"{self._monthly_budget_limit:.2f}",
             "control_confidence_threshold": str(self._confidence_threshold_percent),
@@ -1729,6 +1736,7 @@ class MQTTClient:
             else 0.0
         )
         avg_confidence_today = float(self._runtime_metrics.get("avg_ai_confidence_today", 0.0))
+        budget_metrics = self._summary_store.get_metrics_summary()
         self._publish_sync(topics["events_count_total"], str(count_total))
         self._publish_sync(topics["events_count_today"], str(count_today))
         self._publish_sync(topics["events_suppressed_total"], str(suppressed_total))
@@ -1749,12 +1757,32 @@ class MQTTClient:
             f"{float(self._runtime_metrics.get('cost_avg_per_event', 0.0)):.4f}",
         )
         self._publish_sync(
+            topics["cost_24h_total"],
+            f"{float(budget_metrics.get('cost_24h_total', 0.0)):.4f}",
+        )
+        self._publish_sync(
+            topics["cost_burn_rate_24h"],
+            f"{float(budget_metrics.get('burn_rate_24h', 0.0)):.4f}",
+        )
+        self._publish_sync(
+            topics["cost_projected_month_total"],
+            f"{float(budget_metrics.get('projected_month_total', 0.0)):.4f}",
+        )
+        self._publish_sync(
             topics["tokens_avg_per_request"],
             f"{float(self._runtime_metrics.get('tokens_avg_per_request', 0.0)):.2f}",
         )
         self._publish_sync(
             topics["tokens_avg_per_day"],
             f"{float(self._runtime_metrics.get('tokens_avg_per_day', 0.0)):.2f}",
+        )
+        self._publish_sync(
+            topics["tokens_24h_total"],
+            str(int(budget_metrics.get("tokens_24h_total", 0))),
+        )
+        self._publish_sync(
+            topics["tokens_month2day_total"],
+            str(int(budget_metrics.get("tokens_month2day_total", 0))),
         )
 
     def _record_processed_event_metrics(self) -> None:
@@ -2121,8 +2149,17 @@ class MQTTClient:
             "cost_daily_total": self._resolve_topic_path("cost.daily_total", "cost/daily_total"),
             "cost_month2day_total": self._resolve_topic_path("cost.month2day_total", "cost/month2day_total"),
             "cost_avg_per_event": self._resolve_topic_path("cost.avg_per_event", "cost/avg_per_event"),
+            "cost_24h_total": self._resolve_topic_path("cost.rolling_24h_total", "cost/rolling_24h_total"),
+            "cost_burn_rate_24h": self._resolve_topic_path("cost.burn_rate_24h", "cost/burn_rate_24h"),
+            "cost_projected_month_total": self._resolve_topic_path(
+                "cost.projected_month_total", "cost/projected_month_total"
+            ),
             "tokens_avg_per_request": self._resolve_topic_path("tokens.avg_per_request", "tokens/avg_per_request"),
             "tokens_avg_per_day": self._resolve_topic_path("tokens.avg_per_day", "tokens/avg_per_day"),
+            "tokens_24h_total": self._resolve_topic_path("tokens.rolling_24h_total", "tokens/rolling_24h_total"),
+            "tokens_month2day_total": self._resolve_topic_path(
+                "tokens.month2day_total", "tokens/month2day_total"
+            ),
             "events_count_total": self._resolve_topic_path("events.count_total", "events/count_total"),
             "events_count_today": self._resolve_topic_path("events.count_today", "events/count_today"),
             "events_suppressed_total": self._resolve_topic_path("events.suppressed_total", "events/suppressed_total"),

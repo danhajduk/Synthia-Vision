@@ -87,10 +87,28 @@ class HADiscoveryPublisher:
                 "state_topic": self._core_topic("cost.daily_total", "cost/daily_total"),
                 "unit_of_measurement": "USD",
             }),
+            ("cost_24h_total", "sensor", {
+                "name": "Synthia Vision Cost Rolling 24h",
+                "icon": "mdi:clock-outline",
+                "state_topic": self._core_topic("cost.rolling_24h_total", "cost/rolling_24h_total"),
+                "unit_of_measurement": "USD",
+            }),
+            ("cost_burn_rate_24h", "sensor", {
+                "name": "Synthia Vision Burn Rate 24h",
+                "icon": "mdi:speedometer",
+                "state_topic": self._core_topic("cost.burn_rate_24h", "cost/burn_rate_24h"),
+                "unit_of_measurement": "USD/day",
+            }),
             ("cost_month2day_total", "sensor", {
                 "name": "Synthia Vision Month Cost",
                 "icon": "mdi:calendar-month",
                 "state_topic": self._core_topic("cost.month2day_total", "cost/month2day_total"),
+                "unit_of_measurement": "USD",
+            }),
+            ("cost_projected_month_total", "sensor", {
+                "name": "Synthia Vision Projected Month Cost",
+                "icon": "mdi:chart-timeline-variant",
+                "state_topic": self._core_topic("cost.projected_month_total", "cost/projected_month_total"),
                 "unit_of_measurement": "USD",
             }),
             ("cost_avg_per_event", "sensor", {
@@ -110,6 +128,18 @@ class HADiscoveryPublisher:
                 "icon": "mdi:calendar-clock",
                 "state_topic": self._core_topic("tokens.avg_per_day", "tokens/avg_per_day"),
                 "unit_of_measurement": "tokens/day",
+            }),
+            ("tokens_24h_total", "sensor", {
+                "name": "Synthia Vision Tokens Rolling 24h",
+                "icon": "mdi:counter",
+                "state_topic": self._core_topic("tokens.rolling_24h_total", "tokens/rolling_24h_total"),
+                "unit_of_measurement": "tokens",
+            }),
+            ("tokens_month2day_total", "sensor", {
+                "name": "Synthia Vision Tokens Month To Date",
+                "icon": "mdi:calendar-month",
+                "state_topic": self._core_topic("tokens.month2day_total", "tokens/month2day_total"),
+                "unit_of_measurement": "tokens",
             }),
             ("events_count_total", "sensor", {
                 "name": "Synthia Vision Events Total",
