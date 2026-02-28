@@ -87,6 +87,7 @@ class ConfigIncludesTests(unittest.TestCase):
             cfg = load_settings(root)
             self.assertEqual(cfg.mqtt.host, "127.0.0.1")
             self.assertEqual(cfg.policy.defaults.labels, ["person"])
+            self.assertEqual(cfg.ai.prompt_profiles, {})
 
     def test_invalid_schema_version_fails_fast(self) -> None:
         if not HAS_YAML:

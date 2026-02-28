@@ -4,13 +4,23 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from src.config import ServiceConfig
 from src.db import db_get_camera_profile, db_list_camera_views
+from src.db.kv_store import kv_get
 from src.models import FrigateEvent
 
 _PLACEHOLDER_PATTERN = re.compile(r"\{[a-zA-Z_][a-zA-Z0-9_]*\}")
+
+
+@dataclass(slots=True)
+class PromptSelection:
+    mode: str
+    preset: str
+    profile_name: str | None
+    profile: Any | None
 
 
 def resolve_allowed_actions(camera: str, config: ServiceConfig) -> list[str]:
@@ -47,6 +57,43 @@ def resolve_preset(
     return config.ai.default_prompt_preset
 
 
+def resolve_runtime_mode(config: ServiceConfig) -> str:
+    try:
+        runtime_mode = kv_get(config.paths.db_file, "runtime.current_mode")
+        mode = str(runtime_mode or "").strip().lower()
+        if mode:
+            return mode
+        fallback_mode = kv_get(config.paths.db_file, "modes.current")
+        fallback = str(fallback_mode or "").strip().lower()
+        if fallback:
+            return fallback
+    except Exception:
+        pass
+    return "normal"
+
+
+def resolve_prompt_selection(
+    camera: str,
+    config: ServiceConfig,
+    *,
+    context_fields: dict[str, str] | None = None,
+    mode: str | None = None,
+) -> PromptSelection:
+    resolved_mode = str(mode or resolve_runtime_mode(config) or "normal").strip().lower() or "normal"
+    preset = resolve_preset(camera, config, context_fields=context_fields)
+    profile_name = _resolve_profile_name(camera, resolved_mode, config)
+    profile = None
+    prompt_profiles = getattr(config.ai, "prompt_profiles", {}) or {}
+    if profile_name:
+        profile = prompt_profiles.get(profile_name)
+    return PromptSelection(
+        mode=resolved_mode,
+        preset=preset,
+        profile_name=profile_name,
+        profile=profile,
+    )
+
+
 def render_prompts(
     preset: str,
     camera_name: str,
@@ -54,11 +101,18 @@ def render_prompts(
     allowed_subject_types: list[str],
     config: ServiceConfig,
     context_fields: dict[str, str] | None = None,
+    prompt_profile: Any | None = None,
 ) -> tuple[str, str]:
     templates: dict[str, dict[str, str]] = config.ai.prompt_presets
     selected = templates.get(preset) or templates.get(config.ai.default_prompt_preset) or {}
     system_template = str(selected.get("system", config.ai.system_prompt))
     user_template = str(selected.get("user", ""))
+    profile_prompt_overrides = getattr(prompt_profile, "prompt_overrides", None)
+    if profile_prompt_overrides is not None:
+        if profile_prompt_overrides.system:
+            system_template = str(profile_prompt_overrides.system)
+        if profile_prompt_overrides.user:
+            user_template = str(profile_prompt_overrides.user)
     environment = str((context_fields or {}).get("environment", "") or "").strip()
     purpose = str((context_fields or {}).get("purpose", "") or "").strip()
     mounting_location = str((context_fields or {}).get("mounting_location", "") or "").strip()
@@ -81,6 +135,9 @@ def render_prompts(
         delivery_focus=delivery_focus,
         include_expected_activity=bool(getattr(config.ai, "include_expected_activity", False)),
     )
+    privacy_rules = str(config.ai.privacy_rules or "")
+    if profile_prompt_overrides is not None and profile_prompt_overrides.privacy_rules:
+        privacy_rules = str(profile_prompt_overrides.privacy_rules)
     format_args = {
         "camera_name": camera_name,
         "environment": environment,
@@ -92,7 +149,7 @@ def render_prompts(
         "delivery_focus": delivery_focus,
         "allowed_actions": _compact_list(allowed_actions),
         "allowed_subject_types": _compact_list(allowed_subject_types),
-        "privacy_rules": str(config.ai.privacy_rules or ""),
+        "privacy_rules": privacy_rules,
     }
     camera_cfg = config.policy.cameras.get(camera_name)
     security_overlay = ""
@@ -102,11 +159,25 @@ def render_prompts(
         and camera_cfg.security_mode
         and purpose != "child_room"
     ):
-        security_overlay = str(config.ai.security_overlay_template or "")
+        security_overlay_template = str(config.ai.security_overlay_template or "")
+        if (
+            profile_prompt_overrides is not None
+            and profile_prompt_overrides.security_overlay_template is not None
+        ):
+            security_overlay_template = str(profile_prompt_overrides.security_overlay_template)
+        security_overlay = security_overlay_template
     format_args["security_overlay"] = security_overlay
 
     system_prompt = _strip_blank_lines(system_template.format(**format_args))
     user_prompt = _strip_blank_lines(user_template.format(**format_args))
+    output_rules = (
+        str(getattr(prompt_profile, "output_rules", "") or "").strip()
+        if prompt_profile is not None
+        else ""
+    )
+    if output_rules:
+        if output_rules not in system_prompt:
+            system_prompt = _strip_blank_lines(f"{system_prompt}\n{output_rules}")
     _assert_no_placeholders(system_prompt, prompt_name="system")
     _assert_no_placeholders(user_prompt, prompt_name="user")
     return system_prompt, user_prompt
@@ -213,6 +284,22 @@ def _apply_lean_rules(
         lean_expected_activity,
         lean_delivery_focus,
     )
+
+
+def _resolve_profile_name(camera: str, mode: str, config: ServiceConfig) -> str | None:
+    normalized_camera = str(camera or "").strip()
+    normalized_mode = str(mode or "").strip().lower() or "normal"
+    per_camera = getattr(config.ai, "per_camera_mode_profiles", {}) or {}
+    if normalized_camera in per_camera:
+        camera_mode_map = per_camera.get(normalized_camera) or {}
+        if normalized_mode in camera_mode_map:
+            return str(camera_mode_map[normalized_mode]).strip() or None
+    global_map = getattr(config.ai, "mode_profiles", {}) or {}
+    if normalized_mode in global_map:
+        return str(global_map[normalized_mode]).strip() or None
+    if "default" in (getattr(config.ai, "prompt_profiles", {}) or {}):
+        return "default"
+    return None
 
 
 def enforce_classification_result(

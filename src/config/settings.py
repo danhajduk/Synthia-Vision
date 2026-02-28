@@ -172,6 +172,9 @@ class AIConfig:
     per_camera_prompts: dict[str, str] | None = None
     default_prompt_preset: str = "outdoor"
     prompt_presets: dict[str, dict[str, str]] = field(default_factory=dict)
+    mode_profiles: dict[str, str] = field(default_factory=dict)
+    per_camera_mode_profiles: dict[str, dict[str, str]] = field(default_factory=dict)
+    prompt_profiles: dict[str, "PromptProfileConfig"] = field(default_factory=dict)
     include_expected_activity: bool = False
     debug_reasoning: bool = False
     vision_detail: str = "low"
@@ -301,6 +304,34 @@ class EmbeddingsConfig:
 
 
 @dataclass(slots=True)
+class PromptProfileOpenAIOverridesConfig:
+    model: str | None = None
+    max_output_tokens: int | None = None
+    timeout_s: int | None = None
+    vision_detail: str | None = None
+
+
+@dataclass(slots=True)
+class PromptProfilePromptOverridesConfig:
+    system: str | None = None
+    user: str | None = None
+    privacy_rules: str | None = None
+    security_overlay_template: str | None = None
+
+
+@dataclass(slots=True)
+class PromptProfileConfig:
+    name: str
+    openai_overrides: PromptProfileOpenAIOverridesConfig = field(
+        default_factory=PromptProfileOpenAIOverridesConfig
+    )
+    prompt_overrides: PromptProfilePromptOverridesConfig = field(
+        default_factory=PromptProfilePromptOverridesConfig
+    )
+    output_rules: str = "Return ONLY valid JSON matching schema; no extra text."
+
+
+@dataclass(slots=True)
 class ScoringWeightsConfig:
     time_of_day: float = 0.25
     camera_zone: float = 0.25
@@ -387,6 +418,11 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
         ai_data.get("structured_output", {}), "ai.structured_output"
     )
     prompts_data = _as_mapping(ai_data.get("prompts", {}), "ai.prompts")
+    prompt_mode_profiles_data = _as_mapping(prompts_data.get("mode_profiles", {}), "ai.prompts.mode_profiles")
+    per_camera_mode_profiles_data = _as_mapping(
+        prompts_data.get("per_camera_mode_profiles", {}),
+        "ai.prompts.per_camera_mode_profiles",
+    )
     setup_data = _as_mapping(ai_data.get("setup", {}), "ai.setup")
     setup_openai_data = _as_mapping(setup_data.get("openai", {}), "ai.setup.openai")
     setup_structured_output_data = _as_mapping(
@@ -569,6 +605,8 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
             prompt_presets=_build_prompt_presets(
                 _as_mapping(prompts_data.get("presets", {}), "ai.prompts.presets")
             ),
+            mode_profiles=_build_mode_profile_map(prompt_mode_profiles_data),
+            per_camera_mode_profiles=_build_per_camera_mode_profile_map(per_camera_mode_profiles_data),
             include_expected_activity=_as_bool(ai_data.get("include_expected_activity", False)),
             debug_reasoning=_as_bool(ai_data.get("debug_reasoning", False)),
             vision_detail=str(ai_data.get("vision_detail", "low")).lower(),
@@ -730,6 +768,7 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
         ),
         topics=topics_data,
     )
+    config.ai.prompt_profiles = _load_prompt_profiles(path.parent / "prompts")
 
     _apply_env_overrides(config)
     _validate_config(config)
@@ -784,6 +823,63 @@ def _build_prompt_presets(data: dict[str, Any]) -> dict[str, dict[str, str]]:
             "user": str(raw_value.get("user", "")),
         }
     return presets
+
+
+def _build_mode_profile_map(data: dict[str, Any]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for mode_name, profile_name in data.items():
+        mode = str(mode_name).strip()
+        profile = str(profile_name).strip()
+        if not mode or not profile:
+            continue
+        mapping[mode] = profile
+    return mapping
+
+
+def _build_per_camera_mode_profile_map(data: dict[str, Any]) -> dict[str, dict[str, str]]:
+    result: dict[str, dict[str, str]] = {}
+    for camera_name, raw_map in data.items():
+        camera_map = _as_mapping(raw_map, f"ai.prompts.per_camera_mode_profiles.{camera_name}")
+        result[str(camera_name)] = _build_mode_profile_map(camera_map)
+    return result
+
+
+def _load_prompt_profiles(prompt_dir: Path) -> dict[str, PromptProfileConfig]:
+    if not prompt_dir.exists() or not prompt_dir.is_dir():
+        return {}
+    profiles: dict[str, PromptProfileConfig] = {}
+    for profile_path in sorted(prompt_dir.glob("*.yaml")):
+        raw = _load_yaml_mapping(profile_path)
+        openai_overrides_raw = _as_mapping(
+            raw.get("openai_overrides", {}),
+            f"{profile_path.name}.openai_overrides",
+        )
+        prompt_overrides_raw = _as_mapping(
+            raw.get("prompt_overrides", {}),
+            f"{profile_path.name}.prompt_overrides",
+        )
+        output_rules = str(raw.get("output_rules", "")).strip()
+        if not output_rules:
+            raise ConfigError(f"{profile_path.name}.output_rules is required")
+        profiles[profile_path.stem] = PromptProfileConfig(
+            name=profile_path.stem,
+            openai_overrides=PromptProfileOpenAIOverridesConfig(
+                model=_optional_str(openai_overrides_raw.get("model")),
+                max_output_tokens=_optional_int(openai_overrides_raw.get("max_output_tokens")),
+                timeout_s=_optional_int(openai_overrides_raw.get("timeout_s")),
+                vision_detail=_optional_str(openai_overrides_raw.get("vision_detail")),
+            ),
+            prompt_overrides=PromptProfilePromptOverridesConfig(
+                system=_optional_str(prompt_overrides_raw.get("system")),
+                user=_optional_str(prompt_overrides_raw.get("user")),
+                privacy_rules=_optional_str(prompt_overrides_raw.get("privacy_rules")),
+                security_overlay_template=_optional_str(
+                    prompt_overrides_raw.get("security_overlay_template")
+                ),
+            ),
+            output_rules=output_rules,
+        )
+    return profiles
 
 
 def _parse_scoring_weights(data: dict[str, Any]) -> ScoringWeightsConfig:
@@ -1142,6 +1238,44 @@ def _validate_config(config: ServiceConfig) -> None:
         and config.ai.default_prompt_preset not in set(config.ai.prompt_presets.keys())
     ):
         raise ConfigError("ai.prompts.default_preset must exist in ai.prompts.presets")
+    for mode_name, profile_name in config.ai.mode_profiles.items():
+        if mode_name not in set(config.modes.intent_available):
+            raise ConfigError(
+                f"ai.prompts.mode_profiles.{mode_name} must exist in modes.intent.available"
+            )
+        if config.ai.prompt_profiles and profile_name not in set(config.ai.prompt_profiles.keys()):
+            raise ConfigError(
+                f"ai.prompts.mode_profiles.{mode_name} references missing profile '{profile_name}'"
+            )
+    for camera_name, mode_map in config.ai.per_camera_mode_profiles.items():
+        for mode_name, profile_name in mode_map.items():
+            if mode_name not in set(config.modes.intent_available):
+                raise ConfigError(
+                    f"ai.prompts.per_camera_mode_profiles.{camera_name}.{mode_name} must exist in modes.intent.available"
+                )
+            if config.ai.prompt_profiles and profile_name not in set(config.ai.prompt_profiles.keys()):
+                raise ConfigError(
+                    "ai.prompts.per_camera_mode_profiles."
+                    f"{camera_name}.{mode_name} references missing profile '{profile_name}'"
+                )
+    for profile_name, profile in config.ai.prompt_profiles.items():
+        if profile.openai_overrides.max_output_tokens is not None and profile.openai_overrides.max_output_tokens < 1:
+            raise ConfigError(f"prompt profile '{profile_name}' max_output_tokens must be >= 1")
+        if profile.openai_overrides.timeout_s is not None and profile.openai_overrides.timeout_s < 1:
+            raise ConfigError(f"prompt profile '{profile_name}' timeout_s must be >= 1")
+        if (
+            profile.openai_overrides.vision_detail is not None
+            and profile.openai_overrides.vision_detail not in {"low", "high", "auto"}
+        ):
+            raise ConfigError(
+                f"prompt profile '{profile_name}' vision_detail must be one of: low, high, auto"
+            )
+        if "return only valid json matching schema; no extra text." not in profile.output_rules.lower():
+            raise ConfigError(
+                "prompt profile '"
+                + profile_name
+                + "' output_rules must include: Return ONLY valid JSON matching schema; no extra text."
+            )
     allowed_action_set = set(config.policy.actions.allowed)
     for camera_name, camera_policy in config.policy.cameras.items():
         if camera_policy.vision_detail and camera_policy.vision_detail not in {"low", "high", "auto"}:

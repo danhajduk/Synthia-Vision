@@ -123,8 +123,7 @@ ai:
     #   {privacy_rules}
     system: &classify_system |
       You are Synthia Vision. Classify ONE home camera snapshot for automation.
-      Return valid JSON matching the schema. After the JSON, return a detailed explanation of the classification.
-      In the explanation include your reasoning process, especially how you decided on the action and subject_type.
+      Return ONLY valid JSON matching the schema; no extra text.
       <<PRIVACY>>
       {privacy_rules}
 
@@ -355,6 +354,12 @@ ai:
 
     # Optional explicit per-camera mapping: camera_key -> preset
     per_camera: {}
+    mode_profiles:
+      normal: default
+      delivery_watch: delivery_watch
+      guest_expected: guest_expected
+      high_alert: high_alert
+    per_camera_mode_profiles: {}
 
   # SETUP CONTEXT GENERATION (used by setup wizard only)
   setup:

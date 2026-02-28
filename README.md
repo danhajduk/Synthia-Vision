@@ -190,6 +190,12 @@ python -m src.main
   - camera/zone importance
   - AI confidence
   - event duration (when available)
+- Prompt profile support (mode-driven, OpenAI only):
+  - profile files live in `config/prompts/*.yaml`
+  - global map: `ai.prompts.mode_profiles`
+  - per-camera map: `ai.prompts.per_camera_mode_profiles`
+  - precedence: camera-mode override -> global mode map -> `default` profile -> in-config prompt presets
+  - profile `output_rules` enforce JSON-only model output for classification calls
 
 ## Guest HTTP APIs
 

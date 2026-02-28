@@ -162,6 +162,20 @@ AI explainability (admin event APIs only):
 - `risk_score` stores normalized event score (`0.0` to `1.0`) derived from time-of-day, camera/zone, AI confidence, and duration inputs.
 - `/ui/events` admin table/detail render `ai_confidence`, `ai_reason`, and `risk_score`; list sorting supports `ts`, `ai_confidence`, and `risk_score`.
 
+## Prompt profiles (mode-driven)
+
+- Profile files live in `config/prompts/*.yaml` (`default`, `delivery_watch`, `guest_expected`, `high_alert`).
+- Runtime profile selection precedence:
+  - `ai.prompts.per_camera_mode_profiles[camera][mode]`
+  - `ai.prompts.mode_profiles[mode]`
+  - `default` profile (if present)
+  - fallback to in-config `ai.prompts.presets` templates
+- Profile fields:
+  - `openai_overrides`: `model`, `max_output_tokens`, `timeout_s`, `vision_detail`
+  - `prompt_overrides`: `system`, `user`, `privacy_rules`, `security_overlay_template`
+  - `output_rules`: must include `Return ONLY valid JSON matching schema; no extra text.`
+- Security overlay injection remains disabled for `purpose=child_room` even when security mode is enabled.
+
 MQTT metrics:
 - `.../events/avg_confidence_today` publishes rolling daily average AI confidence (ratio)
 

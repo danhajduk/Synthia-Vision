@@ -28,7 +28,7 @@ except ModuleNotFoundError:  # pragma: no cover - depends on runtime environment
     class RateLimitError(APIError):
         pass
 
-from src.ai import preprocess_image_bytes
+from src.ai.image_preprocess import preprocess_image_bytes
 from src.config import ServiceConfig
 from src.errors import ExternalServiceError, ValidationError
 from src.models import OpenAIClassification
@@ -36,7 +36,7 @@ from src.openai.policy_helpers import (
     build_camera_context_fields,
     render_prompts,
     resolve_allowed_actions,
-    resolve_preset,
+    resolve_prompt_selection,
     resolve_subject_types,
 )
 
@@ -85,18 +85,19 @@ class OpenAIClient:
         allowed_actions = resolve_allowed_actions(camera_name, self._config)
         allowed_subject_types = resolve_subject_types(self._config)
         context_fields = build_camera_context_fields(camera_name, self._config)
-        preset = resolve_preset(
+        selection = resolve_prompt_selection(
             camera_name,
             self._config,
             context_fields=context_fields,
         )
         system_prompt, user_prompt = render_prompts(
-            preset=preset,
+            preset=selection.preset,
             camera_name=camera_name,
             allowed_actions=allowed_actions,
             allowed_subject_types=allowed_subject_types,
             config=self._config,
             context_fields=context_fields,
+            prompt_profile=selection.profile,
         )
         debug_explain = self._debug_explain_enabled(explain)
         if debug_explain:
@@ -106,7 +107,7 @@ class OpenAIClient:
         LOGGER.debug(
             "Rendered prompts camera=%s preset=%s system_prompt=%r user_prompt=%r",
             camera_name,
-            preset,
+            selection.preset,
             system_prompt,
             user_prompt,
         )
@@ -118,7 +119,11 @@ class OpenAIClient:
             bbox=bbox,
             force_low_budget=force_low_budget,
         )
-        detail = self._resolve_vision_detail(camera_name, force_low_budget=force_low_budget)
+        detail = self._resolve_vision_detail(
+            camera_name,
+            force_low_budget=force_low_budget,
+            profile=selection.profile,
+        )
         request_payload = self._build_request_payload(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
@@ -127,6 +132,7 @@ class OpenAIClient:
             allowed_subject_types=allowed_subject_types,
             detail=detail,
             debug_explain=debug_explain,
+            profile=selection.profile,
         )
         response = self._request_with_retry(payload=request_payload)
         payload_text = self._extract_text_response(response)
@@ -135,7 +141,7 @@ class OpenAIClient:
 
         usage = _extract_usage(response)
         cost_usd = _estimate_cost_usd(
-            model=self._openai_cfg.model,
+            model=str(request_payload.get("model", self._openai_cfg.model)),
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
         )
@@ -144,7 +150,7 @@ class OpenAIClient:
             completion_tokens=usage.completion_tokens,
             total_tokens=usage.total_tokens,
             cost_usd=cost_usd,
-            model=self._openai_cfg.model,
+            model=str(request_payload.get("model", self._openai_cfg.model)),
             image_bytes=len(processed.image_bytes),
             original_size=processed.original_size,
             processed_size=processed.processed_size,
@@ -171,9 +177,18 @@ class OpenAIClient:
         )
         return classification, usage_with_cost
 
-    def _resolve_vision_detail(self, camera_name: str, *, force_low_budget: bool) -> str:
+    def _resolve_vision_detail(
+        self,
+        camera_name: str,
+        *,
+        force_low_budget: bool,
+        profile: Any | None = None,
+    ) -> str:
         if force_low_budget:
             return "low"
+        openai_overrides = getattr(profile, "openai_overrides", None)
+        if openai_overrides is not None and openai_overrides.vision_detail:
+            return str(openai_overrides.vision_detail)
         camera_cfg = self._config.policy.cameras.get(camera_name)
         if camera_cfg is not None and camera_cfg.vision_detail:
             return camera_cfg.vision_detail
@@ -247,15 +262,27 @@ class OpenAIClient:
         allowed_subject_types: list[str],
         detail: str,
         debug_explain: bool = False,
+        profile: Any | None = None,
     ) -> dict[str, Any]:
         encoded = base64.b64encode(image_bytes).decode("ascii")
         image_data_url = f"data:image/jpeg;base64,{encoded}"
+        openai_overrides = getattr(profile, "openai_overrides", None)
+        model_name = str(self._openai_cfg.model)
         max_output_tokens = int(self._openai_cfg.max_output_tokens)
+        timeout_s = float(getattr(self._openai_cfg, "timeout_seconds", 20))
+        if openai_overrides is not None:
+            if openai_overrides.model:
+                model_name = str(openai_overrides.model)
+            if openai_overrides.max_output_tokens is not None:
+                max_output_tokens = int(openai_overrides.max_output_tokens)
+            if openai_overrides.timeout_s is not None:
+                timeout_s = float(openai_overrides.timeout_s)
         if debug_explain:
             max_output_tokens = max(max_output_tokens, 800)
         return {
-            "model": self._openai_cfg.model,
+            "model": model_name,
             "max_output_tokens": max_output_tokens,
+            "timeout": timeout_s,
             "input": [
                 {
                     "role": "system",

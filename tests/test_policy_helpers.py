@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from src.openai.policy_helpers import (
     apply_outdoor_action_heuristic,
     enforce_classification_result,
+    resolve_prompt_selection,
+    resolve_runtime_mode,
     render_prompts,
     resolve_allowed_actions,
     resolve_preset,
@@ -74,9 +76,48 @@ def _build_test_config() -> SimpleNamespace:
                 "user": "u {allowed_actions}",
             },
         },
+        mode_profiles={
+            "normal": "default",
+            "delivery_watch": "delivery_watch",
+        },
+        per_camera_mode_profiles={"front": {"delivery_watch": "delivery_watch"}},
+        prompt_profiles={
+            "default": SimpleNamespace(
+                name="default",
+                output_rules="Return ONLY valid JSON matching schema; no extra text.",
+                prompt_overrides=SimpleNamespace(
+                    system="sys {camera_name}\n{privacy_rules}",
+                    user="actions={allowed_actions} subjects={allowed_subject_types} {security_overlay}",
+                    privacy_rules=None,
+                    security_overlay_template=None,
+                ),
+                openai_overrides=SimpleNamespace(
+                    model=None,
+                    max_output_tokens=None,
+                    timeout_s=None,
+                    vision_detail=None,
+                ),
+            ),
+            "delivery_watch": SimpleNamespace(
+                name="delivery_watch",
+                output_rules="Return ONLY valid JSON matching schema; no extra text.",
+                prompt_overrides=SimpleNamespace(
+                    system="delivery {camera_name}",
+                    user="delivery actions={allowed_actions} {security_overlay}",
+                    privacy_rules=None,
+                    security_overlay_template=None,
+                ),
+                openai_overrides=SimpleNamespace(
+                    model=None,
+                    max_output_tokens=None,
+                    timeout_s=None,
+                    vision_detail=None,
+                ),
+            ),
+        },
         system_prompt="fallback",
     )
-    return SimpleNamespace(policy=policy, ai=ai)
+    return SimpleNamespace(policy=policy, ai=ai, paths=SimpleNamespace(db_file="state/test.db"))
 
 
 class PolicyHelpersTests(unittest.TestCase):
@@ -174,6 +215,31 @@ class PolicyHelpersTests(unittest.TestCase):
         self.assertIn("Front Door", system)
         self.assertIn("deliver_package", user)
         self.assertIn("adult", user)
+
+    def test_resolve_prompt_selection_prefers_camera_mode_override(self) -> None:
+        selection = resolve_prompt_selection("front", self.config, mode="delivery_watch")
+        self.assertEqual(selection.mode, "delivery_watch")
+        self.assertEqual(selection.profile_name, "delivery_watch")
+
+    def test_resolve_runtime_mode_falls_back_to_normal_without_db(self) -> None:
+        mode = resolve_runtime_mode(self.config)
+        self.assertEqual(mode, "normal")
+
+    def test_render_prompts_excludes_security_overlay_for_child_room(self) -> None:
+        self.config.policy.cameras["front"].security_capable = True
+        self.config.policy.cameras["front"].security_mode = True
+        profile = self.config.ai.prompt_profiles["delivery_watch"]
+        system, user = render_prompts(
+            preset="outdoor",
+            camera_name="front",
+            allowed_actions=resolve_allowed_actions("front", self.config),
+            allowed_subject_types=resolve_subject_types(self.config),
+            config=self.config,
+            context_fields={"purpose": "child_room"},
+            prompt_profile=profile,
+        )
+        self.assertNotIn("SECURITY MODE OVERLAY", user)
+        self.assertIn("Return ONLY valid JSON matching schema; no extra text.", system)
 
     def test_subject_type_values_pass_through_when_allowed(self) -> None:
         for subject in ["vehicle", "animal", "pet", "unknown", "none"]:
