@@ -23,7 +23,8 @@ The mock is intentionally static. Live updates will be added later via polling/S
 - **No sidebar** (avoid "website inside a website" feel in HA).
 - Guest view is **read-only**:
   - shows system stats + camera summaries
-  - no controls/toggles
+  - only one lightweight control is allowed: clicking a camera status pill toggles camera enabled state
+  - no other controls/toggles
   - no raw prompts, no user list
   - token totals may be shown as KPI telemetry
 - Embedded mode behavior for HA iframe:
@@ -81,7 +82,7 @@ Responsive behavior:
 
 ### Row 3 (Cameras)
 - Section header: **Cameras**
-- Right side hint (optional): "Guest view: summaries only (no controls)"
+- Right side hint (optional): "Guest view: summaries only. Click camera status to toggle."
 - Grid of camera cards uses responsive auto-fit/min width logic in CSS; card count per row is viewport-dependent.
 
 Each camera card:
@@ -89,6 +90,10 @@ Each camera card:
 - Header layout:
   - first line: camera title left, status pill right
   - second line: `Enabled: Yes/No • Last seen: ...`
+- Status pill behavior:
+  - clicking the status pill toggles camera enabled state
+  - route: `POST /api/cameras/{camera_key}/toggle`
+  - keep interaction simple (single click, no modal)
 - Thumbnail placeholder area (optional; can be blank or last snapshot if safe)
 - Key/value:
   - Last action + confidence (if available)
@@ -146,6 +151,7 @@ Implementation detail:
 - `GET /api/status`
 - `GET /api/metrics/summary`
 - `GET /api/cameras/summary`
+- `POST /api/cameras/{camera_key}/toggle`
 
 ### Auth routes
 - `GET /ui/login`
