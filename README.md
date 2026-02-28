@@ -286,6 +286,10 @@ Admin UI pages (require admin session):
 - `GET /ui/events/{id}`
 - `GET /ui/errors`
 
+Mode controls/UI:
+- `/ui/setup` global settings includes `modes.current` selector (`normal`, `delivery_watch`, `guest_expected`, `high_alert`).
+- `/ui/admin` header/health card display current mode from admin summary status.
+
 Admin events UI:
 - Events list includes AI confidence percent and short `ai_reason` snippet.
 - Event detail modal includes full `ai_reason` snippet and normalized `ai_confidence`.

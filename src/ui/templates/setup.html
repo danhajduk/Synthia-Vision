@@ -62,6 +62,16 @@
                 <label class="field-label">High precision mode</label>
                 <label class="toggle"><input type="checkbox" id="setting-ai.modes.high_precision" /><span>Use higher precision AI mode defaults</span></label>
               </div>
+              <div class="field-stack">
+                <label class="field-label">Current mode</label>
+                <select class="field" id="setting-modes.current">
+                  <option value="normal">normal</option>
+                  <option value="delivery_watch">delivery_watch</option>
+                  <option value="guest_expected">guest_expected</option>
+                  <option value="high_alert">high_alert</option>
+                </select>
+                <div class="sub">Global runtime mode profile for AI policy behavior.</div>
+              </div>
             </div>
           </div>
 

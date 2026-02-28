@@ -448,6 +448,8 @@
         return pill ? pill.querySelector('.dot') : null;
       })(),
       heartbeat: document.getElementById('admin-kpi-heartbeat'),
+      current_mode: document.getElementById('admin-kpi-current-mode'),
+      current_mode_header: document.getElementById('admin-current-mode'),
       queue_depth: document.getElementById('admin-kpi-queue-depth'),
       queue_ratio: document.getElementById('admin-kpi-queue-ratio'),
       last_event_ts: document.getElementById('admin-last-event-ts'),
@@ -500,6 +502,12 @@
         }
         if (fields.heartbeat) {
           fields.heartbeat.textContent = formatLocalDateTime(data.heartbeat_ts);
+        }
+        if (fields.current_mode) {
+          fields.current_mode.textContent = String(data.current_mode || 'normal');
+        }
+        if (fields.current_mode_header) {
+          fields.current_mode_header.textContent = String(data.current_mode || 'normal');
         }
         if (fields.queue_depth) {
           fields.queue_depth.textContent = String(data.queue_depth ?? '—');
@@ -793,6 +801,7 @@
       'policy.defaults.confidence_threshold',
       'policy.modes.doorbell_only',
       'ai.modes.high_precision',
+      'modes.current',
       'ai.defaults.vision_detail',
       'policy.smart_update.phash_threshold_default',
       'policy.smart_update.phash_threshold_update',

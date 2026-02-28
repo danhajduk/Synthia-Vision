@@ -104,6 +104,11 @@ Auth/setup:
 - Intended use:
   - guest dashboard status-pill click interaction
 
+## Admin mode surfaces
+
+- `/ui/setup` exposes global `modes.current` control.
+- `/ui/admin` displays `current_mode` in header and health card.
+
 ## Common status/result strings
 
 Service status (`service.status`):

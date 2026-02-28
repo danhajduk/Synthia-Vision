@@ -12,7 +12,7 @@
       <div class="topbar">
         <div class="brand">
           <div class="title">Admin</div>
-          <div class="subtitle">Signed in as {{ username }}</div>
+          <div class="subtitle">Signed in as {{ username }} • Mode: <span class="mono" id="admin-current-mode">{{ kpis.current_mode or 'normal' }}</span></div>
         </div>
         <div class="row">
           <a class="btn" href="/ui/setup">Setup</a>
@@ -30,6 +30,7 @@
             </div>
             <div class="big" id="admin-kpi-health-label">{{ kpis.health_label or "Unknown" }}</div>
             <div class="sub">Heartbeat: <span class="mono" id="admin-kpi-heartbeat">{{ kpis.heartbeat_ts or "—" }}</span></div>
+            <div class="sub">Mode: <span class="mono" id="admin-kpi-current-mode">{{ kpis.current_mode or "normal" }}</span></div>
           </div>
 
           <div class="card">
