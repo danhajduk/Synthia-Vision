@@ -39,6 +39,8 @@ SEED_KV_KEYS: tuple[tuple[str, str], ...] = (
     ("policy.defaults.confidence_threshold", "0.65"),
     ("policy.modes.doorbell_only", "0"),
     ("ai.modes.high_precision", "0"),
+    ("modes.current", "normal"),
+    ("runtime.current_mode", "normal"),
     ("ai.defaults.vision_detail", "low"),
     ("policy.smart_update.phash_threshold_default", "6"),
     ("policy.smart_update.phash_threshold_update", "6"),

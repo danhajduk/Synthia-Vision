@@ -16,6 +16,7 @@ class SummaryStore:
     def get_status_summary(self) -> dict[str, Any]:
         service_status = self._get_kv("service.status") or "unknown"
         heartbeat_ts = self._get_kv("runtime.heartbeat_ts") or ""
+        current_mode = self._get_kv("runtime.current_mode") or self._get_kv("modes.current") or "normal"
         setup_completed = (self._get_kv("setup.completed") or "0") == "1"
         queue_depth_raw = self._get_kv("runtime.queue_depth") or "0"
         try:
@@ -25,6 +26,7 @@ class SummaryStore:
         return {
             "service_status": service_status,
             "heartbeat_ts": heartbeat_ts,
+            "current_mode": str(current_mode),
             "setup_completed": setup_completed,
             "queue_depth": queue_depth,
             "db_ready": self.db_path.exists(),

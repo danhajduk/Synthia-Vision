@@ -199,6 +199,13 @@ class HADiscoveryPublisher:
                 "state_on": "ON",
                 "state_off": "OFF",
             }),
+            ("control_mode", "select", {
+                "name": "Synthia Vision Mode",
+                "icon": "mdi:tune-variant",
+                "state_topic": self._core_topic("control.mode", "control/mode"),
+                "command_topic": self._core_topic("control.mode_set", "control/mode/set"),
+                "options": list(self._config.modes.intent_available),
+            }),
             ("updates_per_event", "number", {
                 "name": "Synthia Vision Updates Per Event",
                 "object_id": "synthia_vision_updates_per_event",

@@ -247,9 +247,25 @@ class ModeConfig:
 
 
 @dataclass(slots=True)
+class IntentModeProfileConfig:
+    confidence_threshold: float | None = None
+    monthly_budget: float | None = None
+    updates_per_event: int | None = None
+    prompt_preset: str | None = None
+    doorbell_only_mode: bool | None = None
+    high_precision_mode: bool | None = None
+
+
+@dataclass(slots=True)
 class ModesConfig:
     doorbell_only_mode: ModeConfig
     high_precision_mode: ModeConfig
+    intent_available: list[str] = field(
+        default_factory=lambda: ["normal", "delivery_watch", "guest_expected", "high_alert"]
+    )
+    intent_default: str = "normal"
+    intent_profiles: dict[str, IntentModeProfileConfig] = field(default_factory=dict)
+    intent_camera_profiles: dict[str, dict[str, IntentModeProfileConfig]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -359,6 +375,15 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
     )
     high_precision_overrides_data = _as_mapping(
         high_precision_mode_data.get("overrides", {}), "modes.high_precision_mode.overrides"
+    )
+    intent_mode_data = _as_mapping(
+        modes_data.get("intent", {}), "modes.intent"
+    )
+    intent_profiles_data = _as_mapping(
+        intent_mode_data.get("profiles", {}), "modes.intent.profiles"
+    )
+    intent_camera_profiles_data = _as_mapping(
+        intent_mode_data.get("camera_profiles", {}), "modes.intent.camera_profiles"
     )
     budget_data = _as_mapping(resolved_data.get("budget", {}), "budget")
     dedupe_data = _as_mapping(resolved_data.get("dedupe", {}), "dedupe")
@@ -589,6 +614,22 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                     high_precision_overrides_data.get("confidence_threshold")
                 ),
             ),
+            intent_available=_as_string_list(
+                intent_mode_data.get(
+                    "available",
+                    ["normal", "delivery_watch", "guest_expected", "high_alert"],
+                ),
+                "modes.intent.available",
+            ),
+            intent_default=str(intent_mode_data.get("default", "normal")).strip() or "normal",
+            intent_profiles=_build_intent_mode_profiles(
+                intent_profiles_data,
+                "modes.intent.profiles",
+            ),
+            intent_camera_profiles=_build_intent_camera_profiles(
+                intent_camera_profiles_data,
+                "modes.intent.camera_profiles",
+            ),
         ),
         budget=BudgetConfig(
             enabled=_as_bool(budget_data.get("enabled", True)),
@@ -670,6 +711,57 @@ def _build_prompt_presets(data: dict[str, Any]) -> dict[str, dict[str, str]]:
             "user": str(raw_value.get("user", "")),
         }
     return presets
+
+
+def _parse_intent_mode_profile(data: dict[str, Any]) -> IntentModeProfileConfig:
+    updates_value = _optional_int(data.get("updates_per_event"))
+    if updates_value is not None:
+        updates_value = max(1, min(2, updates_value))
+    return IntentModeProfileConfig(
+        confidence_threshold=_optional_float(data.get("confidence_threshold")),
+        monthly_budget=_optional_float(data.get("monthly_budget")),
+        updates_per_event=updates_value,
+        prompt_preset=_optional_str(data.get("prompt_preset")),
+        doorbell_only_mode=_optional_bool(data.get("doorbell_only_mode")),
+        high_precision_mode=_optional_bool(data.get("high_precision_mode")),
+    )
+
+
+def _build_intent_mode_profiles(
+    data: dict[str, Any],
+    field_name: str,
+) -> dict[str, IntentModeProfileConfig]:
+    profiles: dict[str, IntentModeProfileConfig] = {}
+    for mode_name, raw_value in data.items():
+        if not isinstance(raw_value, dict):
+            raise ConfigError(f"Expected mapping at: {field_name}.{mode_name}")
+        profiles[str(mode_name)] = _parse_intent_mode_profile(
+            _as_mapping(raw_value, f"{field_name}.{mode_name}"),
+        )
+    return profiles
+
+
+def _build_intent_camera_profiles(
+    data: dict[str, Any],
+    field_name: str,
+) -> dict[str, dict[str, IntentModeProfileConfig]]:
+    result: dict[str, dict[str, IntentModeProfileConfig]] = {}
+    for camera_name, raw_camera in data.items():
+        camera_mapping = _as_mapping(raw_camera, f"{field_name}.{camera_name}")
+        mode_profiles: dict[str, IntentModeProfileConfig] = {}
+        for mode_name, raw_mode in camera_mapping.items():
+            if not isinstance(raw_mode, dict):
+                raise ConfigError(
+                    f"Expected mapping at: {field_name}.{camera_name}.{mode_name}"
+                )
+            mode_profiles[str(mode_name)] = _parse_intent_mode_profile(
+                _as_mapping(
+                    raw_mode,
+                    f"{field_name}.{camera_name}.{mode_name}",
+                ),
+            )
+        result[str(camera_name)] = mode_profiles
+    return result
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:
@@ -825,6 +917,31 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("suppression.window_seconds must be >= 0")
     if config.suppression.max_suppressed_log < 0:
         raise ConfigError("suppression.max_suppressed_log must be >= 0")
+    if not config.modes.intent_available:
+        raise ConfigError("modes.intent.available must not be empty")
+    if config.modes.intent_default not in set(config.modes.intent_available):
+        raise ConfigError("modes.intent.default must be included in modes.intent.available")
+    for mode_name, profile in config.modes.intent_profiles.items():
+        if mode_name not in set(config.modes.intent_available):
+            raise ConfigError(
+                f"modes.intent.profiles.{mode_name} must exist in modes.intent.available"
+            )
+        if profile.confidence_threshold is not None:
+            _validate_threshold(profile.confidence_threshold)
+        if profile.monthly_budget is not None and profile.monthly_budget < 0:
+            raise ConfigError(f"modes.intent.profiles.{mode_name}.monthly_budget must be >= 0")
+    for camera_name, camera_profiles in config.modes.intent_camera_profiles.items():
+        for mode_name, profile in camera_profiles.items():
+            if mode_name not in set(config.modes.intent_available):
+                raise ConfigError(
+                    f"modes.intent.camera_profiles.{camera_name}.{mode_name} must exist in modes.intent.available"
+                )
+            if profile.confidence_threshold is not None:
+                _validate_threshold(profile.confidence_threshold)
+            if profile.monthly_budget is not None and profile.monthly_budget < 0:
+                raise ConfigError(
+                    f"modes.intent.camera_profiles.{camera_name}.{mode_name}.monthly_budget must be >= 0"
+                )
 
     if not config.openai.api_key:
         raise ConfigError(

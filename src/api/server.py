@@ -107,6 +107,7 @@ def create_guest_api_app(config: ServiceConfig):
         "policy.defaults.confidence_threshold",
         "policy.modes.doorbell_only",
         "ai.modes.high_precision",
+        "modes.current",
         "ai.defaults.vision_detail",
         "policy.smart_update.phash_threshold_default",
         "policy.smart_update.phash_threshold_update",
@@ -297,6 +298,14 @@ def create_guest_api_app(config: ServiceConfig):
             value = payload.get(key)
             if key in {"ui.preview_enabled", "policy.modes.doorbell_only", "ai.modes.high_precision"}:
                 updates[key] = "1" if _to_bool(value, False) else "0"
+            elif key == "modes.current":
+                mode_value = str(value or "").strip().lower()
+                allowed_modes = {str(item).strip().lower() for item in config.modes.intent_available}
+                if mode_value not in allowed_modes:
+                    raise ValueError(
+                        f"modes.current must be one of: {', '.join(sorted(allowed_modes))}"
+                    )
+                updates[key] = mode_value
             elif key in {
                 "ui.preview_enabled_interval_s",
                 "ui.preview_disabled_interval_s",
@@ -471,6 +480,7 @@ def create_guest_api_app(config: ServiceConfig):
                 "avg_cost_per_event": _format_money(metrics.get("cost_avg_per_event", 0.0)),
                 "tokens_today_total": int(metrics.get("tokens_today_total", 0)),
                 "avg_tokens_per_event": int(round(float(metrics.get("avg_tokens_per_event", 0.0)))),
+                "current_mode": str(status.get("current_mode", "normal")),
             },
             "cameras": cameras,
             "preview": {
@@ -859,6 +869,7 @@ def create_guest_api_app(config: ServiceConfig):
             "suppressed_count_total": int(metrics.get("suppressed_count_total", 0) or 0),
             "suppressed_count_today": int(metrics.get("suppressed_count_today", 0) or 0),
             "suppressed_rate_today": float(metrics.get("suppressed_rate_today", 0.0) or 0.0),
+            "current_mode": str(status.get("current_mode", "normal")),
             "last_event_ts": str(latest_event.get("ts") or ""),
             "events_total": int(events.get("total", 0) or 0),
             "errors_total": int(errors.get("total", 0) or 0),

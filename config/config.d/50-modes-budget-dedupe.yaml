@@ -8,6 +8,22 @@ modes:
     overrides:
       confidence_threshold: 0.85
 
+  intent:
+    available: ["normal", "delivery_watch", "guest_expected", "high_alert"]
+    default: "normal"
+    profiles:
+      normal: {}
+      delivery_watch:
+        prompt_preset: "outdoor"
+        updates_per_event: 2
+      guest_expected:
+        updates_per_event: 2
+        confidence_threshold: 0.55
+      high_alert:
+        high_precision_mode: true
+        confidence_threshold: 0.85
+        monthly_budget: 20.0
+
 budget:
   enabled: true
   currency: "USD"

@@ -49,5 +49,7 @@ topics:
     doorbell_only_mode_set: "{mqtt_prefix}/control/doorbell_only_mode/set"
     high_precision_mode: "{mqtt_prefix}/control/high_precision_mode"
     high_precision_mode_set: "{mqtt_prefix}/control/high_precision_mode/set"
+    mode: "{mqtt_prefix}/control/mode"
+    mode_set: "{mqtt_prefix}/control/mode/set"
     updates_per_event: "{mqtt_prefix}/control/updates_per_event"
     updates_per_event_set: "{mqtt_prefix}/control/updates_per_event/set"

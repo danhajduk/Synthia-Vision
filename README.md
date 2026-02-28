@@ -312,6 +312,7 @@ Setup wizard:
   - `.../control/confidence_threshold` + `.../set`
   - `.../control/doorbell_only_mode` + `.../set`
   - `.../control/high_precision_mode` + `.../set`
+  - `.../control/mode` + `.../set` (`normal|delivery_watch|guest_expected|high_alert`)
   - `.../control/updates_per_event` + `.../set`
 - Core metrics topics:
   - `.../events/count_total`
@@ -401,6 +402,7 @@ Key current settings:
 - `topics.control.confidence_threshold`
 - `topics.control.doorbell_only_mode`
 - `topics.control.high_precision_mode`
+- `topics.control.mode`
 - `topics.events.count_total`
 - `topics.events.count_today`
 - `topics.events.suppressed_total`
@@ -412,6 +414,10 @@ Key current settings:
 - `suppression.enabled`
 - `suppression.window_seconds`
 - `suppression.max_suppressed_log`
+- `modes.intent.available`
+- `modes.intent.default`
+- `modes.intent.profiles.<mode>.{confidence_threshold,monthly_budget,updates_per_event,prompt_preset,doorbell_only_mode,high_precision_mode}`
+- `modes.intent.camera_profiles.<camera>.<mode>.<same fields>`
 - `policy.cameras.<camera>.suppression_enabled`
 - `policy.cameras.<camera>.suppression_window_seconds`
 - `logging.level`

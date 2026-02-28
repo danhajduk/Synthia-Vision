@@ -18,6 +18,7 @@ This file is the practical source of truth for active development. It reflects c
 - Health card:
   - `service_status`
   - `heartbeat_ts`
+  - `current_mode`
 - Queue card:
   - `queue_depth`
   - `suppressed_count_today`
@@ -107,6 +108,12 @@ Auth/setup:
 
 Service status (`service.status`):
 - `starting`, `enabled`, `degraded`, `disabled`, `budget_blocked`, `stopped`, `unavailable`
+
+Global runtime mode:
+- `runtime.current_mode` / `modes.current` values:
+  - `normal`, `delivery_watch`, `guest_expected`, `high_alert`
+- MQTT control topic:
+  - `.../control/mode` + `.../control/mode/set`
 
 Per-camera `result_status` examples:
 - `waiting`, `processing`, `ok`, `unchanged`, `snapshot_failed`, `schema_failed`, `openai_failed`, `token_budget_exceeded`, `blocked_budget`, `skipped`, `suppressed`

@@ -102,6 +102,7 @@ class MQTTClient:
                 "confidence_threshold": int(round(self._config.policy.defaults.confidence_threshold * 100)),
                 "doorbell_only_mode": bool(self._config.modes.doorbell_only_mode.enabled),
                 "high_precision_mode": bool(self._config.modes.high_precision_mode.enabled),
+                "current_mode": str(self._config.modes.intent_default),
                 "updates_per_event": 1,
                 "camera_event_processing": {},
             },
@@ -136,12 +137,18 @@ class MQTTClient:
         self._confidence_threshold_percent: int = int(
             round(self._config.policy.defaults.confidence_threshold * 100)
         )
+        self._base_monthly_budget_limit: float = float(self._monthly_budget_limit)
+        self._base_confidence_threshold_percent: int = int(self._confidence_threshold_percent)
+        self._base_doorbell_only_mode: bool = bool(self._config.modes.doorbell_only_mode.enabled)
+        self._base_high_precision_mode: bool = bool(self._config.modes.high_precision_mode.enabled)
+        self._current_mode: str = self._normalize_mode(self._config.modes.intent_default)
         self._last_confidence_threshold_sync_ts: float = 0.0
         self._process_end_events_by_camera: dict[str, bool] = {}
         self._process_update_events_by_camera: dict[str, bool] = {}
         self._camera_phash_threshold_by_camera: dict[str, int] = {}
         self._updates_processed_count: dict[str, int] = {}
         self._updates_last_seen_ts: dict[str, float] = {}
+        self._base_updates_per_event: int = int(self._event_controls.updates_per_event)
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -424,6 +431,7 @@ class MQTTClient:
                 return True
             self._monthly_budget_limit = parsed_budget
             self._config.budget.monthly_budget_limit = parsed_budget
+            self._base_monthly_budget_limit = parsed_budget
             self._publish_sync(topics["control_monthly_budget"], f"{parsed_budget:.2f}")
             self._publish_status_sync(self._effective_runtime_status())
             self._persist_runtime_controls()
@@ -438,6 +446,7 @@ class MQTTClient:
                 return True
             self._confidence_threshold_percent = parsed_threshold
             self._config.policy.defaults.confidence_threshold = parsed_threshold / 100.0
+            self._base_confidence_threshold_percent = parsed_threshold
             self._publish_sync(topics["control_confidence_threshold"], str(parsed_threshold))
             self._persist_runtime_controls()
             LOGGER.info("Updated confidence_threshold_percent=%s", parsed_threshold)
@@ -450,6 +459,7 @@ class MQTTClient:
                 self._publish_last_error(f"invalid doorbell_only_mode payload: {raw_value}")
                 return True
             self._config.modes.doorbell_only_mode.enabled = parsed
+            self._base_doorbell_only_mode = parsed
             self._publish_sync(topics["control_doorbell_only_mode"], bool_to_on_off(parsed))
             self._persist_runtime_controls()
             LOGGER.info("Updated doorbell_only_mode=%s", parsed)
@@ -462,9 +472,20 @@ class MQTTClient:
                 self._publish_last_error(f"invalid high_precision_mode payload: {raw_value}")
                 return True
             self._config.modes.high_precision_mode.enabled = parsed
+            self._base_high_precision_mode = parsed
             self._publish_sync(topics["control_high_precision_mode"], bool_to_on_off(parsed))
             self._persist_runtime_controls()
             LOGGER.info("Updated high_precision_mode=%s", parsed)
+            return True
+
+        if key == "mode":
+            parsed_mode = self._normalize_mode(raw_value)
+            if parsed_mode is None:
+                LOGGER.warning("Ignoring invalid mode payload=%s", raw_value)
+                self._publish_last_error(f"invalid mode payload: {raw_value}")
+                return True
+            self._set_current_mode(parsed_mode)
+            LOGGER.info("Updated current_mode=%s", parsed_mode)
             return True
 
         if key == "updates_per_event":
@@ -474,6 +495,7 @@ class MQTTClient:
                 self._publish_last_error(f"invalid updates_per_event payload: {raw_value}")
                 return True
             self._event_controls.updates_per_event = parsed_int
+            self._base_updates_per_event = parsed_int
             self._publish_sync(topics["control_updates_per_event"], str(parsed_int))
             self._persist_runtime_controls()
             LOGGER.info("Updated updates_per_event=%s", parsed_int)
@@ -924,6 +946,108 @@ class MQTTClient:
             camera_policy.security_mode = settings.security_mode
         if settings.phash_threshold is not None:
             self._camera_phash_threshold_by_camera[camera] = settings.phash_threshold
+        mode_profile = self._resolve_mode_profile(camera=camera)
+        if mode_profile.get("confidence_threshold") is not None:
+            camera_policy.confidence_threshold = float(mode_profile["confidence_threshold"])
+        if mode_profile.get("prompt_preset"):
+            camera_policy.prompt_preset = str(mode_profile["prompt_preset"])
+
+    def _normalize_mode(self, raw_value: str | None) -> str | None:
+        normalized = str(raw_value or "").strip().lower()
+        if not normalized:
+            return None
+        allowed = {str(item).strip().lower() for item in self._config.modes.intent_available}
+        if normalized not in allowed:
+            return None
+        return normalized
+
+    def _resolve_mode_profile(self, *, camera: str | None = None) -> dict[str, Any]:
+        mode = self._current_mode
+        merged: dict[str, Any] = {}
+        global_profile = self._config.modes.intent_profiles.get(mode)
+        if global_profile is not None:
+            merged.update(
+                {
+                    "confidence_threshold": global_profile.confidence_threshold,
+                    "monthly_budget": global_profile.monthly_budget,
+                    "updates_per_event": global_profile.updates_per_event,
+                    "prompt_preset": global_profile.prompt_preset,
+                    "doorbell_only_mode": global_profile.doorbell_only_mode,
+                    "high_precision_mode": global_profile.high_precision_mode,
+                }
+            )
+        if camera:
+            camera_profiles = self._config.modes.intent_camera_profiles.get(camera, {})
+            camera_profile = camera_profiles.get(mode)
+            if camera_profile is not None:
+                merged.update(
+                    {
+                        "confidence_threshold": camera_profile.confidence_threshold,
+                        "monthly_budget": camera_profile.monthly_budget,
+                        "updates_per_event": camera_profile.updates_per_event,
+                        "prompt_preset": camera_profile.prompt_preset,
+                        "doorbell_only_mode": camera_profile.doorbell_only_mode,
+                        "high_precision_mode": camera_profile.high_precision_mode,
+                    }
+                )
+        return merged
+
+    def _apply_mode_globals(self) -> None:
+        mode_profile = self._resolve_mode_profile()
+        monthly_budget = mode_profile.get("monthly_budget")
+        confidence_threshold = mode_profile.get("confidence_threshold")
+        updates_per_event = mode_profile.get("updates_per_event")
+        doorbell_only = mode_profile.get("doorbell_only_mode")
+        high_precision = mode_profile.get("high_precision_mode")
+
+        self._monthly_budget_limit = (
+            float(monthly_budget)
+            if monthly_budget is not None
+            else float(self._base_monthly_budget_limit)
+        )
+        self._config.budget.monthly_budget_limit = self._monthly_budget_limit
+        self._confidence_threshold_percent = (
+            int(round(float(confidence_threshold) * 100.0))
+            if confidence_threshold is not None
+            else int(self._base_confidence_threshold_percent)
+        )
+        self._confidence_threshold_percent = max(0, min(100, self._confidence_threshold_percent))
+        self._config.policy.defaults.confidence_threshold = self._confidence_threshold_percent / 100.0
+        self._event_controls.updates_per_event = (
+            max(1, min(2, int(updates_per_event)))
+            if updates_per_event is not None
+            else int(self._base_updates_per_event)
+        )
+        self._config.modes.doorbell_only_mode.enabled = (
+            bool(doorbell_only) if doorbell_only is not None else bool(self._base_doorbell_only_mode)
+        )
+        self._config.modes.high_precision_mode.enabled = (
+            bool(high_precision)
+            if high_precision is not None
+            else bool(self._base_high_precision_mode)
+        )
+
+    def _set_current_mode(self, mode: str) -> None:
+        normalized = self._normalize_mode(mode)
+        if normalized is None:
+            return
+        self._current_mode = normalized
+        self._apply_mode_globals()
+        topics = self._resolve_core_topics()
+        self._publish_sync(topics["control_mode"], self._current_mode)
+        self._publish_sync(topics["control_monthly_budget"], f"{self._monthly_budget_limit:.2f}")
+        self._publish_sync(topics["control_confidence_threshold"], str(self._confidence_threshold_percent))
+        self._publish_sync(
+            topics["control_doorbell_only_mode"],
+            bool_to_on_off(self._config.modes.doorbell_only_mode.enabled),
+        )
+        self._publish_sync(
+            topics["control_high_precision_mode"],
+            bool_to_on_off(self._config.modes.high_precision_mode.enabled),
+        )
+        self._publish_sync(topics["control_updates_per_event"], str(self._event_controls.updates_per_event))
+        self._publish_status_sync(self._effective_runtime_status())
+        self._persist_runtime_controls()
 
     def _remember_policy_event(self, event: FrigateEvent) -> None:
         events_data = self._policy_runtime_state.setdefault("events", {})
@@ -1064,6 +1188,16 @@ class MQTTClient:
         self._config.modes.high_precision_mode.enabled = bool(
             controls_data.get("high_precision_mode", self._config.modes.high_precision_mode.enabled)
         )
+        self._base_monthly_budget_limit = float(self._monthly_budget_limit)
+        self._base_confidence_threshold_percent = int(self._confidence_threshold_percent)
+        self._base_doorbell_only_mode = bool(self._config.modes.doorbell_only_mode.enabled)
+        self._base_high_precision_mode = bool(self._config.modes.high_precision_mode.enabled)
+        self._base_updates_per_event = int(loaded_controls.updates_per_event)
+        loaded_mode = self._normalize_mode(
+            str(controls_data.get("current_mode", self._config.modes.intent_default))
+        )
+        self._current_mode = loaded_mode or self._normalize_mode(self._config.modes.intent_default) or "normal"
+        self._apply_mode_globals()
         loaded_camera_controls: dict[str, dict[str, bool]] = {}
         raw_camera_controls = controls_data.get("camera_event_processing")
         camera_names: list[str] = []
@@ -1089,7 +1223,8 @@ class MQTTClient:
                 "confidence_threshold": self._confidence_threshold_percent,
                 "doorbell_only_mode": self._config.modes.doorbell_only_mode.enabled,
                 "high_precision_mode": self._config.modes.high_precision_mode.enabled,
-                "updates_per_event": loaded_controls.updates_per_event,
+                "current_mode": self._current_mode,
+                "updates_per_event": self._event_controls.updates_per_event,
                 "camera_event_processing": loaded_camera_controls,
             },
             "metrics": loaded_metrics,
@@ -1569,6 +1704,7 @@ class MQTTClient:
             "control_high_precision_mode": bool_to_on_off(
                 self._config.modes.high_precision_mode.enabled
             ),
+            "control_mode": str(self._current_mode),
             "control_updates_per_event": str(self._event_controls.updates_per_event),
         }
         for key, topic in topics.items():
@@ -1998,6 +2134,7 @@ class MQTTClient:
             "control_confidence_threshold": self._resolve_topic_path("control.confidence_threshold", "control/confidence_threshold"),
             "control_doorbell_only_mode": self._resolve_topic_path("control.doorbell_only_mode", "control/doorbell_only_mode"),
             "control_high_precision_mode": self._resolve_topic_path("control.high_precision_mode", "control/high_precision_mode"),
+            "control_mode": self._resolve_topic_path("control.mode", "control/mode"),
             "control_updates_per_event": self._resolve_topic_path("control.updates_per_event", "control/updates_per_event"),
         }
 
@@ -2011,6 +2148,7 @@ class MQTTClient:
         controls["confidence_threshold"] = self._confidence_threshold_percent
         controls["doorbell_only_mode"] = self._config.modes.doorbell_only_mode.enabled
         controls["high_precision_mode"] = self._config.modes.high_precision_mode.enabled
+        controls["current_mode"] = self._current_mode
         controls["updates_per_event"] = self._event_controls.updates_per_event
         camera_event_processing: dict[str, dict[str, bool]] = {}
         for camera in sorted(
@@ -2031,6 +2169,7 @@ class MQTTClient:
             }
         controls["camera_event_processing"] = camera_event_processing
         self._persist_confidence_threshold_to_kv()
+        self._persist_current_mode_to_kv()
         self._save_policy_state()
 
     def _persist_confidence_threshold_to_kv(self) -> None:
@@ -2040,6 +2179,13 @@ class MQTTClient:
             self._camera_store.upsert_kv("policy.default_confidence_threshold", normalized)
         except Exception as exc:
             LOGGER.warning("Failed to persist confidence_threshold to kv error=%s", exc)
+
+    def _persist_current_mode_to_kv(self) -> None:
+        try:
+            self._camera_store.upsert_kv("modes.current", str(self._current_mode))
+            self._camera_store.upsert_kv("runtime.current_mode", str(self._current_mode))
+        except Exception as exc:
+            LOGGER.warning("Failed to persist current mode to kv error=%s", exc)
 
     def _refresh_confidence_threshold_from_kv(self) -> None:
         now = time.monotonic()
