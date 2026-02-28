@@ -52,6 +52,8 @@
                 <option value="100" {% if filters.page_size == 100 %}selected{% endif %}>100</option>
               </select>
             </div>
+            <input type="hidden" name="sort_by" value="{{ filters.sort_by }}" />
+            <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}" />
             <div class="field-stack" style="align-self:end;">
               <div class="row">
                 <button class="btn primary" type="submit">Apply</button>
@@ -67,7 +69,17 @@
           <div class="table-wrap">
             <table class="table">
               <thead>
-                <tr><th>Time</th><th>Camera</th><th>Status</th><th>AI</th><th>Event ID</th></tr>
+                {% set _next_ts_dir = 'asc' if sorting.sort_by == 'ts' and sorting.sort_dir == 'desc' else 'desc' %}
+                {% set _next_risk_dir = 'asc' if sorting.sort_by == 'risk_score' and sorting.sort_dir == 'desc' else 'desc' %}
+                {% set _next_ai_dir = 'asc' if sorting.sort_by == 'ai_confidence' and sorting.sort_dir == 'desc' else 'desc' %}
+                <tr>
+                  <th><a href="{{ request.url_for('ui_events').include_query_params(camera=filters.camera or None, status=filters.status or None, q=filters.q or None, page_size=filters.page_size, sort_by='ts', sort_dir=_next_ts_dir) }}">Time{% if sorting.sort_by == 'ts' %} {% if sorting.sort_dir == 'asc' %}↑{% else %}↓{% endif %}{% endif %}</a></th>
+                  <th>Camera</th>
+                  <th>Status</th>
+                  <th><a href="{{ request.url_for('ui_events').include_query_params(camera=filters.camera or None, status=filters.status or None, q=filters.q or None, page_size=filters.page_size, sort_by='ai_confidence', sort_dir=_next_ai_dir) }}">AI{% if sorting.sort_by == 'ai_confidence' %} {% if sorting.sort_dir == 'asc' %}↑{% else %}↓{% endif %}{% endif %}</a></th>
+                  <th><a href="{{ request.url_for('ui_events').include_query_params(camera=filters.camera or None, status=filters.status or None, q=filters.q or None, page_size=filters.page_size, sort_by='risk_score', sort_dir=_next_risk_dir) }}">Risk{% if sorting.sort_by == 'risk_score' %} {% if sorting.sort_dir == 'asc' %}↑{% else %}↓{% endif %}{% endif %}</a></th>
+                  <th>Event ID</th>
+                </tr>
               </thead>
               <tbody id="events-table-body">
                 {% for event in events %}
@@ -99,11 +111,18 @@
                     {% endif %}
                     <div class="sub">{{ (event.ai_reason or '—')[:72] }}{% if event.ai_reason and (event.ai_reason|length) > 72 %}…{% endif %}</div>
                   </td>
+                  <td>
+                    {% if event.risk_score is not none %}
+                    <div class="sub mono">{{ (event.risk_score * 100)|round(1, 'common') }}%</div>
+                    {% else %}
+                    <div class="sub mono">—</div>
+                    {% endif %}
+                  </td>
                   <td><a href="/ui/events/{{ event.event_id }}" data-event-link title="{{ event.event_id }}">{{ (event.event_id or '—')[:10] }}{% if event.event_id and (event.event_id|length) > 10 %}…{% endif %}</a></td>
                 </tr>
                 {% endfor %}
                 {% if not events %}
-                <tr><td colspan="5">No matching events.</td></tr>
+                <tr><td colspan="6">No matching events.</td></tr>
                 {% endif %}
               </tbody>
             </table>
@@ -167,6 +186,7 @@
         <div class="form-grid">
           <div class="field-stack"><label class="field-label">Frigate score</label><div class="sub mono" id="events-detail-frigate-score">—</div></div>
           <div class="field-stack"><label class="field-label">AI confidence</label><div class="sub mono" id="events-detail-ai-confidence">—</div></div>
+          <div class="field-stack"><label class="field-label">Risk score</label><div class="sub mono" id="events-detail-risk-score">—</div></div>
           <div class="field-stack"><label class="field-label">Dedupe hit</label><div class="sub mono" id="events-detail-dedupe-hit">—</div></div>
           <div class="field-stack"><label class="field-label">Cooldown remaining</label><div class="sub mono" id="events-detail-cooldown">—</div></div>
           <div class="field-stack"><label class="field-label">Vision detail</label><div class="sub mono" id="events-detail-vision-detail">—</div></div>

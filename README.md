@@ -300,7 +300,8 @@ Mode controls/UI:
 
 Admin events UI:
 - Events list includes AI confidence percent and short `ai_reason` snippet.
-- Event detail modal includes full `ai_reason` snippet and normalized `ai_confidence`.
+- Events list supports sorting by timestamp, AI confidence, and `risk_score`.
+- Event detail modal includes full `ai_reason` snippet, normalized `ai_confidence`, and `risk_score`.
 
 Implementation paths:
 - templates: `src/ui/templates`

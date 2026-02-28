@@ -160,7 +160,7 @@ AI explainability (admin event APIs only):
 - `ai_confidence` stores normalized model confidence (`0.0` to `1.0`)
 - `ai_reason` stores a short sanitized reason snippet (1-2 sentences, no guest exposure)
 - `risk_score` stores normalized event score (`0.0` to `1.0`) derived from time-of-day, camera/zone, AI confidence, and duration inputs.
-- `/ui/events` admin table + detail modal render both fields for operator review
+- `/ui/events` admin table/detail render `ai_confidence`, `ai_reason`, and `risk_score`; list sorting supports `ts`, `ai_confidence`, and `risk_score`.
 
 MQTT metrics:
 - `.../events/avg_confidence_today` publishes rolling daily average AI confidence (ratio)

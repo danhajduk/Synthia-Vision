@@ -604,6 +604,7 @@
     const detailSnapshotImage = document.getElementById('events-detail-snapshot-image');
     const detailFrigateScore = document.getElementById('events-detail-frigate-score');
     const detailAiConfidence = document.getElementById('events-detail-ai-confidence');
+    const detailRiskScore = document.getElementById('events-detail-risk-score');
     const detailAiReason = document.getElementById('events-detail-ai-reason');
     const detailDedupeHit = document.getElementById('events-detail-dedupe-hit');
     const detailCooldown = document.getElementById('events-detail-cooldown');
@@ -660,6 +661,14 @@
         } else {
           const confidencePct = Math.max(0, Math.min(100, Math.round(Number(data.ai_confidence) * 100)));
           detailAiConfidence.textContent = String(confidencePct) + '%';
+        }
+        if (detailRiskScore) {
+          if (data.risk_score == null) {
+            detailRiskScore.textContent = '—';
+          } else {
+            const riskPct = Math.max(0, Math.min(100, Number(data.risk_score) * 100));
+            detailRiskScore.textContent = riskPct.toFixed(1) + '%';
+          }
         }
         detailAiReason.textContent = 'AI reason: ' + String(data.ai_reason || '—');
         detailDedupeHit.textContent = data.dedupe_hit == null ? '—' : (data.dedupe_hit ? 'Yes' : 'No');

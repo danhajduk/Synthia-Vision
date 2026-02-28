@@ -649,6 +649,8 @@ def create_guest_api_app(config: ServiceConfig):
         camera: str | None = None,
         status: str | None = None,
         q: str | None = None,
+        sort_by: str = "ts",
+        sort_dir: str = "desc",
         page: int = 1,
         page_size: int = 50,
         session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
@@ -661,6 +663,10 @@ def create_guest_api_app(config: ServiceConfig):
         normalized_camera = str(camera or "").strip() or None
         normalized_status = str(status or "").strip().lower() or None
         normalized_query = str(q or "").strip() or None
+        normalized_sort_by = str(sort_by or "ts").strip().lower()
+        if normalized_sort_by not in {"ts", "risk_score", "ai_confidence"}:
+            normalized_sort_by = "ts"
+        normalized_sort_dir = "asc" if str(sort_dir or "").strip().lower() == "asc" else "desc"
         offset = (normalized_page - 1) * normalized_page_size
 
         events = admin_store.list_events(
@@ -669,6 +675,8 @@ def create_guest_api_app(config: ServiceConfig):
             camera=normalized_camera,
             status=normalized_status,
             event_id_query=normalized_query,
+            sort_by=normalized_sort_by,
+            sort_dir=normalized_sort_dir,
         )
         total_count = int(events.get("total", 0) or 0)
         total_pages = max(1, math.ceil(total_count / normalized_page_size))
@@ -681,6 +689,8 @@ def create_guest_api_app(config: ServiceConfig):
                 camera=normalized_camera,
                 status=normalized_status,
                 event_id_query=normalized_query,
+                sort_by=normalized_sort_by,
+                sort_dir=normalized_sort_dir,
             )
         page_start = 0 if total_count == 0 else offset + 1
         page_end = min(offset + normalized_page_size, total_count) if total_count > 0 else 0
@@ -696,6 +706,10 @@ def create_guest_api_app(config: ServiceConfig):
             query_base["q"] = normalized_query
         if normalized_page_size != 50:
             query_base["page_size"] = str(normalized_page_size)
+        if normalized_sort_by != "ts":
+            query_base["sort_by"] = normalized_sort_by
+        if normalized_sort_dir != "desc":
+            query_base["sort_dir"] = normalized_sort_dir
 
         def _events_url_for(page_value: int) -> str:
             params = dict(query_base)
@@ -734,6 +748,12 @@ def create_guest_api_app(config: ServiceConfig):
                     "q": normalized_query or "",
                     "page": current_page,
                     "page_size": normalized_page_size,
+                    "sort_by": normalized_sort_by,
+                    "sort_dir": normalized_sort_dir,
+                },
+                "sorting": {
+                    "sort_by": normalized_sort_by,
+                    "sort_dir": normalized_sort_dir,
                 },
                 "pagination": {
                     "total_count": total_count,
