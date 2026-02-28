@@ -44,7 +44,7 @@ class EventStoreTests(unittest.TestCase):
                 row = conn.execute(
                     """
                     SELECT accepted, result_status, action, subject_type, frigate_score, confidence, description,
-                           snapshot_bytes, image_width, image_height, vision_detail
+                           snapshot_bytes, image_width, image_height, vision_detail, suppressed_by_event_id
                     FROM events WHERE event_id = 'evt-1'
                     """
                 ).fetchone()
@@ -60,6 +60,34 @@ class EventStoreTests(unittest.TestCase):
             self.assertEqual(row[8], 1280)
             self.assertEqual(row[9], 720)
             self.assertEqual(row[10], "low")
+            self.assertIsNone(row[11])
+
+    def test_upsert_event_persists_suppressed_by_link(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "synthia_vision.db"
+            DatabaseBootstrap(db_path=db_path, schema_sql_path=Path("Documents/schema.sql")).initialize()
+            store = EventStore(db_path)
+            event = FrigateEvent(
+                event_id="evt-3",
+                camera="doorbell",
+                label="person",
+                event_type="update",
+                event_ts=1700000002.0,
+            )
+            store.upsert_event(
+                event=event,
+                accepted=False,
+                reject_reason="suppressed_duplicate",
+                dedupe_hit=True,
+                suppressed_by_event_id="evt-1",
+                result_status="suppressed",
+            )
+
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                row = conn.execute(
+                    "SELECT result_status, reject_reason, dedupe_hit, suppressed_by_event_id FROM events WHERE event_id='evt-3'"
+                ).fetchone()
+            self.assertEqual(row, ("suppressed", "suppressed_duplicate", 1, "evt-1"))
 
     def test_insert_metric_and_error_rows(self) -> None:
         with tempfile.TemporaryDirectory() as td:

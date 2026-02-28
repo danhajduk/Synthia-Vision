@@ -27,6 +27,7 @@ class MQTTPublishBehaviorTests(unittest.TestCase):
             "subject_type": "cam/subject_type",
             "confidence": "cam/confidence",
             "description": "cam/description",
+            "suppressed_count": "cam/suppressed_count",
             "monthly_cost": "cam/monthly_cost",
         }
         client._publish_sync = lambda topic, payload, retain=None: published.append(  # type: ignore[method-assign]
@@ -38,6 +39,7 @@ class MQTTPublishBehaviorTests(unittest.TestCase):
         self.assertIn(("cam/result_status", "waiting"), published)
         self.assertIn(("cam/action", "waiting"), published)
         self.assertIn(("cam/description", "waiting for event"), published)
+        self.assertIn(("cam/suppressed_count", "0"), published)
 
     def test_publish_camera_status_only_does_not_publish_action_or_description(self) -> None:
         if MQTTClient is None:
@@ -110,6 +112,8 @@ class MQTTPublishBehaviorTests(unittest.TestCase):
                     cooldown_s=45,
                     vision_detail="high",
                     phash_threshold=8,
+                    security_capable=False,
+                    security_mode=False,
                 )
 
         client = MQTTClient.__new__(MQTTClient)

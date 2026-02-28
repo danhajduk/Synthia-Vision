@@ -308,6 +308,9 @@ Setup wizard:
 - Core metrics topics:
   - `.../events/count_total`
   - `.../events/count_today`
+  - `.../events/suppressed_total`
+  - `.../events/suppressed_today`
+  - `.../events/suppressed_rate_today`
   - `.../cost/last`
   - `.../cost/daily_total`
   - `.../cost/month2day_total`
@@ -323,6 +326,7 @@ Setup wizard:
   - `.../camera/{camera}/process_update_events/set` (`ON`/`OFF` command)
   - `.../camera/{camera}/last_event_id`
   - `.../camera/{camera}/last_event_ts` (ISO timestamp)
+  - `.../camera/{camera}/suppressed_count`
   - `.../camera/{camera}/result_status`
   - `.../camera/{camera}/action`
   - `.../camera/{camera}/subject_type`
@@ -390,8 +394,17 @@ Key current settings:
 - `topics.control.high_precision_mode`
 - `topics.events.count_total`
 - `topics.events.count_today`
+- `topics.events.suppressed_total`
+- `topics.events.suppressed_today`
+- `topics.events.suppressed_rate_today`
 - `topics.cost.*`
 - `topics.tokens.*`
+- `topics.camera.suppressed_count`
+- `suppression.enabled`
+- `suppression.window_seconds`
+- `suppression.max_suppressed_log`
+- `policy.cameras.<camera>.suppression_enabled`
+- `policy.cameras.<camera>.suppression_window_seconds`
 - `logging.level`
 - `logging.components.core`
 - `logging.components.mqtt`

@@ -215,5 +215,7 @@ class DatabaseBootstrap:
             event_column_names = {str(row[1]) for row in event_columns}
             if "frigate_score" not in event_column_names:
                 cur.execute("ALTER TABLE events ADD COLUMN frigate_score REAL")
+            if "suppressed_by_event_id" not in event_column_names:
+                cur.execute("ALTER TABLE events ADD COLUMN suppressed_by_event_id TEXT")
         finally:
             cur.close()

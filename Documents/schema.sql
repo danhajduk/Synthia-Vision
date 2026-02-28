@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS events (
   reject_reason TEXT,
   cooldown_remaining_s REAL,
   dedupe_hit INTEGER NOT NULL DEFAULT 0,
+  suppressed_by_event_id TEXT,
 
   result_status TEXT,
   action TEXT,

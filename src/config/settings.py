@@ -215,6 +215,8 @@ class PolicyCameraConfig:
     prompt_preset: str | None = None
     vision_detail: str | None = None
     max_side_px: int | None = None
+    suppression_enabled: bool | None = None
+    suppression_window_seconds: int | None = None
 
 
 @dataclass(slots=True)
@@ -267,6 +269,13 @@ class DedupeConfig:
 
 
 @dataclass(slots=True)
+class SuppressionConfig:
+    enabled: bool = True
+    window_seconds: int = 15
+    max_suppressed_log: int = 200
+
+
+@dataclass(slots=True)
 class ServiceConfig:
     app: AppConfig
     logging: LoggingConfig
@@ -281,6 +290,7 @@ class ServiceConfig:
     modes: ModesConfig
     budget: BudgetConfig
     dedupe: DedupeConfig
+    suppression: SuppressionConfig
     topics: dict[str, Any]
 
     @property
@@ -352,6 +362,7 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
     )
     budget_data = _as_mapping(resolved_data.get("budget", {}), "budget")
     dedupe_data = _as_mapping(resolved_data.get("dedupe", {}), "dedupe")
+    suppression_data = _as_mapping(resolved_data.get("suppression", {}), "suppression")
     topics_data = _as_mapping(resolved_data.get("topics", {}), "topics")
     logging_data = _as_mapping(resolved_data.get("logging", {}), "logging")
     logging_components_data = _as_mapping(
@@ -598,6 +609,11 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
                 "dedupe.ignore_event_types",
             ),
         ),
+        suppression=SuppressionConfig(
+            enabled=_as_bool(suppression_data.get("enabled", True)),
+            window_seconds=max(0, int(suppression_data.get("window_seconds", 15))),
+            max_suppressed_log=max(0, int(suppression_data.get("max_suppressed_log", 200))),
+        ),
         topics=topics_data,
     )
 
@@ -634,6 +650,8 @@ def _build_camera_policy_map(data: dict[str, Any]) -> dict[str, PolicyCameraConf
             prompt_preset=_optional_str(raw_value.get("prompt_preset")),
             vision_detail=_optional_str(raw_value.get("vision_detail")),
             max_side_px=_optional_int(raw_value.get("max_side_px")),
+            suppression_enabled=_optional_bool(raw_value.get("suppression_enabled")),
+            suppression_window_seconds=_optional_int(raw_value.get("suppression_window_seconds")),
             allowed_actions=_as_string_list(
                 actions_data.get("allowed", []),
                 f"policy.cameras.{camera_name}.actions.allowed",
@@ -803,6 +821,10 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("mqtt.publish.qos must be 0, 1, or 2")
     if config.frigate.stats_poll_seconds < 5:
         raise ConfigError("frigate.stats_poll_s must be >= 5")
+    if config.suppression.window_seconds < 0:
+        raise ConfigError("suppression.window_seconds must be >= 0")
+    if config.suppression.max_suppressed_log < 0:
+        raise ConfigError("suppression.max_suppressed_log must be >= 0")
 
     if not config.openai.api_key:
         raise ConfigError(
@@ -855,6 +877,13 @@ def _validate_config(config: ServiceConfig) -> None:
             )
         if camera_policy.max_side_px is not None and camera_policy.max_side_px < 128:
             raise ConfigError(f"policy.cameras.{camera_name}.max_side_px must be >= 128")
+        if (
+            camera_policy.suppression_window_seconds is not None
+            and camera_policy.suppression_window_seconds < 0
+        ):
+            raise ConfigError(
+                f"policy.cameras.{camera_name}.suppression_window_seconds must be >= 0"
+            )
         if camera_policy.allowed_actions:
             invalid_actions = [
                 action for action in camera_policy.allowed_actions if action not in allowed_action_set
@@ -922,6 +951,22 @@ def _as_bool(value: Any) -> bool:
         if normalized in {"0", "false", "no", "off"}:
             return False
     raise ConfigError(f"Expected boolean value, got {type(value).__name__}")
+
+
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(int(value))
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    raise ConfigError("Expected optional bool value")
 
 
 def _optional_float(value: Any) -> float | None:

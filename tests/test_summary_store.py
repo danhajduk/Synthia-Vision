@@ -23,6 +23,12 @@ class SummaryStoreTests(unittest.TestCase):
             camera_store = CameraStore(db_path)
             camera_store.upsert_discovered_camera("doorbell")
             camera_store.set_camera_enabled("doorbell", True)
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                conn.execute(
+                    "UPDATE cameras SET setup_completed = 1 WHERE camera_key = ?",
+                    ("doorbell",),
+                )
+                conn.commit()
             camera_store.upsert_kv("runtime.queue_depth", "3")
             camera_store.upsert_kv("service.status", "enabled")
             camera_store.upsert_kv("runtime.heartbeat_ts", "2026-02-23T10:00:00+00:00")
@@ -51,6 +57,21 @@ class SummaryStoreTests(unittest.TestCase):
                 cost_usd=0.0012,
                 model="gpt-4.1-mini",
             )
+            suppressed_event = FrigateEvent(
+                event_id="evt-2",
+                camera="doorbell",
+                label="person",
+                event_type="update",
+                event_ts=datetime.now(timezone.utc).timestamp(),
+            )
+            event_store.upsert_event(
+                event=suppressed_event,
+                accepted=False,
+                reject_reason="suppressed_duplicate",
+                dedupe_hit=True,
+                suppressed_by_event_id="evt-1",
+                result_status="suppressed",
+            )
 
             store = SummaryStore(db_path)
             status = store.get_status_summary()
@@ -64,6 +85,9 @@ class SummaryStoreTests(unittest.TestCase):
             self.assertIn("doorbell", metrics["cost_monthly_by_camera"])
             self.assertEqual(metrics["tokens_today_total"], 120)
             self.assertEqual(metrics["avg_tokens_per_event"], 120.0)
+            self.assertEqual(metrics["suppressed_count_total"], 1)
+            self.assertEqual(metrics["suppressed_count_today"], 1)
+            self.assertIn("doorbell", metrics["suppressed_count_by_camera"])
 
             cameras = store.get_cameras_summary()
             self.assertEqual(cameras["count"], 1)
@@ -86,6 +110,8 @@ class SummaryStoreTests(unittest.TestCase):
             self.assertEqual(guest_metrics["avg_tokens_per_event"], 120.0)
             self.assertEqual(guest_metrics["avg_cost_per_event_usd"], guest_metrics["cost_avg_per_event"])
             self.assertEqual(guest_metrics["ai_calls_today"], guest_metrics["count_today"])
+            self.assertEqual(guest_metrics["suppressed_count_total"], 1)
+            self.assertEqual(guest_metrics["suppressed_count_today"], 1)
 
             guest_cameras = store.get_guest_cameras_payload()
             self.assertEqual(guest_cameras["count"], 1)

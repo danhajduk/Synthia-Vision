@@ -22,6 +22,7 @@ class EventStore:
         reject_reason: str | None = None,
         cooldown_remaining_s: float | None = None,
         dedupe_hit: bool = False,
+        suppressed_by_event_id: str | None = None,
         result_status: str | None = None,
         action: str | None = None,
         subject_type: str | None = None,
@@ -43,10 +44,10 @@ class EventStore:
             conn.execute(
                 """
                 INSERT INTO events(
-                  event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit,
+                  event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit, suppressed_by_event_id,
                   result_status, action, subject_type, frigate_score, confidence, description,
                   snapshot_bytes, image_width, image_height, vision_detail, created_ts
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(event_id) DO UPDATE SET
                   ts=excluded.ts,
                   camera=excluded.camera,
@@ -55,6 +56,7 @@ class EventStore:
                   reject_reason=excluded.reject_reason,
                   cooldown_remaining_s=excluded.cooldown_remaining_s,
                   dedupe_hit=excluded.dedupe_hit,
+                  suppressed_by_event_id=excluded.suppressed_by_event_id,
                   result_status=excluded.result_status,
                   action=excluded.action,
                   subject_type=excluded.subject_type,
@@ -75,6 +77,7 @@ class EventStore:
                     reject_reason,
                     cooldown_remaining_s,
                     1 if dedupe_hit else 0,
+                    suppressed_by_event_id,
                     result_status,
                     action,
                     subject_type,

@@ -19,3 +19,8 @@ dedupe:
   recent_event_ids_max: 400
   per_camera_cooldown_default_s: 30
   ignore_event_types: []
+
+suppression:
+  enabled: true
+  window_seconds: 15
+  max_suppressed_log: 200

@@ -20,6 +20,8 @@ This file is the practical source of truth for active development. It reflects c
   - `heartbeat_ts`
 - Queue card:
   - `queue_depth`
+  - `suppressed_count_today`
+  - `suppressed_rate_today`
   - `dropped_events_total`
 - Cost card:
   - `cost_daily_total`
@@ -107,6 +109,10 @@ Service status (`service.status`):
 
 Per-camera `result_status` examples:
 - `waiting`, `processing`, `ok`, `unchanged`, `snapshot_failed`, `schema_failed`, `openai_failed`, `token_budget_exceeded`, `blocked_budget`, `skipped`, `suppressed`
+
+Suppression-specific:
+- `reject_reason=suppressed_duplicate`
+- `suppressed_by_event_id` links suppressed event to the kept event in admin journal APIs
 
 ## Camera setup context
 

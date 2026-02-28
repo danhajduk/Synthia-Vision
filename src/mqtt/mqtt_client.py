@@ -110,6 +110,9 @@ class MQTTClient:
                 "count_today": 0,
                 "count_today_date": datetime.now().date().isoformat(),
                 "count_month_key": datetime.now().strftime("%Y-%m"),
+                "suppressed_count_total": 0,
+                "suppressed_count_today": 0,
+                "suppressed_count_by_camera": {},
                 "cost_last": 0.0,
                 "cost_daily_total": 0.0,
                 "cost_month2day_total": 0.0,
@@ -692,6 +695,28 @@ class MQTTClient:
             self._publish_camera_status_only(event=event, result_status="skipped")
             return
 
+        suppressed_by_event_id = self._suppressed_by_event_id(event)
+        if suppressed_by_event_id is not None:
+            self._journal_event(
+                event=event,
+                accepted=False,
+                reject_reason="suppressed_duplicate",
+                dedupe_hit=True,
+                suppressed_by_event_id=suppressed_by_event_id,
+                result_status="suppressed",
+            )
+            self._record_suppressed_event(camera=event.camera)
+            max_logged = int(getattr(self._config.suppression, "max_suppressed_log", 0))
+            if max_logged <= 0 or self._runtime_metrics.get("suppressed_count_total", 0) <= max_logged:
+                LOGGER.info(
+                    "Event suppressed by suppression window event_id=%s camera=%s suppressed_by=%s",
+                    event.event_id,
+                    event.camera,
+                    suppressed_by_event_id,
+                )
+            self._publish_camera_status_only(event=event, result_status="suppressed")
+            return
+
         decision = should_process(
             event=event,
             state=self._policy_runtime_state,
@@ -914,6 +939,50 @@ class MQTTClient:
             }
         self._save_policy_state()
 
+    def _suppressed_by_event_id(self, event: FrigateEvent) -> str | None:
+        if event.event_ts is None:
+            return None
+        if not bool(getattr(self._config.suppression, "enabled", True)):
+            return None
+
+        camera_policy = self._config.policy.cameras.get(event.camera)
+        camera_enabled_override = (
+            camera_policy.suppression_enabled if camera_policy is not None else None
+        )
+        if camera_enabled_override is False:
+            return None
+
+        global_window = max(0, int(getattr(self._config.suppression, "window_seconds", 0)))
+        camera_window = (
+            camera_policy.suppression_window_seconds if camera_policy is not None else None
+        )
+        window_seconds = max(
+            0,
+            int(camera_window if camera_window is not None else global_window),
+        )
+        if window_seconds <= 0:
+            return None
+
+        events_data = self._policy_runtime_state.get("events", {})
+        if not isinstance(events_data, dict):
+            return None
+        last_by_camera = events_data.get("last_by_camera", {})
+        if not isinstance(last_by_camera, dict):
+            return None
+        camera_state = last_by_camera.get(event.camera, {})
+        if not isinstance(camera_state, dict):
+            return None
+        kept_event_id = str(camera_state.get("last_event_id", "") or "").strip()
+        kept_ts_raw = camera_state.get("last_event_ts")
+        if not kept_event_id or not isinstance(kept_ts_raw, (int, float)):
+            return None
+        elapsed = float(event.event_ts) - float(kept_ts_raw)
+        if elapsed < 0:
+            return None
+        if elapsed <= float(window_seconds):
+            return kept_event_id
+        return None
+
     async def _load_policy_state(self) -> None:
         loaded = await asyncio.to_thread(self._state_manager.load_state)
         events_data = loaded.get("events")
@@ -937,6 +1006,9 @@ class MQTTClient:
             "count_today": int(metrics_data.get("count_today", 0)),
             "count_today_date": str(metrics_data.get("count_today_date", today_key)),
             "count_month_key": str(metrics_data.get("count_month_key", datetime.now().strftime("%Y-%m"))),
+            "suppressed_count_total": int(metrics_data.get("suppressed_count_total", 0)),
+            "suppressed_count_today": int(metrics_data.get("suppressed_count_today", 0)),
+            "suppressed_count_by_camera": {},
             "cost_last": float(metrics_data.get("cost_last", 0.0)),
             "cost_daily_total": float(metrics_data.get("cost_daily_total", 0.0)),
             "cost_month2day_total": float(metrics_data.get("cost_month2day_total", 0.0)),
@@ -945,6 +1017,11 @@ class MQTTClient:
             "tokens_avg_per_request": float(metrics_data.get("tokens_avg_per_request", 0.0)),
             "tokens_avg_per_day": float(metrics_data.get("tokens_avg_per_day", 0.0)),
         }
+        raw_suppressed_by_camera = metrics_data.get("suppressed_count_by_camera")
+        if isinstance(raw_suppressed_by_camera, dict):
+            loaded_metrics["suppressed_count_by_camera"] = {
+                str(camera): int(count) for camera, count in raw_suppressed_by_camera.items()
+            }
         raw_by_camera = metrics_data.get("cost_monthly_by_camera")
         if isinstance(raw_by_camera, dict):
             loaded_metrics["cost_monthly_by_camera"] = {
@@ -1444,11 +1521,17 @@ class MQTTClient:
             self._publish_camera_enabled_state(camera)
             self._publish_camera_event_control_states(camera)
             self._publish_camera_unknown(camera)
+            self._publish_camera_suppressed_count(camera)
             self._publish_camera_monthly_cost(camera)
 
     def _publish_core_defaults_unknown(self) -> None:
         topics = self._resolve_core_topics()
         explicit_defaults = {
+            "events_count_total": str(int(self._runtime_metrics.get("count_total", 0))),
+            "events_count_today": str(int(self._runtime_metrics.get("count_today", 0))),
+            "events_suppressed_total": str(int(self._runtime_metrics.get("suppressed_count_total", 0))),
+            "events_suppressed_today": str(int(self._runtime_metrics.get("suppressed_count_today", 0))),
+            "events_suppressed_rate_today": "0.0000",
             "control_enabled": bool_to_on_off(self._service_enabled),
             "control_monthly_budget": f"{self._monthly_budget_limit:.2f}",
             "control_confidence_threshold": str(self._confidence_threshold_percent),
@@ -1472,8 +1555,20 @@ class MQTTClient:
 
     def _publish_global_metrics(self) -> None:
         topics = self._resolve_core_topics()
-        self._publish_sync(topics["events_count_total"], str(int(self._runtime_metrics.get("count_total", 0))))
-        self._publish_sync(topics["events_count_today"], str(int(self._runtime_metrics.get("count_today", 0))))
+        count_total = int(self._runtime_metrics.get("count_total", 0))
+        count_today = int(self._runtime_metrics.get("count_today", 0))
+        suppressed_total = int(self._runtime_metrics.get("suppressed_count_total", 0))
+        suppressed_today = int(self._runtime_metrics.get("suppressed_count_today", 0))
+        suppressed_rate_today = (
+            float(suppressed_today) / float(suppressed_today + count_today)
+            if (suppressed_today + count_today) > 0
+            else 0.0
+        )
+        self._publish_sync(topics["events_count_total"], str(count_total))
+        self._publish_sync(topics["events_count_today"], str(count_today))
+        self._publish_sync(topics["events_suppressed_total"], str(suppressed_total))
+        self._publish_sync(topics["events_suppressed_today"], str(suppressed_today))
+        self._publish_sync(topics["events_suppressed_rate_today"], f"{suppressed_rate_today:.4f}")
         self._publish_sync(topics["cost_last"], f"{float(self._runtime_metrics.get('cost_last', 0.0)):.4f}")
         self._publish_sync(
             topics["cost_daily_total"],
@@ -1509,6 +1604,26 @@ class MQTTClient:
         self._policy_runtime_state["metrics"] = dict(self._runtime_metrics)
         self._save_policy_state()
         self._publish_global_metrics()
+
+    def _record_suppressed_event(self, *, camera: str) -> None:
+        self._apply_metric_rollovers(self._runtime_metrics)
+        self._runtime_metrics["suppressed_count_total"] = int(
+            self._runtime_metrics.get("suppressed_count_total", 0)
+        ) + 1
+        self._runtime_metrics["suppressed_count_today"] = int(
+            self._runtime_metrics.get("suppressed_count_today", 0)
+        ) + 1
+
+        by_camera = self._runtime_metrics.get("suppressed_count_by_camera")
+        if not isinstance(by_camera, dict):
+            by_camera = {}
+            self._runtime_metrics["suppressed_count_by_camera"] = by_camera
+        by_camera[camera] = int(by_camera.get(camera, 0)) + 1
+
+        self._policy_runtime_state["metrics"] = dict(self._runtime_metrics)
+        self._save_policy_state()
+        self._publish_global_metrics()
+        self._publish_camera_suppressed_count(camera)
 
     def _record_openai_usage_metrics(self, *, usage: OpenAIUsage, camera: str) -> None:
         self._apply_metric_rollovers(self._runtime_metrics)
@@ -1559,6 +1674,7 @@ class MQTTClient:
         if str(metrics.get("count_today_date", today_key)) != today_key:
             metrics["count_today"] = 0
             metrics["count_today_date"] = today_key
+            metrics["suppressed_count_today"] = 0
             metrics["cost_daily_total"] = 0.0
         if str(metrics.get("count_month_key", month_key)) != month_key:
             metrics["count_month_key"] = month_key
@@ -1574,6 +1690,7 @@ class MQTTClient:
         self._publish_sync(topics["subject_type"], "unknown")
         self._publish_sync(topics["confidence"], "unknown")
         self._publish_sync(topics["description"], "waiting for event")
+        self._publish_sync(topics["suppressed_count"], "0")
         self._publish_sync(topics["monthly_cost"], "unknown")
 
     def _publish_camera_monthly_cost(self, camera: str) -> None:
@@ -1594,6 +1711,14 @@ class MQTTClient:
         runtime = self._resolve_camera_runtime_settings(camera)
         self._publish_sync(topics["process_end_events"], bool_to_on_off(runtime.process_end_events))
         self._publish_sync(topics["process_update_events"], bool_to_on_off(runtime.process_update_events))
+
+    def _publish_camera_suppressed_count(self, camera: str) -> None:
+        topics = self._resolve_camera_topics(camera)
+        by_camera = self._runtime_metrics.get("suppressed_count_by_camera")
+        if not isinstance(by_camera, dict):
+            self._publish_sync(topics["suppressed_count"], "0")
+            return
+        self._publish_sync(topics["suppressed_count"], str(int(by_camera.get(camera, 0))))
 
     def _publish_discovery_configs(self) -> None:
         if not self._config.mqtt_discovery.enabled:
@@ -1621,6 +1746,7 @@ class MQTTClient:
             "result_status": "{mqtt_prefix}/camera/{camera}/result_status",
             "last_event_id": "{mqtt_prefix}/camera/{camera}/last_event_id",
             "last_event_ts": "{mqtt_prefix}/camera/{camera}/last_event_ts",
+            "suppressed_count": "{mqtt_prefix}/camera/{camera}/suppressed_count",
             "monthly_cost": str(
                 cost_topics.get(
                     "monthly_by_camera",
@@ -1671,6 +1797,7 @@ class MQTTClient:
         reject_reason: str | None = None,
         cooldown_remaining_s: float | None = None,
         dedupe_hit: bool = False,
+        suppressed_by_event_id: str | None = None,
         result_status: str | None = None,
         action: str | None = None,
         subject_type: str | None = None,
@@ -1688,6 +1815,7 @@ class MQTTClient:
                 reject_reason=reject_reason,
                 cooldown_remaining_s=cooldown_remaining_s,
                 dedupe_hit=dedupe_hit,
+                suppressed_by_event_id=suppressed_by_event_id,
                 result_status=result_status,
                 action=action,
                 subject_type=subject_type,
@@ -1791,11 +1919,15 @@ class MQTTClient:
         camera_costs = self._runtime_metrics.get("cost_monthly_by_camera", {})
         if not isinstance(camera_costs, dict):
             camera_costs = {}
+        suppressed_by_camera = self._runtime_metrics.get("suppressed_count_by_camera", {})
+        if not isinstance(suppressed_by_camera, dict):
+            suppressed_by_camera = {}
         return sorted(
             {
                 *self._process_end_events_by_camera.keys(),
                 *self._process_update_events_by_camera.keys(),
                 *camera_costs.keys(),
+                *suppressed_by_camera.keys(),
             }
         )
 
@@ -1809,6 +1941,9 @@ class MQTTClient:
             "tokens_avg_per_day": self._resolve_topic_path("tokens.avg_per_day", "tokens/avg_per_day"),
             "events_count_total": self._resolve_topic_path("events.count_total", "events/count_total"),
             "events_count_today": self._resolve_topic_path("events.count_today", "events/count_today"),
+            "events_suppressed_total": self._resolve_topic_path("events.suppressed_total", "events/suppressed_total"),
+            "events_suppressed_today": self._resolve_topic_path("events.suppressed_today", "events/suppressed_today"),
+            "events_suppressed_rate_today": self._resolve_topic_path("events.suppressed_rate_today", "events/suppressed_rate_today"),
             "control_enabled": self._resolve_topic_path("control.enabled", "control/enabled"),
             "control_monthly_budget": self._resolve_topic_path("control.monthly_budget", "control/monthly_budget"),
             "control_confidence_threshold": self._resolve_topic_path("control.confidence_threshold", "control/confidence_threshold"),

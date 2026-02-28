@@ -123,6 +123,24 @@ class HADiscoveryPublisher:
                 "state_topic": self._core_topic("events.count_today", "events/count_today"),
                 "unit_of_measurement": "events",
             }),
+            ("events_suppressed_total", "sensor", {
+                "name": "Synthia Vision Suppressed Total",
+                "icon": "mdi:filter-remove",
+                "state_topic": self._core_topic("events.suppressed_total", "events/suppressed_total"),
+                "unit_of_measurement": "events",
+            }),
+            ("events_suppressed_today", "sensor", {
+                "name": "Synthia Vision Suppressed Today",
+                "icon": "mdi:filter-remove-outline",
+                "state_topic": self._core_topic("events.suppressed_today", "events/suppressed_today"),
+                "unit_of_measurement": "events",
+            }),
+            ("events_suppressed_rate_today", "sensor", {
+                "name": "Synthia Vision Suppression Rate Today",
+                "icon": "mdi:percent",
+                "state_topic": self._core_topic("events.suppressed_rate_today", "events/suppressed_rate_today"),
+                "unit_of_measurement": "ratio",
+            }),
             ("control_enabled", "switch", {
                 "name": "Synthia Vision Enabled",
                 "icon": "mdi:power",
@@ -329,6 +347,16 @@ class HADiscoveryPublisher:
                     "icon": "mdi:clock-outline",
                     "state_topic": self._camera_topic(camera, "last_event_ts"),
                     "device_class": "timestamp",
+                },
+            ),
+            (
+                "suppressed_count",
+                "sensor",
+                {
+                    "name": "Suppressed Count",
+                    "icon": "mdi:filter-remove",
+                    "state_topic": self._camera_topic(camera, "suppressed_count"),
+                    "unit_of_measurement": "events",
                 },
             ),
             (

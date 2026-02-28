@@ -45,6 +45,21 @@ class SummaryStore:
                 "SELECT COUNT(*) FROM events WHERE accepted=1 AND substr(ts,1,10)=?",
                 (today,),
             )
+            suppressed_total = _single_int(
+                conn,
+                """
+                SELECT COUNT(*) FROM events
+                WHERE result_status='suppressed' AND reject_reason='suppressed_duplicate'
+                """,
+            )
+            suppressed_today = _single_int(
+                conn,
+                """
+                SELECT COUNT(*) FROM events
+                WHERE result_status='suppressed' AND reject_reason='suppressed_duplicate' AND substr(ts,1,10)=?
+                """,
+                (today,),
+            )
             cost_last = _single_float(
                 conn,
                 "SELECT COALESCE(cost_usd, 0) FROM metrics ORDER BY created_ts DESC LIMIT 1",
@@ -97,6 +112,15 @@ class SummaryStore:
                 """,
                 (month_prefix,),
             ).fetchall()
+            suppressed_by_camera_rows = conn.execute(
+                """
+                SELECT camera, COUNT(*)
+                FROM events
+                WHERE result_status='suppressed' AND reject_reason='suppressed_duplicate'
+                GROUP BY camera
+                ORDER BY camera ASC
+                """
+            ).fetchall()
             queue_depth = _single_int(
                 conn,
                 "SELECT COALESCE(v, '0') FROM kv WHERE k = 'runtime.queue_depth'",
@@ -118,9 +142,19 @@ class SummaryStore:
         }
         count_total = max(0, int(accepted_total))
         count_today = max(0, int(accepted_today))
+        suppressed_total_count = max(0, int(suppressed_total))
+        suppressed_today_count = max(0, int(suppressed_today))
+        suppressed_rate_today = (
+            float(suppressed_today_count) / float(suppressed_today_count + count_today)
+            if (suppressed_today_count + count_today) > 0
+            else 0.0
+        )
         cost_avg_per_event = (cost_month2day_total / count_total) if count_total > 0 else 0.0
         tokens_avg_per_day = float(tokens_avg_per_request) * float(count_today)
         avg_tokens_per_event = (float(tokens_today_total) / float(count_today)) if count_today > 0 else 0.0
+        suppressed_count_by_camera = {
+            str(camera): int(total) for camera, total in suppressed_by_camera_rows
+        }
         return {
             "cost_avg_per_event": float(cost_avg_per_event),
             "cost_daily_total": float(cost_daily_total),
@@ -130,6 +164,10 @@ class SummaryStore:
             "count_today": count_today,
             "count_today_date": today,
             "count_total": count_total,
+            "suppressed_count_total": suppressed_total_count,
+            "suppressed_count_today": suppressed_today_count,
+            "suppressed_rate_today": float(suppressed_rate_today),
+            "suppressed_count_by_camera": suppressed_count_by_camera,
             "queue_depth": max(0, int(queue_depth)),
             "dropped_events_total": max(0, int(dropped_events_total)),
             "dropped_update_total": max(0, int(dropped_update_total)),
@@ -199,6 +237,10 @@ class SummaryStore:
             "count_today": int(metrics.get("count_today", 0)),
             "count_today_date": str(metrics.get("count_today_date", "")),
             "queue_depth": int(metrics.get("queue_depth", 0)),
+            "suppressed_count_total": int(metrics.get("suppressed_count_total", 0)),
+            "suppressed_count_today": int(metrics.get("suppressed_count_today", 0)),
+            "suppressed_rate_today": float(metrics.get("suppressed_rate_today", 0.0)),
+            "suppressed_count_by_camera": dict(metrics.get("suppressed_count_by_camera", {})),
             "dropped_events_total": int(metrics.get("dropped_events_total", 0)),
             "dropped_update_total": int(metrics.get("dropped_update_total", 0)),
             "dropped_queue_full_total": int(metrics.get("dropped_queue_full_total", 0)),
