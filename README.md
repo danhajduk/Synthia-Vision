@@ -286,6 +286,10 @@ Admin UI pages (require admin session):
 - `GET /ui/events/{id}`
 - `GET /ui/errors`
 
+Admin events UI:
+- Events list includes AI confidence percent and short `ai_reason` snippet.
+- Event detail modal includes full `ai_reason` snippet and normalized `ai_confidence`.
+
 Implementation paths:
 - templates: `src/ui/templates`
 - static assets: `src/ui/static`

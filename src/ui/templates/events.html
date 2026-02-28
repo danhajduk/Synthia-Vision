@@ -67,7 +67,7 @@
           <div class="table-wrap">
             <table class="table">
               <thead>
-                <tr><th>Time</th><th>Camera</th><th>Status</th><th>Event ID</th></tr>
+                <tr><th>Time</th><th>Camera</th><th>Status</th><th>AI</th><th>Event ID</th></tr>
               </thead>
               <tbody id="events-table-body">
                 {% for event in events %}
@@ -91,11 +91,19 @@
                     <span class="pill"><span>{{ event.result_status or '—' }}</span></span>
                     {% endif %}
                   </td>
+                  <td>
+                    {% if event.ai_confidence is not none %}
+                    <div class="sub mono">{{ (event.ai_confidence * 100)|round(0, 'common')|int }}%</div>
+                    {% else %}
+                    <div class="sub mono">—</div>
+                    {% endif %}
+                    <div class="sub">{{ (event.ai_reason or '—')[:72] }}{% if event.ai_reason and (event.ai_reason|length) > 72 %}…{% endif %}</div>
+                  </td>
                   <td><a href="/ui/events/{{ event.event_id }}" data-event-link title="{{ event.event_id }}">{{ (event.event_id or '—')[:10] }}{% if event.event_id and (event.event_id|length) > 10 %}…{% endif %}</a></td>
                 </tr>
                 {% endfor %}
                 {% if not events %}
-                <tr><td colspan="4">No matching events.</td></tr>
+                <tr><td colspan="5">No matching events.</td></tr>
                 {% endif %}
               </tbody>
             </table>
@@ -158,6 +166,7 @@
         <h3>Metrics</h3>
         <div class="form-grid">
           <div class="field-stack"><label class="field-label">Frigate score</label><div class="sub mono" id="events-detail-frigate-score">—</div></div>
+          <div class="field-stack"><label class="field-label">AI confidence</label><div class="sub mono" id="events-detail-ai-confidence">—</div></div>
           <div class="field-stack"><label class="field-label">Dedupe hit</label><div class="sub mono" id="events-detail-dedupe-hit">—</div></div>
           <div class="field-stack"><label class="field-label">Cooldown remaining</label><div class="sub mono" id="events-detail-cooldown">—</div></div>
           <div class="field-stack"><label class="field-label">Vision detail</label><div class="sub mono" id="events-detail-vision-detail">—</div></div>
@@ -165,6 +174,7 @@
           <div class="field-stack"><label class="field-label">Latency OpenAI (ms)</label><div class="sub mono" id="events-detail-latency-openai">—</div></div>
           <div class="field-stack"><label class="field-label">Latency total (ms)</label><div class="sub mono" id="events-detail-latency-total">—</div></div>
         </div>
+        <div class="sub" id="events-detail-ai-reason" style="margin-top:8px;">AI reason: —</div>
       </div>
 
       <div class="card" style="margin-top:10px;">

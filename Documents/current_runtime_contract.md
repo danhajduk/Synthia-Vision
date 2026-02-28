@@ -118,6 +118,7 @@ Suppression-specific:
 AI explainability (admin event APIs only):
 - `ai_confidence` stores normalized model confidence (`0.0` to `1.0`)
 - `ai_reason` stores a short sanitized reason snippet (1-2 sentences, no guest exposure)
+- `/ui/events` admin table + detail modal render both fields for operator review
 
 MQTT metrics:
 - `.../events/avg_confidence_today` publishes rolling daily average AI confidence (ratio)

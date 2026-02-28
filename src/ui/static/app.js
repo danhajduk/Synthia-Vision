@@ -566,6 +566,8 @@
     const detailSnapshot = document.getElementById('events-detail-snapshot');
     const detailSnapshotImage = document.getElementById('events-detail-snapshot-image');
     const detailFrigateScore = document.getElementById('events-detail-frigate-score');
+    const detailAiConfidence = document.getElementById('events-detail-ai-confidence');
+    const detailAiReason = document.getElementById('events-detail-ai-reason');
     const detailDedupeHit = document.getElementById('events-detail-dedupe-hit');
     const detailCooldown = document.getElementById('events-detail-cooldown');
     const detailVisionDetail = document.getElementById('events-detail-vision-detail');
@@ -616,6 +618,13 @@
         detailEventType.textContent = String(data.event_type || '—');
         detailDescription.textContent = 'Description: ' + String(data.description || '—');
         detailFrigateScore.textContent = data.frigate_score == null ? '—' : String(data.frigate_score);
+        if (data.ai_confidence == null) {
+          detailAiConfidence.textContent = '—';
+        } else {
+          const confidencePct = Math.max(0, Math.min(100, Math.round(Number(data.ai_confidence) * 100)));
+          detailAiConfidence.textContent = String(confidencePct) + '%';
+        }
+        detailAiReason.textContent = 'AI reason: ' + String(data.ai_reason || '—');
         detailDedupeHit.textContent = data.dedupe_hit == null ? '—' : (data.dedupe_hit ? 'Yes' : 'No');
         detailCooldown.textContent = data.cooldown_remaining_s == null ? '—' : String(data.cooldown_remaining_s);
         detailVisionDetail.textContent = String(data.vision_detail || '—');
