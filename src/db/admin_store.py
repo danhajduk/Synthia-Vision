@@ -25,6 +25,8 @@ class AdminStore:
         status: str | None = None,
         event_id_query: str | None = None,
         accepted: bool | None = None,
+        sort_by: str = "ts",
+        sort_dir: str = "desc",
     ) -> dict[str, Any]:
         limit = max(1, min(500, int(limit)))
         offset = max(0, int(offset))
@@ -43,6 +45,23 @@ class AdminStore:
             where.append("accepted = ?")
             params.append(1 if accepted else 0)
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        normalized_sort_by = str(sort_by or "ts").strip().lower()
+        normalized_sort_dir = "asc" if str(sort_dir or "").strip().lower() == "asc" else "desc"
+        order_sql = "ORDER BY ts DESC, id DESC"
+        if normalized_sort_by == "risk_score":
+            if normalized_sort_dir == "asc":
+                order_sql = "ORDER BY (risk_score IS NULL) ASC, risk_score ASC, ts DESC, id DESC"
+            else:
+                order_sql = "ORDER BY (risk_score IS NULL) ASC, risk_score DESC, ts DESC, id DESC"
+        elif normalized_sort_by == "ai_confidence":
+            if normalized_sort_dir == "asc":
+                order_sql = (
+                    "ORDER BY (ai_confidence IS NULL) ASC, ai_confidence ASC, ts DESC, id DESC"
+                )
+            else:
+                order_sql = (
+                    "ORDER BY (ai_confidence IS NULL) ASC, ai_confidence DESC, ts DESC, id DESC"
+                )
         with sqlite3.connect(str(self.db_path), timeout=5.0) as conn:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA busy_timeout = 5000;")
@@ -55,11 +74,11 @@ class AdminStore:
             rows = conn.execute(
                 f"""
                 SELECT event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit, suppressed_by_event_id,
-                       result_status, action, subject_type, frigate_score, confidence, ai_confidence, ai_reason, description,
+                       result_status, action, subject_type, frigate_score, confidence, ai_confidence, ai_reason, risk_score, description,
                        snapshot_bytes, image_width, image_height, vision_detail, created_ts
                 FROM events
                 {where_sql}
-                ORDER BY ts DESC, id DESC
+                {order_sql}
                 LIMIT ? OFFSET ?
                 """,
                 tuple([*params, limit, offset]),
@@ -91,7 +110,7 @@ class AdminStore:
             event = conn.execute(
                 """
                 SELECT event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit, suppressed_by_event_id,
-                       result_status, action, subject_type, frigate_score, confidence, ai_confidence, ai_reason, description,
+                       result_status, action, subject_type, frigate_score, confidence, ai_confidence, ai_reason, risk_score, description,
                        snapshot_bytes, image_width, image_height, vision_detail, created_ts
                 FROM events
                 WHERE event_id = ?

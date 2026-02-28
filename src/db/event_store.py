@@ -30,6 +30,7 @@ class EventStore:
         confidence: float | None = None,
         ai_confidence: float | None = None,
         ai_reason: str | None = None,
+        risk_score: float | None = None,
         description: str | None = None,
         snapshot_bytes: int | None = None,
         image_width: int | None = None,
@@ -47,9 +48,9 @@ class EventStore:
                 """
                 INSERT INTO events(
                   event_id, ts, camera, event_type, accepted, reject_reason, cooldown_remaining_s, dedupe_hit, suppressed_by_event_id,
-                  result_status, action, subject_type, frigate_score, confidence, ai_confidence, ai_reason, description,
+                  result_status, action, subject_type, frigate_score, confidence, ai_confidence, ai_reason, risk_score, description,
                   snapshot_bytes, image_width, image_height, vision_detail, created_ts
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(event_id) DO UPDATE SET
                   ts=excluded.ts,
                   camera=excluded.camera,
@@ -66,6 +67,7 @@ class EventStore:
                   confidence=excluded.confidence,
                   ai_confidence=excluded.ai_confidence,
                   ai_reason=excluded.ai_reason,
+                  risk_score=excluded.risk_score,
                   description=excluded.description,
                   snapshot_bytes=excluded.snapshot_bytes,
                   image_width=excluded.image_width,
@@ -89,6 +91,7 @@ class EventStore:
                     confidence,
                     ai_confidence,
                     ai_reason,
+                    risk_score,
                     description,
                     snapshot_bytes,
                     image_width,

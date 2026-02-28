@@ -185,6 +185,11 @@ python -m src.main
   - `result_status=ok` with action/subject_type/confidence/description
   - `result_status=schema_failed` for invalid model payloads
   - `result_status=openai_failed` for provider/runtime failures
+- Event journal stores per-event `risk_score` (`0.0` to `1.0`) from weighted scoring inputs:
+  - time-of-day
+  - camera/zone importance
+  - AI confidence
+  - event duration (when available)
 
 ## Guest HTTP APIs
 
@@ -197,7 +202,7 @@ Guest endpoints are now exposed by the built-in API server:
 - `GET /api/cameras/{camera_key}/preview.jpg`
 
 Admin endpoints currently available:
-- `GET /api/events`
+- `GET /api/events` (`sort_by=ts|risk_score|ai_confidence`, `sort_dir=asc|desc`)
 - `GET /api/events/{id}`
 - `GET /api/cameras`
 - `POST /api/cameras/{camera_key}`

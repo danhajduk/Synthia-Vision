@@ -82,7 +82,7 @@ Guest:
 - `GET /api/cameras/{camera_key}/preview.jpg`
 
 Admin (session required):
-- `GET /api/events`
+- `GET /api/events` (`sort_by=ts|risk_score|ai_confidence`, `sort_dir=asc|desc`)
 - `GET /api/events/{event_id}`
 - `GET /api/cameras`
 - `GET /api/admin/heatmap` (`hours=24|168`)
@@ -159,6 +159,7 @@ Suppression-specific:
 AI explainability (admin event APIs only):
 - `ai_confidence` stores normalized model confidence (`0.0` to `1.0`)
 - `ai_reason` stores a short sanitized reason snippet (1-2 sentences, no guest exposure)
+- `risk_score` stores normalized event score (`0.0` to `1.0`) derived from time-of-day, camera/zone, AI confidence, and duration inputs.
 - `/ui/events` admin table + detail modal render both fields for operator review
 
 MQTT metrics:

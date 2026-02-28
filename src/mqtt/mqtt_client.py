@@ -33,6 +33,7 @@ from src.models import FrigateEvent
 from src.policy_engine import should_process
 from src.openai import OpenAIUsage, apply_outdoor_action_heuristic, enforce_classification_result
 from src.pipeline import compute_dhash_hex, hamming_distance_hex
+from src.scoring import compute_event_risk_score
 from src.runtime_controls import (
     EventControlSettings,
     apply_event_controls,
@@ -2089,6 +2090,12 @@ class MQTTClient:
         image_height: int | None = None,
         vision_detail: str | None = None,
     ) -> None:
+        score_input = ai_confidence if ai_confidence is not None else confidence
+        risk_score = compute_event_risk_score(
+            event=event,
+            ai_confidence=score_input,
+            scoring=self._config.scoring,
+        )
         try:
             self._event_store.upsert_event(
                 event=event,
@@ -2108,6 +2115,7 @@ class MQTTClient:
                 image_width=image_width,
                 image_height=image_height,
                 vision_detail=vision_detail,
+                risk_score=risk_score,
             )
         except Exception as exc:
             LOGGER.warning(

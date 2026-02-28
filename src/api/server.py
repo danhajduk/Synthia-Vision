@@ -997,6 +997,8 @@ def create_guest_api_app(config: ServiceConfig):
         offset: int = 0,
         camera: str | None = None,
         accepted: bool | None = None,
+        sort_by: str = "ts",
+        sort_dir: str = "desc",
         session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     ):
         _require_admin(session_token)
@@ -1005,6 +1007,8 @@ def create_guest_api_app(config: ServiceConfig):
             offset=offset,
             camera=camera,
             accepted=accepted,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
         )
 
     @app.get("/api/events/{event_id}")

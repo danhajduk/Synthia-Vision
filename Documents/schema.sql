@@ -129,6 +129,7 @@ CREATE TABLE IF NOT EXISTS events (
   confidence REAL,
   ai_confidence REAL,
   ai_reason TEXT,
+  risk_score REAL,
   description TEXT,
 
   snapshot_bytes INTEGER,

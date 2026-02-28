@@ -223,6 +223,8 @@ class DatabaseBootstrap:
                 cur.execute("ALTER TABLE events ADD COLUMN ai_confidence REAL")
             if "ai_reason" not in event_column_names:
                 cur.execute("ALTER TABLE events ADD COLUMN ai_reason TEXT")
+            if "risk_score" not in event_column_names:
+                cur.execute("ALTER TABLE events ADD COLUMN risk_score REAL")
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS embeddings_cache (

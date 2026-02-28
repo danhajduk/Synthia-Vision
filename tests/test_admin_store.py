@@ -27,6 +27,19 @@ class AdminStoreTests(unittest.TestCase):
                 event_ts=datetime.now(timezone.utc).timestamp(),
             )
             event_store.upsert_event(event=event, accepted=True, result_status="ok")
+            event_store.upsert_event(
+                event=FrigateEvent(
+                    event_id="evt-admin-2",
+                    camera="doorbell",
+                    label="person",
+                    event_type="end",
+                    event_ts=datetime.now(timezone.utc).timestamp(),
+                ),
+                accepted=True,
+                result_status="ok",
+                ai_confidence=0.91,
+                risk_score=0.88,
+            )
             event_store.insert_metric(event_id=event.event_id, prompt_tokens=10, completion_tokens=2)
             event_store.insert_error(
                 component="ai",
@@ -38,7 +51,10 @@ class AdminStoreTests(unittest.TestCase):
 
             store = AdminStore(db_path)
             events = store.list_events(limit=10)
-            self.assertEqual(events["total"], 1)
+            self.assertEqual(events["total"], 2)
+            sorted_events = store.list_events(limit=10, sort_by="risk_score", sort_dir="desc")
+            self.assertEqual(sorted_events["items"][0]["event_id"], "evt-admin-2")
+            self.assertAlmostEqual(float(sorted_events["items"][0]["risk_score"]), 0.88, places=6)
             detail = store.get_event("evt-admin-1")
             self.assertIsNotNone(detail)
             assert detail is not None

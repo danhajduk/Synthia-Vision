@@ -12,3 +12,19 @@ embeddings:
   retention_days: 30
   retention_max_rows: 5000
   store_vectors: false
+
+scoring:
+  enforce_threshold: false
+  threshold: 0.65
+  weights:
+    time_of_day: 0.25
+    camera_zone: 0.25
+    ai_confidence: 0.35
+    duration: 0.15
+  per_camera_overrides: {}
+  camera_importance:
+    default: 0.5
+    overrides: {}
+  zone_weights:
+    default: 0.5
+    overrides: {}

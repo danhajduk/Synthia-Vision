@@ -301,6 +301,38 @@ class EmbeddingsConfig:
 
 
 @dataclass(slots=True)
+class ScoringWeightsConfig:
+    time_of_day: float = 0.25
+    camera_zone: float = 0.25
+    ai_confidence: float = 0.35
+    duration: float = 0.15
+
+
+@dataclass(slots=True)
+class ScoringWeightOverrideConfig:
+    time_of_day: float | None = None
+    camera_zone: float | None = None
+    ai_confidence: float | None = None
+    duration: float | None = None
+
+
+@dataclass(slots=True)
+class ScoringScaleConfig:
+    default: float = 0.5
+    overrides: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class ScoringConfig:
+    enforce_threshold: bool = False
+    threshold: float = 0.65
+    weights: ScoringWeightsConfig = field(default_factory=ScoringWeightsConfig)
+    per_camera_overrides: dict[str, ScoringWeightOverrideConfig] = field(default_factory=dict)
+    camera_importance: ScoringScaleConfig = field(default_factory=ScoringScaleConfig)
+    zone_weights: ScoringScaleConfig = field(default_factory=ScoringScaleConfig)
+
+
+@dataclass(slots=True)
 class ServiceConfig:
     app: AppConfig
     logging: LoggingConfig
@@ -317,6 +349,7 @@ class ServiceConfig:
     dedupe: DedupeConfig
     suppression: SuppressionConfig
     embeddings: EmbeddingsConfig
+    scoring: ScoringConfig
     topics: dict[str, Any]
 
     @property
@@ -399,6 +432,20 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
     dedupe_data = _as_mapping(resolved_data.get("dedupe", {}), "dedupe")
     suppression_data = _as_mapping(resolved_data.get("suppression", {}), "suppression")
     embeddings_data = _as_mapping(resolved_data.get("embeddings", {}), "embeddings")
+    scoring_data = _as_mapping(resolved_data.get("scoring", {}), "scoring")
+    scoring_weights_data = _as_mapping(scoring_data.get("weights", {}), "scoring.weights")
+    scoring_camera_overrides_data = _as_mapping(
+        scoring_data.get("per_camera_overrides", {}),
+        "scoring.per_camera_overrides",
+    )
+    scoring_camera_importance_data = _as_mapping(
+        scoring_data.get("camera_importance", {}),
+        "scoring.camera_importance",
+    )
+    scoring_zone_weights_data = _as_mapping(
+        scoring_data.get("zone_weights", {}),
+        "scoring.zone_weights",
+    )
     topics_data = _as_mapping(resolved_data.get("topics", {}), "topics")
     logging_data = _as_mapping(resolved_data.get("logging", {}), "logging")
     logging_components_data = _as_mapping(
@@ -673,6 +720,14 @@ def load_settings(config_path: str | Path | None = None) -> ServiceConfig:
             retention_max_rows=max(1, int(embeddings_data.get("retention_max_rows", 5000))),
             store_vectors=_as_bool(embeddings_data.get("store_vectors", False)),
         ),
+        scoring=ScoringConfig(
+            enforce_threshold=_as_bool(scoring_data.get("enforce_threshold", False)),
+            threshold=float(scoring_data.get("threshold", 0.65)),
+            weights=_parse_scoring_weights(scoring_weights_data),
+            per_camera_overrides=_build_scoring_camera_overrides(scoring_camera_overrides_data),
+            camera_importance=_parse_scoring_scale(scoring_camera_importance_data),
+            zone_weights=_parse_scoring_scale(scoring_zone_weights_data),
+        ),
         topics=topics_data,
     )
 
@@ -729,6 +784,41 @@ def _build_prompt_presets(data: dict[str, Any]) -> dict[str, dict[str, str]]:
             "user": str(raw_value.get("user", "")),
         }
     return presets
+
+
+def _parse_scoring_weights(data: dict[str, Any]) -> ScoringWeightsConfig:
+    return ScoringWeightsConfig(
+        time_of_day=float(data.get("time_of_day", 0.25)),
+        camera_zone=float(data.get("camera_zone", 0.25)),
+        ai_confidence=float(data.get("ai_confidence", 0.35)),
+        duration=float(data.get("duration", 0.15)),
+    )
+
+
+def _build_scoring_camera_overrides(
+    data: dict[str, Any],
+) -> dict[str, ScoringWeightOverrideConfig]:
+    overrides: dict[str, ScoringWeightOverrideConfig] = {}
+    for camera_name, raw_value in data.items():
+        camera_data = _as_mapping(raw_value, f"scoring.per_camera_overrides.{camera_name}")
+        overrides[str(camera_name)] = ScoringWeightOverrideConfig(
+            time_of_day=_optional_float(camera_data.get("time_of_day")),
+            camera_zone=_optional_float(camera_data.get("camera_zone")),
+            ai_confidence=_optional_float(camera_data.get("ai_confidence")),
+            duration=_optional_float(camera_data.get("duration")),
+        )
+    return overrides
+
+
+def _parse_scoring_scale(data: dict[str, Any]) -> ScoringScaleConfig:
+    raw_overrides = _as_mapping(data.get("overrides", {}), "scoring.scale.overrides")
+    normalized_overrides: dict[str, float] = {}
+    for name, value in raw_overrides.items():
+        normalized_overrides[str(name)] = float(value)
+    return ScoringScaleConfig(
+        default=float(data.get("default", 0.5)),
+        overrides=normalized_overrides,
+    )
 
 
 def _parse_intent_mode_profile(data: dict[str, Any]) -> IntentModeProfileConfig:
@@ -943,6 +1033,46 @@ def _validate_config(config: ServiceConfig) -> None:
         raise ConfigError("embeddings.retention_days must be >= 1")
     if config.embeddings.retention_max_rows < 1:
         raise ConfigError("embeddings.retention_max_rows must be >= 1")
+    _validate_threshold(config.scoring.threshold)
+    for name, value in (
+        ("time_of_day", config.scoring.weights.time_of_day),
+        ("camera_zone", config.scoring.weights.camera_zone),
+        ("ai_confidence", config.scoring.weights.ai_confidence),
+        ("duration", config.scoring.weights.duration),
+    ):
+        if value < 0:
+            raise ConfigError(f"scoring.weights.{name} must be >= 0")
+    if (
+        config.scoring.weights.time_of_day
+        + config.scoring.weights.camera_zone
+        + config.scoring.weights.ai_confidence
+        + config.scoring.weights.duration
+        <= 0
+    ):
+        raise ConfigError("scoring.weights must have a positive total")
+    if config.scoring.camera_importance.default < 0 or config.scoring.camera_importance.default > 1:
+        raise ConfigError("scoring.camera_importance.default must be between 0 and 1")
+    if config.scoring.zone_weights.default < 0 or config.scoring.zone_weights.default > 1:
+        raise ConfigError("scoring.zone_weights.default must be between 0 and 1")
+    for camera_name, value in config.scoring.camera_importance.overrides.items():
+        if value < 0 or value > 1:
+            raise ConfigError(
+                f"scoring.camera_importance.overrides.{camera_name} must be between 0 and 1"
+            )
+    for zone_name, value in config.scoring.zone_weights.overrides.items():
+        if value < 0 or value > 1:
+            raise ConfigError(f"scoring.zone_weights.overrides.{zone_name} must be between 0 and 1")
+    for camera_name, override in config.scoring.per_camera_overrides.items():
+        for field_name, value in (
+            ("time_of_day", override.time_of_day),
+            ("camera_zone", override.camera_zone),
+            ("ai_confidence", override.ai_confidence),
+            ("duration", override.duration),
+        ):
+            if value is not None and value < 0:
+                raise ConfigError(
+                    f"scoring.per_camera_overrides.{camera_name}.{field_name} must be >= 0"
+                )
     if not config.modes.intent_available:
         raise ConfigError("modes.intent.available must not be empty")
     if config.modes.intent_default not in set(config.modes.intent_available):
